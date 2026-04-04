@@ -103,7 +103,9 @@ def build_domestic_vat_seed(seed: int | None = None) -> DomesticVatInvoiceSeed:
 def _build_issue_date(rng: random.Random) -> date:
     """Generate a deterministic issue date within the reference sample year."""
 
-    return _REFERENCE_START_DATE + timedelta(days=rng.randrange(_REFERENCE_DAY_COUNT))
+    return _REFERENCE_START_DATE + timedelta(
+        days=rng.randrange(_REFERENCE_DAY_COUNT)
+    )
 
 
 def _build_sale_date(rng: random.Random, issue_date: date) -> date:
@@ -201,7 +203,9 @@ def _build_nip(rng: random.Random) -> str:
         checksum = (
             sum(
                 int(digit) * weight
-                for digit, weight in zip(prefix_digits, _NIP_WEIGHTS, strict=True)
+                for digit, weight in zip(
+                    prefix_digits, _NIP_WEIGHTS, strict=True
+                )
             )
             % 11
         )
