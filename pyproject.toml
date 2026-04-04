@@ -21,3 +21,6 @@ major_version_zero = true
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 80
