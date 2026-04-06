@@ -19,6 +19,7 @@ from src.invoice_gen.domain_shell import (
 _NIP_PATTERN = re.compile(r"^\d{10}$")
 _NIP_WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
 _ALLOWED_VAT_RATES = {Decimal("23"), Decimal("5")}
+_ALLOWED_PAYMENT_FORMS = {1, 2, 6}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -118,6 +119,11 @@ def _validate_invoice_fields(
     _validate_required_string(
         shell.issue_city,
         "issue_city",
+        errors,
+    )
+    _validate_payment_form(
+        shell.payment_form,
+        "payment_form",
         errors,
     )
 
@@ -463,6 +469,34 @@ def _validate_vat_rate(
             path=path,
             code="unsupported_value",
             message=f"{path} must be one of {sorted(_ALLOWED_VAT_RATES)}",
+        )
+
+
+def _validate_payment_form(
+    value: int | None,
+    path: str,
+    errors: list[ShellValidationError],
+) -> None:
+    """Validate the optional domestic MVP payment-form code."""
+
+    if value is None:
+        return
+
+    if not isinstance(value, int) or isinstance(value, bool):
+        _add_error(
+            errors,
+            path=path,
+            code="invalid_value",
+            message=f"{path} must be an int",
+        )
+        return
+
+    if value not in _ALLOWED_PAYMENT_FORMS:
+        _add_error(
+            errors,
+            path=path,
+            code="unsupported_value",
+            message=f"{path} must be one of {sorted(_ALLOWED_PAYMENT_FORMS)}",
         )
 
 
