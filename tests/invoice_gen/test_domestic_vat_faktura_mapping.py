@@ -20,12 +20,14 @@ from ksef_schema.schemat import (
     TrodzajFaktury,
     TstawkaPodatku,
 )
-from src.domain_shell import LineItemShell, build_domestic_vat_shell
-from src.domestic_vat_faktura_mapping import (
+from src.invoice_gen.domain_shell import LineItemShell, build_domestic_vat_shell
+from src.invoice_gen.domestic_vat_faktura_mapping import (
     FakturaMappingError,
     map_domestic_vat_shell_to_faktura,
 )
-from src.domestic_vat_shell_summary import summarize_domestic_vat_shell
+from src.invoice_gen.domestic_vat_shell_summary import (
+    summarize_domestic_vat_shell,
+)
 
 
 def test_map_domestic_vat_shell_to_faktura_maps_header_and_parties() -> None:

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 import re
 
-from src.domain_shell import (
+from src.invoice_gen.domain_shell import (
     AdnotationDefaults,
     BuyerIdMode,
     BuyerShell,

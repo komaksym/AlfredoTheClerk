@@ -7,13 +7,15 @@ import sys
 from datetime import date
 from decimal import Decimal
 
-from src.domain_shell import BuyerIdMode, DomesticVatInvoiceShell
-from src.domestic_vat_seed import (
+from src.invoice_gen.domain_shell import BuyerIdMode, DomesticVatInvoiceShell
+from src.invoice_gen.domestic_vat_seed import (
     DomesticVatInvoiceSeed,
     DomesticVatLineItemSeed,
     DomesticVatPartySeed,
 )
-from src.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell
+from src.invoice_gen.domestic_vat_seed_mapping import (
+    map_domestic_vat_seed_to_shell,
+)
 
 
 def test_map_domestic_vat_seed_to_shell_copies_invoice_and_party_fields() -> (
@@ -109,13 +111,13 @@ def test_domestic_vat_seed_mapping_import_does_not_load_ksef_schema(
 
     for module_name in list(sys.modules):
         if (
-            module_name == "src.domestic_vat_seed_mapping"
+            module_name == "src.invoice_gen.domestic_vat_seed_mapping"
             or module_name.startswith("ksef_schema")
         ):
             monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     importlib.invalidate_caches()
-    importlib.import_module("src.domestic_vat_seed_mapping")
+    importlib.import_module("src.invoice_gen.domestic_vat_seed_mapping")
 
     assert not any(
         module_name == "ksef_schema" or module_name.startswith("ksef_schema.")

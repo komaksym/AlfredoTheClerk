@@ -6,7 +6,7 @@ import importlib
 import re
 import sys
 
-from src.domestic_vat_seed import (
+from src.invoice_gen.domestic_vat_seed import (
     DomesticVatInvoiceSeed,
     build_domestic_vat_seed,
 )
@@ -103,13 +103,14 @@ def test_domestic_vat_seed_import_does_not_load_ksef_schema(
     """Importing the seed module should not import the schema layer."""
 
     for module_name in list(sys.modules):
-        if module_name == "src.domestic_vat_seed" or module_name.startswith(
-            "ksef_schema"
+        if (
+            module_name == "src.invoice_gen.domestic_vat_seed"
+            or module_name.startswith("ksef_schema")
         ):
             monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     importlib.invalidate_caches()
-    importlib.import_module("src.domestic_vat_seed")
+    importlib.import_module("src.invoice_gen.domestic_vat_seed")
 
     assert not any(
         module_name == "ksef_schema" or module_name.startswith("ksef_schema.")

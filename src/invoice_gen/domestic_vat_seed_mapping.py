@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from src.domain_shell import (
+from src.invoice_gen.domain_shell import (
     DomesticVatInvoiceShell,
     LineItemShell,
     build_domestic_vat_shell,
 )
-from src.domestic_vat_seed import DomesticVatInvoiceSeed
+from src.invoice_gen.domestic_vat_seed import DomesticVatInvoiceSeed
 
 
 def map_domestic_vat_seed_to_shell(

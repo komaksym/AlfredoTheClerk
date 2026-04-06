@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 
-from src.domain_shell import (
+from src.invoice_gen.domain_shell import (
     BuyerIdMode,
     DomesticVatInvoiceShell,
     InvoiceProfile,
@@ -62,11 +62,14 @@ def test_domain_shell_import_does_not_load_ksef_schema(monkeypatch) -> None:
     """Importing the shell module should not import the schema layer."""
 
     for module_name in list(sys.modules):
-        if module_name == "src.domain_shell" or module_name.startswith("ksef_schema"):
+        if (
+            module_name == "src.invoice_gen.domain_shell"
+            or module_name.startswith("ksef_schema")
+        ):
             monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     importlib.invalidate_caches()
-    importlib.import_module("src.domain_shell")
+    importlib.import_module("src.invoice_gen.domain_shell")
 
     assert not any(
         module_name == "ksef_schema" or module_name.startswith("ksef_schema.")

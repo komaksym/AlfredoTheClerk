@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.cli import generate_invoice
+from src.invoice_gen.cli import generate_invoice
 
 _NS = "http://crd.gov.pl/wzor/2025/06/25/13775/"
 _FIXED_SEED = 42

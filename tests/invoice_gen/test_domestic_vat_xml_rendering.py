@@ -6,10 +6,14 @@ import xml.etree.ElementTree as ET
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from src.domain_shell import LineItemShell, build_domestic_vat_shell
-from src.domestic_vat_faktura_mapping import map_domestic_vat_shell_to_faktura
-from src.domestic_vat_shell_summary import summarize_domestic_vat_shell
-from src.domestic_vat_xml_rendering import render_faktura_to_xml
+from src.invoice_gen.domain_shell import LineItemShell, build_domestic_vat_shell
+from src.invoice_gen.domestic_vat_faktura_mapping import (
+    map_domestic_vat_shell_to_faktura,
+)
+from src.invoice_gen.domestic_vat_shell_summary import (
+    summarize_domestic_vat_shell,
+)
+from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
 
 _NS = "http://crd.gov.pl/wzor/2025/06/25/13775/"
 _GENERATED_AT = datetime(2026, 4, 5, 10, 11, 12, tzinfo=UTC)

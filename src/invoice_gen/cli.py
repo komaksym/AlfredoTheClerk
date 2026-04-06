@@ -6,11 +6,17 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-from src.domestic_vat_faktura_mapping import map_domestic_vat_shell_to_faktura
-from src.domestic_vat_seed import build_domestic_vat_seed
-from src.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell
-from src.domestic_vat_shell_summary import summarize_domestic_vat_shell
-from src.domestic_vat_xml_rendering import render_faktura_to_xml
+from src.invoice_gen.domestic_vat_faktura_mapping import (
+    map_domestic_vat_shell_to_faktura,
+)
+from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
+from src.invoice_gen.domestic_vat_seed_mapping import (
+    map_domestic_vat_seed_to_shell,
+)
+from src.invoice_gen.domestic_vat_shell_summary import (
+    summarize_domestic_vat_shell,
+)
+from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]

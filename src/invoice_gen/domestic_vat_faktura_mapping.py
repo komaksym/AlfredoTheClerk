@@ -24,13 +24,13 @@ from ksef_schema.schemat import (
 )
 from xsdata.models.datatype import XmlDateTime
 
-from src.domestic_vat_money import round_money
-from src.domain_shell import DomesticVatInvoiceShell, LineItemShell
-from src.domestic_vat_shell_summary import (
+from src.invoice_gen.domestic_vat_money import round_money
+from src.invoice_gen.domain_shell import DomesticVatInvoiceShell, LineItemShell
+from src.invoice_gen.domestic_vat_shell_summary import (
     DomesticVatInvoiceSummary,
     DomesticVatLineComputation,
 )
-from src.domestic_vat_shell_validation import (
+from src.invoice_gen.domestic_vat_shell_validation import (
     ShellValidationResult,
     validate_domestic_vat_shell,
 )

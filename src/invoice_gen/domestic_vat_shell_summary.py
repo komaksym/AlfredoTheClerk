@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from src.domestic_vat_money import round_money
-from src.domain_shell import DomesticVatInvoiceShell, LineItemShell
-from src.domestic_vat_shell_validation import (
+from src.invoice_gen.domestic_vat_money import round_money
+from src.invoice_gen.domain_shell import DomesticVatInvoiceShell, LineItemShell
+from src.invoice_gen.domestic_vat_shell_validation import (
     ShellValidationResult,
     validate_domestic_vat_shell,
 )

@@ -7,9 +7,13 @@ import sys
 from datetime import timedelta
 from decimal import Decimal
 
-from src.domestic_vat_seed import build_domestic_vat_seed
-from src.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell
-from src.domestic_vat_shell_validation import validate_domestic_vat_shell
+from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
+from src.invoice_gen.domestic_vat_seed_mapping import (
+    map_domestic_vat_seed_to_shell,
+)
+from src.invoice_gen.domestic_vat_shell_validation import (
+    validate_domestic_vat_shell,
+)
 
 
 def test_validate_domestic_vat_shell_accepts_valid_mapped_shell() -> None:
@@ -113,13 +117,13 @@ def test_domestic_vat_shell_validation_import_does_not_load_ksef_schema(
 
     for module_name in list(sys.modules):
         if (
-            module_name == "src.domestic_vat_shell_validation"
+            module_name == "src.invoice_gen.domestic_vat_shell_validation"
             or module_name.startswith("ksef_schema")
         ):
             monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     importlib.invalidate_caches()
-    importlib.import_module("src.domestic_vat_shell_validation")
+    importlib.import_module("src.invoice_gen.domestic_vat_shell_validation")
 
     assert not any(
         module_name == "ksef_schema" or module_name.startswith("ksef_schema.")
