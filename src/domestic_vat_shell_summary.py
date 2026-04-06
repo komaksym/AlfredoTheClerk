@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
+from src.domestic_vat_money import round_money
 from src.domain_shell import DomesticVatInvoiceShell, LineItemShell
 from src.domestic_vat_shell_validation import (
     ShellValidationResult,
     validate_domestic_vat_shell,
 )
 
-_MONEY_QUANT = Decimal("0.01")
 _HUNDRED = Decimal("100")
 
 
@@ -91,24 +91,24 @@ def summarize_domestic_vat_shell(
 
         bucket_summaries[line_computation.vat_rate] = DomesticVatBucketSummary(
             vat_rate=line_computation.vat_rate,
-            net_total=_money(
+            net_total=round_money(
                 existing_bucket.net_total + line_computation.line_net_total
             ),
-            vat_total=_money(
+            vat_total=round_money(
                 existing_bucket.vat_total + line_computation.line_vat_total
             ),
-            gross_total=_money(
+            gross_total=round_money(
                 existing_bucket.gross_total + line_computation.line_gross_total
             ),
         )
 
-    invoice_net_total = _money(
+    invoice_net_total = round_money(
         sum(bucket.net_total for bucket in bucket_summaries.values())
     )
-    invoice_vat_total = _money(
+    invoice_vat_total = round_money(
         sum(bucket.vat_total for bucket in bucket_summaries.values())
     )
-    invoice_gross_total = _money(
+    invoice_gross_total = round_money(
         sum(bucket.gross_total for bucket in bucket_summaries.values())
     )
 
@@ -132,9 +132,9 @@ def _compute_line(
     assert line_item.unit_price_net is not None
     assert line_item.vat_rate is not None
 
-    line_net_total = _money(line_item.quantity * line_item.unit_price_net)
-    line_vat_total = _money(line_net_total * line_item.vat_rate / _HUNDRED)
-    line_gross_total = _money(line_net_total + line_vat_total)
+    line_net_total = round_money(line_item.quantity * line_item.unit_price_net)
+    line_vat_total = round_money(line_net_total * line_item.vat_rate / _HUNDRED)
+    line_gross_total = round_money(line_net_total + line_vat_total)
 
     return DomesticVatLineComputation(
         line_index=line_index,
@@ -146,9 +146,3 @@ def _compute_line(
         line_vat_total=line_vat_total,
         line_gross_total=line_gross_total,
     )
-
-
-def _money(value: Decimal) -> Decimal:
-    """Round a Decimal to invoice money precision using half-up rounding."""
-
-    return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
