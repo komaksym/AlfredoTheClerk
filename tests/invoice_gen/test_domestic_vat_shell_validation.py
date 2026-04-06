@@ -110,6 +110,17 @@ def test_validate_domestic_vat_shell_reports_line_item_value_errors() -> None:
     _assert_has_error(result, "line_items[0].vat_rate", "unsupported_value")
 
 
+def test_validate_domestic_vat_shell_reports_unsupported_payment_form() -> None:
+    """Payment-form codes outside the MVP set should be rejected."""
+
+    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(seed=23))
+    shell.payment_form = 999
+
+    result = validate_domestic_vat_shell(shell)
+
+    _assert_has_error(result, "payment_form", "unsupported_value")
+
+
 def test_domestic_vat_shell_validation_import_does_not_load_ksef_schema(
     monkeypatch,
 ) -> None:

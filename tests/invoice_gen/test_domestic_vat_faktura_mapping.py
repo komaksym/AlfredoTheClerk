@@ -210,6 +210,36 @@ def test_map_domestic_vat_shell_to_faktura_raises_on_invalid_shell() -> None:
     assert exc_info.value.validation_result.is_valid is False
 
 
+def test_map_domestic_vat_shell_to_faktura_rejects_invalid_payment_form() -> (
+    None
+):
+    """Unsupported payment-form codes should fail through shell validation."""
+
+    shell = _build_valid_shell_with_lines(
+        [
+            LineItemShell(
+                description="produkt 23",
+                unit="szt.",
+                quantity=Decimal("2"),
+                unit_price_net=Decimal("10.00"),
+                vat_rate=Decimal("23"),
+            ),
+        ]
+    )
+    summary = summarize_domestic_vat_shell(shell)
+    shell.payment_form = 999
+
+    with pytest.raises(FakturaMappingError) as exc_info:
+        map_domestic_vat_shell_to_faktura(shell, summary)
+
+    assert exc_info.value.validation_result is not None
+    assert exc_info.value.validation_result.is_valid is False
+    assert any(
+        error.path == "payment_form" and error.code == "unsupported_value"
+        for error in exc_info.value.validation_result.errors
+    )
+
+
 def test_map_domestic_vat_shell_to_faktura_raises_on_inconsistent_summary() -> (
     None
 ):
