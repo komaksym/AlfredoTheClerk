@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import sys
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.invoice_gen.cli import generate_invoice
+import pytest
+
+from src.invoice_gen.cli import generate_invoice, main
 
 _NS = "http://crd.gov.pl/wzor/2025/06/25/13775/"
 _FIXED_SEED = 42
@@ -83,3 +86,18 @@ def test_generate_invoice_creates_output_dir_if_absent(tmp_path: Path) -> None:
     generate_invoice(seed=_FIXED_SEED, output_dir=output_dir)
 
     assert output_dir.exists()
+
+
+def test_main_help_mentions_default_synthetic_output_dir(
+    capsys, monkeypatch
+) -> None:
+    """The CLI help text should describe the real default output directory."""
+
+    monkeypatch.setattr(sys, "argv", ["invoice-gen", "--help"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "data/synthetic_data relative to the repo root" in captured.out
