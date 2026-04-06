@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ns0:Faktura xmlns:ns0="http://crd.gov.pl/wzor/2025/06/25/13775/">
+  <ns0:Naglowek>
+    <ns0:KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</ns0:KodFormularza>
+    <ns0:WariantFormularza>3</ns0:WariantFormularza>
+    <ns0:DataWytworzeniaFa>2026-04-06T15:23:26.476620Z</ns0:DataWytworzeniaFa>
+  </ns0:Naglowek>
+  <ns0:Podmiot1>
+    <ns0:DaneIdentyfikacyjne>
+      <ns0:NIP>5970920407</ns0:NIP>
+      <ns0:Nazwa>Meblotronik sp. z o.o.</ns0:Nazwa>
+    </ns0:DaneIdentyfikacyjne>
+    <ns0:Adres>
+      <ns0:KodKraju>PL</ns0:KodKraju>
+      <ns0:AdresL1>ul. Kwiatowa 57 m. 16</ns0:AdresL1>
+      <ns0:AdresL2>60-101 Poznan</ns0:AdresL2>
+    </ns0:Adres>
+  </ns0:Podmiot1>
+  <ns0:Podmiot2>
+    <ns0:DaneIdentyfikacyjne>
+      <ns0:NIP>7558291023</ns0:NIP>
+      <ns0:Nazwa>Sklep Domowy Komfort sp. z o.o.</ns0:Nazwa>
+    </ns0:DaneIdentyfikacyjne>
+    <ns0:Adres>
+      <ns0:KodKraju>PL</ns0:KodKraju>
+      <ns0:AdresL1>ul. Lesna 77</ns0:AdresL1>
+      <ns0:AdresL2>50-001 Wroclaw</ns0:AdresL2>
+    </ns0:Adres>
+    <ns0:JST>2</ns0:JST>
+    <ns0:GV>2</ns0:GV>
+  </ns0:Podmiot2>
+  <ns0:Fa>
+    <ns0:KodWaluty>PLN</ns0:KodWaluty>
+    <ns0:P_1>2026-10-15</ns0:P_1>
+    <ns0:P_1M>Poznan</ns0:P_1M>
+    <ns0:P_2>FV2026/10/120</ns0:P_2>
+    <ns0:P_6>2026-10-03</ns0:P_6>
+    <ns0:P_13_1>11958.64</ns0:P_13_1>
+    <ns0:P_14_1>2750.48</ns0:P_14_1>
+    <ns0:P_15>14709.12</ns0:P_15>
+    <ns0:Adnotacje>
+      <ns0:P_16>2</ns0:P_16>
+      <ns0:P_17>2</ns0:P_17>
+      <ns0:P_18>2</ns0:P_18>
+      <ns0:P_18A>2</ns0:P_18A>
+      <ns0:Zwolnienie>
+        <ns0:P_19N>1</ns0:P_19N>
+      </ns0:Zwolnienie>
+      <ns0:NoweSrodkiTransportu>
+        <ns0:P_22N>1</ns0:P_22N>
+      </ns0:NoweSrodkiTransportu>
+      <ns0:P_23>2</ns0:P_23>
+      <ns0:PMarzy>
+        <ns0:P_PMarzyN>1</ns0:P_PMarzyN>
+      </ns0:PMarzy>
+    </ns0:Adnotacje>
+    <ns0:RodzajFaktury>VAT</ns0:RodzajFaktury>
+    <ns0:FaWiersz>
+      <ns0:NrWierszaFa>1</ns0:NrWierszaFa>
+      <ns0:UU_ID>line-0001</ns0:UU_ID>
+      <ns0:P_7>lodowka Zimnotech mk1</ns0:P_7>
+      <ns0:P_8A>szt.</ns0:P_8A>
+      <ns0:P_8B>2</ns0:P_8B>
+      <ns0:P_9A>1704.4</ns0:P_9A>
+      <ns0:P_11>3408.80</ns0:P_11>
+      <ns0:P_12>23</ns0:P_12>
+    </ns0:FaWiersz>
+    <ns0:FaWiersz>
+      <ns0:NrWierszaFa>2</ns0:NrWierszaFa>
+      <ns0:UU_ID>line-0002</ns0:UU_ID>
+      <ns0:P_7>wniesienie sprzetu</ns0:P_7>
+      <ns0:P_8A>szt.</ns0:P_8A>
+      <ns0:P_8B>4</ns0:P_8B>
+      <ns0:P_9A>2137.46</ns0:P_9A>
+      <ns0:P_11>8549.84</ns0:P_11>
+      <ns0:P_12>23</ns0:P_12>
+    </ns0:FaWiersz>
+  </ns0:Fa>
+</ns0:Faktura>
