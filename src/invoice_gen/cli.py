@@ -20,6 +20,7 @@ from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_OUTPUT_DIR = ROOT_DIR / "data" / "synthetic_data"
 
 
 def generate_invoice(
@@ -78,8 +79,11 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT_DIR / "data/synthetic_data/",
-        help="Directory to write the XML file (default: current directory).",
+        default=DEFAULT_OUTPUT_DIR,
+        help=(
+            "Directory to write the XML file "
+            "(default: data/synthetic_data relative to the repo root)."
+        ),
     )
     args = parser.parse_args()
 
