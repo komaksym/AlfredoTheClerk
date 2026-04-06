@@ -19,7 +19,7 @@ from src.invoice_gen.domestic_vat_shell_summary import (
 from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 def generate_invoice(
