@@ -134,17 +134,26 @@ def _build_reference_seed() -> DomesticVatInvoiceSeed:
         sale_date=date(2026, 4, 2),
         invoice_number="FV2026/04/001",
         issue_city="Warszawa",
+        payment_form=6,
         seller=DomesticVatPartySeed(
             nip="1234563218",
             name="ABC AGD sp. z o.o.",
             address_line_1="ul. Kwiatowa 1 m. 2",
             address_line_2="00-001 Warszawa",
+            email="biuro@abc.pl",
+            phone="667444555",
+            krs="0000099999",
+            regon="99999999999999",
+            bdo="000099999",
         ),
         buyer=DomesticVatPartySeed(
             nip="5261040828",
             name="FHU Jan Kowalski",
             address_line_1="ul. Polna 1",
             address_line_2="00-001 Warszawa",
+            email="kontakt@kowalski.pl",
+            phone="555777999",
+            customer_ref="KL123456",
         ),
         line_items=[
             DomesticVatLineItemSeed(
