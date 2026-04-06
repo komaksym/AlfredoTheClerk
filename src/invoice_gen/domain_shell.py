@@ -42,6 +42,11 @@ class PartyShell:
     name: str | None = None
     address_line_1: str | None = None
     address_line_2: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    krs: str | None = None
+    regon: str | None = None
+    bdo: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -51,6 +56,7 @@ class BuyerShell(PartyShell):
     buyer_id_mode: BuyerIdMode = BuyerIdMode.DOMESTIC_NIP
     jst: int = 2
     gv: int = 2
+    customer_ref: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -75,6 +81,7 @@ class DomesticVatInvoiceShell:
     invoice_number: str | None = None
     issue_city: str | None = None
     system_info: str | None = None
+    payment_form: int | None = None
     seller: PartyShell = field(default_factory=PartyShell)
     buyer: BuyerShell = field(default_factory=BuyerShell)
     line_items: list[LineItemShell] = field(default_factory=list)

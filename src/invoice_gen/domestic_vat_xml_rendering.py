@@ -8,9 +8,10 @@ from xsdata.formats.dataclass.serializers.config import SerializerConfig
 from ksef_schema.schemat import Faktura
 
 _serializer = XmlSerializer(config=SerializerConfig(indent="  "))
+_NS = "http://crd.gov.pl/wzor/2025/06/25/13775/"
 
 
 def render_faktura_to_xml(faktura: Faktura) -> str:
     """Serialize one FA(3) Faktura object to a UTF-8 XML string."""
 
-    return _serializer.render(faktura)
+    return _serializer.render(faktura, ns_map={None: _NS})

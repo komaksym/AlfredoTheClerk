@@ -12,6 +12,7 @@ from ksef_schema.schemat import (
     Podmiot2Gv,
     Podmiot2Jst,
     Tadres,
+    TformaPlatnosci,
     TkodFormularza,
     TkodKraju,
     TkodWaluty,
@@ -90,6 +91,7 @@ def map_domestic_vat_shell_to_faktura(
         podmiot1=_map_seller(shell),
         podmiot2=_map_buyer(shell),
         fa=_map_fa(shell, summary),
+        stopka=_map_stopka(shell),
     )
 
 
@@ -101,6 +103,15 @@ def _map_seller(shell: DomesticVatInvoiceShell) -> Faktura.Podmiot1:
     assert shell.seller.address_line_1 is not None
     assert shell.seller.address_line_2 is not None
 
+    kontakt = []
+    if shell.seller.email or shell.seller.phone:
+        kontakt = [
+            Faktura.Podmiot1.DaneKontaktowe(
+                email=shell.seller.email,
+                telefon=shell.seller.phone,
+            )
+        ]
+
     return Faktura.Podmiot1(
         dane_identyfikacyjne=Tpodmiot1(
             nip=shell.seller.nip,
@@ -111,6 +122,7 @@ def _map_seller(shell: DomesticVatInvoiceShell) -> Faktura.Podmiot1:
             adres_l1=shell.seller.address_line_1,
             adres_l2=shell.seller.address_line_2,
         ),
+        dane_kontaktowe=kontakt,
     )
 
 
@@ -122,6 +134,15 @@ def _map_buyer(shell: DomesticVatInvoiceShell) -> Faktura.Podmiot2:
     assert shell.buyer.address_line_1 is not None
     assert shell.buyer.address_line_2 is not None
 
+    kontakt = []
+    if shell.buyer.email or shell.buyer.phone:
+        kontakt = [
+            Faktura.Podmiot2.DaneKontaktowe(
+                email=shell.buyer.email,
+                telefon=shell.buyer.phone,
+            )
+        ]
+
     return Faktura.Podmiot2(
         dane_identyfikacyjne=Tpodmiot2(
             nip=shell.buyer.nip,
@@ -132,6 +153,8 @@ def _map_buyer(shell: DomesticVatInvoiceShell) -> Faktura.Podmiot2:
             adres_l1=shell.buyer.address_line_1,
             adres_l2=shell.buyer.address_line_2,
         ),
+        dane_kontaktowe=kontakt,
+        nr_klienta=shell.buyer.customer_ref,
         jst=Podmiot2Jst.VALUE_2,
         gv=Podmiot2Gv.VALUE_2,
     )
@@ -178,6 +201,11 @@ def _map_fa(
         fa_kwargs[net_field] = _format_money(bucket.net_total)
         fa_kwargs[vat_field] = _format_money(bucket.vat_total)
 
+    if shell.payment_form is not None:
+        fa_kwargs["platnosc"] = Faktura.Fa.Platnosc(
+            forma_platnosci=TformaPlatnosci(shell.payment_form),
+        )
+
     return Faktura.Fa(**fa_kwargs)
 
 
@@ -199,6 +227,25 @@ def _map_adnotations() -> Faktura.Fa.Adnotacje:
         pmarzy=Faktura.Fa.Adnotacje.Pmarzy(
             p_pmarzy_n=Twybor1.VALUE_1,
         ),
+    )
+
+
+def _map_stopka(
+    shell: DomesticVatInvoiceShell,
+) -> Faktura.Stopka | None:
+    """Map seller registry numbers into the invoice footer, if present."""
+
+    if not any((shell.seller.krs, shell.seller.regon, shell.seller.bdo)):
+        return None
+
+    return Faktura.Stopka(
+        rejestry=[
+            Faktura.Stopka.Rejestry(
+                krs=shell.seller.krs,
+                regon=shell.seller.regon,
+                bdo=shell.seller.bdo,
+            )
+        ],
     )
 
 

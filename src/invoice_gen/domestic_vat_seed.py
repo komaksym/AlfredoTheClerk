@@ -8,6 +8,23 @@ from decimal import Decimal
 import random
 
 _NIP_WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
+_EMAIL_ROLES = ("biuro", "kontakt", "info", "sklep")
+_LEGAL_STOP_WORDS = frozenset({"sp", "z", "o", "fhu", "sa"})
+_PHONE_PREFIXES = (
+    "48",
+    "50",
+    "51",
+    "53",
+    "57",
+    "60",
+    "66",
+    "69",
+    "72",
+    "73",
+    "78",
+    "79",
+)
+_PAYMENT_FORMS = (1, 2, 6)
 _PARTY_NAMES = (
     "ABC AGD sp. z o.o.",
     "FHU Jan Kowalski",
@@ -52,6 +69,12 @@ class DomesticVatPartySeed:
     name: str
     address_line_1: str
     address_line_2: str
+    email: str
+    phone: str
+    krs: str | None = None
+    regon: str | None = None
+    bdo: str | None = None
+    customer_ref: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -76,6 +99,7 @@ class DomesticVatInvoiceSeed:
     issue_city: str
     seller: DomesticVatPartySeed
     buyer: DomesticVatPartySeed
+    payment_form: int
     line_items: list[DomesticVatLineItemSeed] = field(default_factory=list)
 
 
@@ -96,6 +120,7 @@ def build_domestic_vat_seed(seed: int | None = None) -> DomesticVatInvoiceSeed:
         issue_city=issue_city,
         seller=seller,
         buyer=buyer,
+        payment_form=rng.choice(_PAYMENT_FORMS),
         line_items=_build_line_items(rng),
     )
 
@@ -138,12 +163,20 @@ def _build_parties(
             name=seller_name,
             address_line_1=seller_address[0],
             address_line_2=seller_address[1],
+            email=_build_email(rng, seller_name),
+            phone=_build_phone(rng),
+            krs=_build_krs(rng),
+            regon=_build_regon(rng),
+            bdo=_build_bdo(rng),
         ),
         DomesticVatPartySeed(
             nip=buyer_nip,
             name=buyer_name,
             address_line_1=buyer_address[0],
             address_line_2=buyer_address[1],
+            email=_build_email(rng, buyer_name),
+            phone=_build_phone(rng),
+            customer_ref=_build_customer_ref(rng),
         ),
     )
 
@@ -193,6 +226,47 @@ def _build_invoice_number(rng: random.Random, issue_date: date) -> str:
 
     sequence = rng.randint(1, 999)
     return f"FV{issue_date.year}/{issue_date.month:02d}/{sequence:03d}"
+
+
+def _build_email(rng: random.Random, name: str) -> str:
+    """Generate a plausible contact email derived from the company name."""
+
+    words = [w.rstrip(".,") for w in name.lower().split()]
+    slug_words = [w for w in words if w not in _LEGAL_STOP_WORDS and len(w) > 2]
+    slug = slug_words[0] if slug_words else words[0]
+    return f"{rng.choice(_EMAIL_ROLES)}@{slug}.pl"
+
+
+def _build_phone(rng: random.Random) -> str:
+    """Generate a plausible Polish mobile phone number."""
+
+    prefix = rng.choice(_PHONE_PREFIXES)
+    rest = "".join(str(rng.randint(0, 9)) for _ in range(7))
+    return f"{prefix}{rest}"
+
+
+def _build_krs(rng: random.Random) -> str:
+    """Generate a ten-digit KRS registry number."""
+
+    return f"{rng.randint(0, 9_999_999_999):010d}"
+
+
+def _build_regon(rng: random.Random) -> str:
+    """Generate a fourteen-digit REGON registry number."""
+
+    return f"{rng.randint(0, 99_999_999_999_999):014d}"
+
+
+def _build_bdo(rng: random.Random) -> str:
+    """Generate a BDO waste registry number in the standard prefix format."""
+
+    return f"000{rng.randint(0, 999_999):06d}"
+
+
+def _build_customer_ref(rng: random.Random) -> str:
+    """Generate a short buyer customer reference code."""
+
+    return f"KL{rng.randint(100_000, 999_999)}"
 
 
 def _build_nip(rng: random.Random) -> str:

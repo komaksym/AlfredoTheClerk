@@ -26,11 +26,21 @@ def map_domestic_vat_seed_to_shell(
     shell.seller.name = seed.seller.name
     shell.seller.address_line_1 = seed.seller.address_line_1
     shell.seller.address_line_2 = seed.seller.address_line_2
+    shell.seller.email = seed.seller.email
+    shell.seller.phone = seed.seller.phone
+    shell.seller.krs = seed.seller.krs
+    shell.seller.regon = seed.seller.regon
+    shell.seller.bdo = seed.seller.bdo
 
     shell.buyer.nip = seed.buyer.nip
     shell.buyer.name = seed.buyer.name
     shell.buyer.address_line_1 = seed.buyer.address_line_1
     shell.buyer.address_line_2 = seed.buyer.address_line_2
+    shell.buyer.email = seed.buyer.email
+    shell.buyer.phone = seed.buyer.phone
+    shell.buyer.customer_ref = seed.buyer.customer_ref
+
+    shell.payment_form = seed.payment_form
 
     shell.line_items = [
         LineItemShell(
