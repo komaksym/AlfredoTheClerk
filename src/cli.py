@@ -13,6 +13,9 @@ from src.domestic_vat_shell_summary import summarize_domestic_vat_shell
 from src.domestic_vat_xml_rendering import render_faktura_to_xml
 
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+
 def generate_invoice(
     seed: int | None,
     output_dir: Path,
@@ -69,7 +72,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("."),
+        default=ROOT_DIR / "data/synthetic_data/",
         help="Directory to write the XML file (default: current directory).",
     )
     args = parser.parse_args()
