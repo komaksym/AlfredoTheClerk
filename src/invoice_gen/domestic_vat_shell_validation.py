@@ -16,7 +16,7 @@ from src.invoice_gen.domain_shell import (
     PartyShell,
 )
 
-_NIP_PATTERN = re.compile(r"^\d{10}$")
+_NIP_PATTERN = re.compile(r"^[1-9](?:\d[1-9]|[1-9]\d)\d{7}$")
 _NIP_WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
 _ALLOWED_VAT_RATES = {Decimal("23"), Decimal("5")}
 _ALLOWED_PAYMENT_FORMS = {1, 2, 6}
@@ -391,7 +391,7 @@ def _validate_nip(
             errors,
             path=path,
             code="invalid_format",
-            message=f"{path} must contain exactly 10 digits",
+            message=f"{path} must match the FA(3) NIP lexical format",
         )
         return
 
