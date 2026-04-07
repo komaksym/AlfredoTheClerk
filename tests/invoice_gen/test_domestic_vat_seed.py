@@ -11,7 +11,7 @@ from src.invoice_gen.domestic_vat_seed import (
     build_domestic_vat_seed,
 )
 
-_NIP_PATTERN = re.compile(r"^\d{10}$")
+_NIP_PATTERN = re.compile(r"^[1-9](?:\d[1-9]|[1-9]\d)\d{7}$")
 _INVOICE_NUMBER_PATTERN = re.compile(r"^FV\d{4}/\d{2}/\d{3}$")
 _NIP_WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
 
@@ -37,13 +37,14 @@ def test_build_domestic_vat_seed_generates_checksum_valid_distinct_nips() -> (
 ):
     """Seller and buyer NIPs should follow the domestic formal rules."""
 
-    invoice_seed = build_domestic_vat_seed(seed=11)
+    for seed in range(50):
+        invoice_seed = build_domestic_vat_seed(seed=seed)
 
-    assert _NIP_PATTERN.fullmatch(invoice_seed.seller.nip)
-    assert _NIP_PATTERN.fullmatch(invoice_seed.buyer.nip)
-    assert _is_valid_nip(invoice_seed.seller.nip)
-    assert _is_valid_nip(invoice_seed.buyer.nip)
-    assert invoice_seed.seller.nip != invoice_seed.buyer.nip
+        assert _NIP_PATTERN.fullmatch(invoice_seed.seller.nip)
+        assert _NIP_PATTERN.fullmatch(invoice_seed.buyer.nip)
+        assert _is_valid_nip(invoice_seed.seller.nip)
+        assert _is_valid_nip(invoice_seed.buyer.nip)
+        assert invoice_seed.seller.nip != invoice_seed.buyer.nip
 
 
 def test_build_domestic_vat_seed_generates_distinct_party_addresses() -> None:

@@ -54,7 +54,7 @@ def test_validate_domestic_vat_shell_reports_invalid_nip_format_and_checksum() -
     """Formal NIP errors should distinguish format failures from checksum failures."""
 
     shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(seed=13))
-    shell.seller.nip = "123"
+    shell.seller.nip = "0133890837"
     shell.buyer.nip = _change_last_digit(shell.buyer.nip)
 
     result = validate_domestic_vat_shell(shell)
