@@ -25,7 +25,11 @@ from ksef_schema.schemat import (
 )
 from xsdata.models.datatype import XmlDateTime
 
-from src.invoice_gen.domestic_vat_money import round_money
+from src.invoice_gen.domestic_vat_money import (
+    format_decimal,
+    format_money,
+    round_money,
+)
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell, LineItemShell
 from src.invoice_gen.domestic_vat_shell_summary import (
     DomesticVatInvoiceSummary,
@@ -182,7 +186,7 @@ def _map_fa(
         "p_1": shell.issue_date.isoformat(),
         "p_1_m": shell.issue_city,
         "p_2": shell.invoice_number,
-        "p_15": _format_money(summary.invoice_gross_total),
+        "p_15": format_money(summary.invoice_gross_total),
         "adnotacje": _map_adnotations(),
         "rodzaj_faktury": TrodzajFaktury.VAT,
         "fa_wiersz": [
@@ -204,8 +208,8 @@ def _map_fa(
         if bucket is None:
             continue
 
-        fa_kwargs[net_field] = _format_money(bucket.net_total)
-        fa_kwargs[vat_field] = _format_money(bucket.vat_total)
+        fa_kwargs[net_field] = format_money(bucket.net_total)
+        fa_kwargs[vat_field] = format_money(bucket.vat_total)
 
     if shell.payment_form is not None:
         fa_kwargs["platnosc"] = Faktura.Fa.Platnosc(
@@ -271,9 +275,9 @@ def _map_line_item(
         uu_id=f"line-{summary_line.line_index + 1:04d}",
         p_7=shell_line.description,
         p_8_a=shell_line.unit,
-        p_8_b=_format_decimal(shell_line.quantity, max_fraction_digits=6),
-        p_9_a=_format_decimal(shell_line.unit_price_net, max_fraction_digits=8),
-        p_11=_format_money(summary_line.line_net_total),
+        p_8_b=format_decimal(shell_line.quantity, max_fraction_digits=6),
+        p_9_a=format_decimal(shell_line.unit_price_net, max_fraction_digits=8),
+        p_11=format_money(summary_line.line_net_total),
         p_12=_VAT_ENUMS[summary_line.vat_rate],
     )
 
@@ -444,28 +448,3 @@ def _to_xml_datetime(generated_at: datetime | None) -> XmlDateTime:
         )
 
     return XmlDateTime.from_datetime(resolved_generated_at.astimezone(UTC))
-
-
-def _format_money(value: Decimal) -> str:
-    """Format one money value as a plain two-decimal string."""
-
-    return format(round_money(value), "f")
-
-
-def _format_decimal(value: Decimal, *, max_fraction_digits: int) -> str:
-    """Format one Decimal without scientific notation for schema fields."""
-
-    normalized_value = value.normalize()
-
-    exponent = normalized_value.as_tuple().exponent
-    fraction_digits = -exponent if exponent < 0 else 0
-
-    if fraction_digits > max_fraction_digits:
-        raise FakturaMappingError(
-            message=(
-                f"value {value} exceeds the supported {max_fraction_digits} "
-                "fraction digits"
-            ),
-        )
-
-    return format(normalized_value, "f")
