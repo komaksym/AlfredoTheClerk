@@ -105,6 +105,9 @@ class DomesticVatInvoiceSeed:
     line_items: list[DomesticVatLineItemSeed] = field(default_factory=list)
 
 
+# --- Public builder -------------------------------------------------------
+
+
 def build_domestic_vat_seed(seed: int | None = None) -> DomesticVatInvoiceSeed:
     """Build one structured domestic VAT seed with deterministic randomness."""
 
@@ -125,6 +128,9 @@ def build_domestic_vat_seed(seed: int | None = None) -> DomesticVatInvoiceSeed:
         payment_form=rng.choice(_PAYMENT_FORMS),
         line_items=_build_line_items(rng),
     )
+
+
+# --- Date and party builders ---------------------------------------------
 
 
 def _build_issue_date(rng: random.Random) -> date:
@@ -183,6 +189,9 @@ def _build_parties(
     )
 
 
+# --- Address and line-item builders --------------------------------------
+
+
 def _build_address(rng: random.Random) -> tuple[str, str]:
     """Generate address lines in the broad shape used by the official samples."""
 
@@ -214,6 +223,9 @@ def _build_line_items(rng: random.Random) -> list[DomesticVatLineItemSeed]:
         )
         for description, unit, vat_rate in selected_templates
     ]
+
+
+# --- Identifier and contact builders -------------------------------------
 
 
 def _build_unit_price_net(rng: random.Random) -> Decimal:

@@ -22,6 +22,9 @@ _ALLOWED_VAT_RATES = {Decimal("23"), Decimal("5")}
 _ALLOWED_PAYMENT_FORMS = {1, 2, 6}
 
 
+# --- Public API and data structures --------------------------------------
+
+
 @dataclass(frozen=True, kw_only=True)
 class ShellValidationError:
     """One machine-readable validation problem found in the shell."""
@@ -59,6 +62,9 @@ def validate_domestic_vat_shell(
     _validate_adnotations(shell.adnotations, errors)
 
     return ShellValidationResult(errors=errors)
+
+
+# --- Shell-section validators --------------------------------------------
 
 
 def _validate_invoice_fields(
@@ -336,6 +342,9 @@ def _validate_adnotations(
     )
 
 
+# --- Primitive field validators ------------------------------------------
+
+
 def _validate_required_string(
     value: str | None,
     path: str,
@@ -515,6 +524,9 @@ def _validate_expected_value(
             code="unsupported_value",
             message=f"{path} must equal {expected!r}",
         )
+
+
+# --- Internal helpers ----------------------------------------------------
 
 
 def _is_valid_nip(value: str) -> bool:

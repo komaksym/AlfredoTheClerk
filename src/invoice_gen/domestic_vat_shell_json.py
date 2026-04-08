@@ -110,6 +110,9 @@ _ADNOTATION_KEYS = frozenset(
 )
 
 
+# --- Public API -----------------------------------------------------------
+
+
 def shell_to_dict(shell: DomesticVatInvoiceShell) -> dict[str, Any]:
     """Encode one shell into the frozen JSON-ready dict form."""
 

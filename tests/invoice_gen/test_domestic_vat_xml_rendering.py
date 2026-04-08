@@ -19,6 +19,9 @@ _NS = "http://crd.gov.pl/wzor/2025/06/25/13775/"
 _GENERATED_AT = datetime(2026, 4, 5, 10, 11, 12, tzinfo=UTC)
 
 
+# --- 1. Basic render output ----------------------------------------------
+
+
 def test_render_produces_str() -> None:
     """The renderer should return a non-empty string."""
 
@@ -58,6 +61,9 @@ def test_render_header_fields() -> None:
     data = naglowek.find(f"{{{_NS}}}DataWytworzeniaFa")
     assert data is not None
     assert "2026-04-05" in (data.text or "")
+
+
+# --- 2. VAT buckets ------------------------------------------------------
 
 
 def test_render_vat_buckets_23_percent() -> None:
@@ -108,6 +114,9 @@ def test_render_vat_buckets_5_percent() -> None:
     assert fa.find(f"{{{_NS}}}P_14_1") is None
 
 
+# --- 3. Date handling (P_6) ----------------------------------------------
+
+
 def test_render_p6_omitted_when_sale_equals_issue_date() -> None:
     """P_6 must be absent when sale date equals issue date."""
 
@@ -133,6 +142,9 @@ def test_render_p6_present_when_sale_differs_from_issue_date() -> None:
     p6 = fa.find(f"{{{_NS}}}P_6")
     assert p6 is not None
     assert p6.text == "2026-04-02"
+
+
+# --- 4. Adnotations and line rows ----------------------------------------
 
 
 def test_render_adnotation_negative_branch() -> None:
@@ -174,6 +186,9 @@ def test_render_line_rows_count() -> None:
 
     rows = fa.findall(f"{{{_NS}}}FaWiersz")
     assert len(rows) == 3
+
+
+# --- helpers --------------------------------------------------------------
 
 
 def _build_faktura(

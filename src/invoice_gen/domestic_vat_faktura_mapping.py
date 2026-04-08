@@ -47,6 +47,9 @@ _BUCKET_FIELDS = {
 }
 
 
+# --- Public API and exception --------------------------------------------
+
+
 @dataclass(kw_only=True)
 class FakturaMappingError(Exception):
     """Raised when shell-to-schema mapping cannot safely proceed."""
@@ -93,6 +96,9 @@ def map_domestic_vat_shell_to_faktura(
         fa=_map_fa(shell, summary),
         stopka=_map_stopka(shell),
     )
+
+
+# --- Shell-to-schema mappers ---------------------------------------------
 
 
 def _map_seller(shell: DomesticVatInvoiceShell) -> Faktura.Podmiot1:
@@ -272,6 +278,9 @@ def _map_line_item(
     )
 
 
+# --- Summary consistency checks ------------------------------------------
+
+
 def _validate_summary_against_shell(
     shell: DomesticVatInvoiceShell,
     summary: DomesticVatInvoiceSummary,
@@ -416,6 +425,9 @@ def _validate_summary_line(
         raise FakturaMappingError(
             message=f"summary line gross total mismatch at row {index}",
         )
+
+
+# --- Formatting helpers --------------------------------------------------
 
 
 def _to_xml_datetime(generated_at: datetime | None) -> XmlDateTime:
