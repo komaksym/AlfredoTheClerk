@@ -1,4 +1,4 @@
-"""Tests for the frozen JSON serialization of the domestic VAT shell."""
+"""Tests for the frozen JSON serialization of domestic VAT artifacts."""
 
 from __future__ import annotations
 
@@ -17,17 +17,26 @@ from src.invoice_gen.domain_shell import (
     LineItemShell,
     PartyShell,
 )
-from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
-from src.invoice_gen.domestic_vat_seed_mapping import (
-    map_domestic_vat_seed_to_shell,
-)
-from src.invoice_gen.domestic_vat_shell_json import (
+from src.invoice_gen.domestic_vat_json import (
     SHELL_JSON_SCHEMA_VERSION,
-    ShellJsonError,
+    SUMMARY_JSON_SCHEMA_VERSION,
+    DomesticVatJsonError,
     shell_from_dict,
     shell_from_json,
     shell_to_dict,
     shell_to_json,
+    summary_from_dict,
+    summary_from_json,
+    summary_to_dict,
+    summary_to_json,
+)
+from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
+from src.invoice_gen.domestic_vat_seed_mapping import (
+    map_domestic_vat_seed_to_shell,
+)
+from src.invoice_gen.domestic_vat_shell_summary import (
+    DomesticVatInvoiceSummary,
+    summarize_domestic_vat_shell,
 )
 
 
@@ -135,7 +144,7 @@ def test_quantity_with_seven_fraction_digits_raises() -> None:
     shell = _minimal_shell()
     shell.line_items[0].quantity = Decimal("0.0000001")
 
-    with pytest.raises(ShellJsonError, match="fraction digits"):
+    with pytest.raises(DomesticVatJsonError, match="fraction digits"):
         shell_to_dict(shell)
 
 
@@ -145,7 +154,7 @@ def test_unit_price_net_with_nine_fraction_digits_raises() -> None:
     shell = _minimal_shell()
     shell.line_items[0].unit_price_net = Decimal("1E-9")
 
-    with pytest.raises(ShellJsonError, match="fraction digits"):
+    with pytest.raises(DomesticVatJsonError, match="fraction digits"):
         shell_to_dict(shell)
 
 
@@ -156,7 +165,7 @@ def test_decode_quantity_with_seven_fraction_digits_raises() -> None:
     dump = shell_to_dict(shell)
     dump["line_items"][0]["quantity"] = "0.0000001"
 
-    with pytest.raises(ShellJsonError, match="fraction digits"):
+    with pytest.raises(DomesticVatJsonError, match="fraction digits"):
         shell_from_dict(dump)
 
 
@@ -310,7 +319,7 @@ def test_missing_schema_version_raises() -> None:
     dump = shell_to_dict(_minimal_shell())
     dump.pop("schema_version")
 
-    with pytest.raises(ShellJsonError, match="schema_version"):
+    with pytest.raises(DomesticVatJsonError, match="schema_version"):
         shell_from_dict(dump)
 
 
@@ -320,7 +329,7 @@ def test_mismatched_schema_version_raises() -> None:
     dump = shell_to_dict(_minimal_shell())
     dump["schema_version"] = SHELL_JSON_SCHEMA_VERSION + 1
 
-    with pytest.raises(ShellJsonError, match="schema_version"):
+    with pytest.raises(DomesticVatJsonError, match="schema_version"):
         shell_from_dict(dump)
 
 
@@ -333,7 +342,7 @@ def test_unknown_top_level_key_raises() -> None:
     dump = shell_to_dict(_minimal_shell())
     dump["unexpected"] = True
 
-    with pytest.raises(ShellJsonError, match="unknown keys"):
+    with pytest.raises(DomesticVatJsonError, match="unknown keys"):
         shell_from_dict(dump)
 
 
@@ -343,7 +352,7 @@ def test_unknown_nested_key_raises() -> None:
     dump = shell_to_dict(_minimal_shell())
     dump["seller"]["unexpected"] = "x"
 
-    with pytest.raises(ShellJsonError, match="unknown keys"):
+    with pytest.raises(DomesticVatJsonError, match="unknown keys"):
         shell_from_dict(dump)
 
 
@@ -351,12 +360,12 @@ def test_unknown_nested_key_raises() -> None:
 
 
 def test_invalid_profile_enum_raises() -> None:
-    """Unknown enum values must raise ``ShellJsonError``."""
+    """Unknown enum values must raise ``DomesticVatJsonError``."""
 
     dump = shell_to_dict(_minimal_shell())
     dump["profile"] = "foreign_vat"
 
-    with pytest.raises(ShellJsonError, match="profile"):
+    with pytest.raises(DomesticVatJsonError, match="profile"):
         shell_from_dict(dump)
 
 
@@ -382,6 +391,270 @@ def test_shell_to_json_uses_sorted_keys_for_determinism() -> None:
     shell = _minimal_shell()
 
     text = shell_to_json(shell)
+    parsed_keys = list(json.loads(text).keys())
+
+    assert parsed_keys == sorted(parsed_keys)
+
+
+# --- summary helpers ------------------------------------------------------
+
+
+def _seeded_summary(seed: int = 7) -> DomesticVatInvoiceSummary:
+    """Build one summary from the deterministic seed pipeline."""
+
+    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(seed))
+    return summarize_domestic_vat_shell(shell)
+
+
+# --- 13. Summary money formatting ----------------------------------------
+
+
+def test_summary_money_fields_serialize_as_two_decimal_strings() -> None:
+    """Money totals must serialize to the canonical two-decimal form."""
+
+    summary = _seeded_summary(7)
+
+    dump = summary_to_dict(summary)
+
+    assert (
+        dump["invoice_net_total"] == format(summary.invoice_net_total, "f")
+        or "." in dump["invoice_net_total"]
+    )
+    # stronger assertion: every money string has exactly two fraction digits
+    for key in (
+        "invoice_net_total",
+        "invoice_vat_total",
+        "invoice_gross_total",
+    ):
+        assert dump[key].split(".")[-1].__len__() == 2, (
+            f"{key}={dump[key]!r} should have two fraction digits"
+        )
+
+
+def test_summary_line_money_fields_serialize_as_two_decimal_strings() -> None:
+    """Per-line money totals must serialize to the canonical two-decimal form."""
+
+    summary = _seeded_summary(7)
+
+    dump = summary_to_dict(summary)
+
+    for line in dump["line_computations"]:
+        for key in ("line_net_total", "line_vat_total", "line_gross_total"):
+            assert line[key].split(".")[-1].__len__() == 2, (
+                f"{key}={line[key]!r} should have two fraction digits"
+            )
+
+
+def test_summary_bucket_money_fields_serialize_as_two_decimal_strings() -> None:
+    """Bucket money totals must serialize to the canonical two-decimal form."""
+
+    summary = _seeded_summary(7)
+
+    dump = summary_to_dict(summary)
+
+    for bucket in dump["bucket_summaries"].values():
+        for key in ("net_total", "vat_total", "gross_total"):
+            assert bucket[key].split(".")[-1].__len__() == 2
+
+
+# --- 14. Summary bucket key encoding -------------------------------------
+
+
+def test_summary_bucket_summaries_keyed_by_canonical_vat_rate_string() -> None:
+    """Bucket keys must be canonical vat_rate strings like ``'23'`` and ``'5'``."""
+
+    summary = _seeded_summary(7)
+
+    dump = summary_to_dict(summary)
+
+    for key in dump["bucket_summaries"]:
+        assert key in {"23", "5"}, (
+            f"unexpected bucket key {key!r}; expected '23' or '5'"
+        )
+    # every original Decimal vat_rate key must be represented as a string key
+    expected_keys = {str(vr) for vr in summary.bucket_summaries}
+    assert set(dump["bucket_summaries"].keys()) == expected_keys
+
+
+def test_summary_bucket_inner_object_does_not_repeat_vat_rate() -> None:
+    """The bucket inner object must not duplicate its vat_rate key."""
+
+    summary = _seeded_summary(7)
+
+    dump = summary_to_dict(summary)
+
+    for bucket in dump["bucket_summaries"].values():
+        assert "vat_rate" not in bucket
+        assert set(bucket.keys()) == {
+            "net_total",
+            "vat_total",
+            "gross_total",
+        }
+
+
+# --- 15. Full summary round-trip -----------------------------------------
+
+
+@pytest.mark.parametrize("seed", list(range(1, 21)))
+def test_summary_seed_pipeline_round_trip_is_lossless(seed: int) -> None:
+    """Summaries from the seed pipeline must survive JSON round-trip unchanged."""
+
+    summary = _seeded_summary(seed)
+
+    text = summary_to_json(summary)
+    restored = summary_from_json(text)
+
+    assert restored == summary
+
+
+def test_summary_encoding_is_byte_stable_across_full_round_trip() -> None:
+    """``encode(decode(encode(summary)))`` must be byte-identical to ``encode``."""
+
+    summary = _seeded_summary(13)
+
+    first = summary_to_json(summary)
+    second = summary_to_json(summary_from_json(first))
+
+    assert first == second
+
+
+def test_summary_encoding_is_deterministic_for_same_summary() -> None:
+    """Two encodings of the same summary must be byte-identical."""
+
+    summary = _seeded_summary(7)
+
+    first = summary_to_json(summary)
+    second = summary_to_json(summary)
+
+    assert first == second
+
+
+# --- 16. Summary schema version ------------------------------------------
+
+
+def test_summary_missing_schema_version_raises() -> None:
+    """Loading a summary payload without ``schema_version`` must raise."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    dump.pop("schema_version")
+
+    with pytest.raises(DomesticVatJsonError, match="schema_version"):
+        summary_from_dict(dump)
+
+
+def test_summary_mismatched_schema_version_raises() -> None:
+    """Loading a summary payload with a different version must raise."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    dump["schema_version"] = SUMMARY_JSON_SCHEMA_VERSION + 1
+
+    with pytest.raises(DomesticVatJsonError, match="schema_version"):
+        summary_from_dict(dump)
+
+
+# --- 17. Summary unknown keys and missing fields -------------------------
+
+
+def test_summary_unknown_top_level_key_raises() -> None:
+    """Unknown top-level keys in a summary payload must be rejected."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    dump["unexpected"] = True
+
+    with pytest.raises(DomesticVatJsonError, match="unknown keys"):
+        summary_from_dict(dump)
+
+
+def test_summary_unknown_line_computation_key_raises() -> None:
+    """Unknown keys inside a line computation must be rejected."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    dump["line_computations"][0]["unexpected"] = "x"
+
+    with pytest.raises(DomesticVatJsonError, match="unknown keys"):
+        summary_from_dict(dump)
+
+
+def test_summary_unknown_bucket_key_raises() -> None:
+    """Unknown keys inside a bucket summary must be rejected."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    any_bucket_key = next(iter(dump["bucket_summaries"]))
+    dump["bucket_summaries"][any_bucket_key]["unexpected"] = "x"
+
+    with pytest.raises(DomesticVatJsonError, match="unknown keys"):
+        summary_from_dict(dump)
+
+
+def test_summary_missing_required_top_level_key_raises() -> None:
+    """Missing required top-level keys must be rejected on load."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    dump.pop("invoice_gross_total")
+
+    with pytest.raises(DomesticVatJsonError, match="missing required keys"):
+        summary_from_dict(dump)
+
+
+# --- 18. Summary money canonical form ------------------------------------
+
+
+def test_summary_rejects_non_canonical_money_string_on_load() -> None:
+    """Money strings that aren't in canonical two-decimal form must be rejected."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    dump["invoice_net_total"] = "100"  # missing the .00
+
+    with pytest.raises(DomesticVatJsonError, match="canonical money form"):
+        summary_from_dict(dump)
+
+
+def test_summary_rejects_money_string_with_extra_precision() -> None:
+    """Money strings with more than two fraction digits must be rejected."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    dump["invoice_net_total"] = "100.000"
+
+    with pytest.raises(DomesticVatJsonError, match="canonical money form"):
+        summary_from_dict(dump)
+
+
+# --- 19. Summary bucket key validation -----------------------------------
+
+
+def test_summary_rejects_non_decimal_bucket_key() -> None:
+    """Bucket keys that aren't valid decimal strings must be rejected."""
+
+    dump = summary_to_dict(_seeded_summary(7))
+    any_bucket = next(iter(dump["bucket_summaries"].values()))
+    dump["bucket_summaries"] = {"not_a_number": any_bucket}
+
+    with pytest.raises(DomesticVatJsonError, match="not a valid decimal"):
+        summary_from_dict(dump)
+
+
+# --- 20. Summary public-shape sanity checks ------------------------------
+
+
+def test_summary_to_json_output_carries_schema_version() -> None:
+    """Output must parse as valid JSON and embed the schema version."""
+
+    summary = _seeded_summary(7)
+
+    text = summary_to_json(summary)
+    parsed = json.loads(text)
+
+    assert parsed["schema_version"] == SUMMARY_JSON_SCHEMA_VERSION
+    assert isinstance(parsed["line_computations"], list)
+    assert isinstance(parsed["bucket_summaries"], dict)
+
+
+def test_summary_to_json_uses_sorted_keys_for_determinism() -> None:
+    """Top-level summary keys in the JSON string should appear sorted."""
+
+    summary = _seeded_summary(7)
+
+    text = summary_to_json(summary)
     parsed_keys = list(json.loads(text).keys())
 
     assert parsed_keys == sorted(parsed_keys)
