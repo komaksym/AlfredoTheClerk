@@ -28,6 +28,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.invoice_gen.comparison import (
+    COMPARISON_POLICY_SCHEMA_VERSION,
+    ComparisonError,
+    ComparisonPolicy,
+    build_default_comparison_policy,
+    policy_from_json,
+    policy_to_json,
+)
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
 from src.invoice_gen.domestic_vat_faktura_mapping import (
     map_domestic_vat_shell_to_faktura,
@@ -60,6 +68,7 @@ _SHELL_FILENAME = "shell.json"
 _SUMMARY_FILENAME = "summary.json"
 _TARGET_XML_FILENAME = "target.xml"
 _XSD_VALIDATION_FILENAME = "xsd_validation.json"
+_COMPARISON_POLICY_FILENAME = "comparison_policy.json"
 
 
 _CASE_KEYS = frozenset(
@@ -69,6 +78,7 @@ _CASE_KEYS = frozenset(
         "generated_at",
         "shell_schema_version",
         "summary_schema_version",
+        "comparison_policy_schema_version",
     }
 )
 _XSD_VALIDATION_KEYS = frozenset(
@@ -102,6 +112,7 @@ class BenchmarkCase:
     summary: DomesticVatInvoiceSummary
     target_xml: str
     xsd_validation: XsdValidationResult
+    policy: ComparisonPolicy
 
 
 XsdValidator = Callable[[str], XsdValidationResult]
@@ -116,12 +127,15 @@ def build_benchmark_case(
     seed: int,
     generated_at: datetime,
     xsd_validator: XsdValidator,
+    policy: ComparisonPolicy | None = None,
 ) -> BenchmarkCase:
     """Run the full pipeline and return one deterministic benchmark case.
 
     ``generated_at`` must be timezone-aware so the resulting FA(3) XML is
     stable across runs and machines. ``xsd_validator`` is called with the
-    rendered XML and its result is persisted alongside the case.
+    rendered XML and its result is persisted alongside the case. If
+    ``policy`` is omitted, the M1 default from
+    :func:`build_default_comparison_policy` is used.
     """
 
     _require_aware_datetime(generated_at, "generated_at")
@@ -134,6 +148,9 @@ def build_benchmark_case(
     )
     target_xml = render_faktura_to_xml(faktura)
     xsd_validation = xsd_validator(target_xml)
+    resolved_policy = (
+        policy if policy is not None else build_default_comparison_policy()
+    )
 
     return BenchmarkCase(
         case_id=case_id,
@@ -142,6 +159,7 @@ def build_benchmark_case(
         summary=summary,
         target_xml=target_xml,
         xsd_validation=xsd_validation,
+        policy=resolved_policy,
     )
 
 
@@ -169,6 +187,9 @@ def save_benchmark_case(case: BenchmarkCase, directory: Path) -> None:
     (directory / _XSD_VALIDATION_FILENAME).write_text(
         _xsd_validation_to_json(case.xsd_validation), encoding="utf-8"
     )
+    (directory / _COMPARISON_POLICY_FILENAME).write_text(
+        policy_to_json(case.policy), encoding="utf-8"
+    )
 
 
 def load_benchmark_case(directory: Path) -> BenchmarkCase:
@@ -183,6 +204,7 @@ def load_benchmark_case(directory: Path) -> BenchmarkCase:
     _require_file(directory, _SUMMARY_FILENAME)
     _require_file(directory, _TARGET_XML_FILENAME)
     _require_file(directory, _XSD_VALIDATION_FILENAME)
+    _require_file(directory, _COMPARISON_POLICY_FILENAME)
 
     metadata = _case_metadata_from_json(
         (directory / _CASE_FILENAME).read_text(encoding="utf-8")
@@ -197,6 +219,16 @@ def load_benchmark_case(directory: Path) -> BenchmarkCase:
     xsd_validation = _xsd_validation_from_json(
         (directory / _XSD_VALIDATION_FILENAME).read_text(encoding="utf-8")
     )
+    try:
+        policy = policy_from_json(
+            (directory / _COMPARISON_POLICY_FILENAME).read_text(
+                encoding="utf-8"
+            )
+        )
+    except ComparisonError as exc:
+        raise BenchmarkCaseError(
+            f"failed to load comparison_policy.json: {exc}"
+        ) from exc
 
     return BenchmarkCase(
         case_id=metadata["case_id"],
@@ -205,6 +237,7 @@ def load_benchmark_case(directory: Path) -> BenchmarkCase:
         summary=summary,
         target_xml=target_xml,
         xsd_validation=xsd_validation,
+        policy=policy,
     )
 
 
@@ -220,6 +253,7 @@ def _case_metadata_to_json(case: BenchmarkCase) -> str:
         "generated_at": case.generated_at.isoformat(),
         "shell_schema_version": SHELL_JSON_SCHEMA_VERSION,
         "summary_schema_version": SUMMARY_JSON_SCHEMA_VERSION,
+        "comparison_policy_schema_version": (COMPARISON_POLICY_SCHEMA_VERSION),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
 
@@ -252,6 +286,13 @@ def _case_metadata_from_json(text: str) -> dict[str, Any]:
     if summary_version != SUMMARY_JSON_SCHEMA_VERSION:
         raise BenchmarkCaseError(
             f"unsupported case.summary_schema_version: {summary_version!r}"
+        )
+
+    policy_version = data["comparison_policy_schema_version"]
+    if policy_version != COMPARISON_POLICY_SCHEMA_VERSION:
+        raise BenchmarkCaseError(
+            "unsupported case.comparison_policy_schema_version: "
+            f"{policy_version!r}"
         )
 
     case_id = data["case_id"]
