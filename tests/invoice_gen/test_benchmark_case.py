@@ -131,6 +131,7 @@ def test_save_writes_expected_files(tmp_path: Path) -> None:
         "summary.json",
         "target.xml",
         "xsd_validation.json",
+        "comparison_policy.json",
     }
     assert {p.name for p in case_dir.iterdir()} == expected
 
@@ -156,6 +157,7 @@ def test_save_is_idempotent_for_same_case(tmp_path: Path) -> None:
         "summary.json",
         "target.xml",
         "xsd_validation.json",
+        "comparison_policy.json",
     ):
         assert (dir_a / filename).read_bytes() == (
             dir_b / filename
