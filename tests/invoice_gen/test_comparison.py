@@ -19,7 +19,9 @@ from src.invoice_gen.comparison import (
     Mismatch,
     build_default_comparison_policy,
     compare_shells,
+    compare_shells_with_visibility,
     compare_summaries,
+    compare_summaries_with_visibility,
     policy_from_dict,
     policy_from_json,
     policy_to_dict,
@@ -40,6 +42,10 @@ from src.invoice_gen.domestic_vat_seed_mapping import (
 )
 from src.invoice_gen.domestic_vat_shell_summary import (
     summarize_domestic_vat_shell,
+)
+from src.invoice_gen.template_visibility import (
+    TemplateVisibilityManifest,
+    VisibilityStatus,
 )
 
 
@@ -99,6 +105,18 @@ def _populated_shell() -> DomesticVatInvoiceShell:
         ],
         adnotations=AdnotationDefaults(),
     )
+
+
+def _visibility_manifest(
+    visible_paths: tuple[str, ...] = (),
+    not_rendered_paths: tuple[str, ...] = (),
+) -> TemplateVisibilityManifest:
+    """Build one small explicit manifest for comparison tests."""
+
+    fields = {path: VisibilityStatus.VISIBLE for path in visible_paths} | {
+        path: VisibilityStatus.NOT_RENDERED for path in not_rendered_paths
+    }
+    return TemplateVisibilityManifest(template_id="template-a", fields=fields)
 
 
 # --- FieldRule construction ----------------------------------------------
@@ -410,6 +428,105 @@ def test_summary_bucket_count_and_keyed_paths() -> None:
     report = compare_summaries(truth, candidate, policy)
 
     paths = {m.path for m in report.mismatches}
+    assert "summary.bucket_summaries.count" in paths
+    assert f"summary.bucket_summaries[{removed_key}]" in paths
+
+
+# --- visibility-aware comparison ----------------------------------------
+
+
+def test_compare_shells_with_visibility_reports_visible_field() -> None:
+    """A visible scored field must still surface as a mismatch."""
+
+    truth = _populated_shell()
+    candidate = replace(truth, currency="EUR")
+    policy = build_default_comparison_policy()
+    visibility = _visibility_manifest(visible_paths=("shell.currency",))
+
+    report = compare_shells_with_visibility(
+        truth, candidate, policy, visibility
+    )
+
+    assert [m.path for m in report.mismatches] == ["shell.currency"]
+
+
+def test_compare_shells_with_visibility_skips_not_rendered_field() -> None:
+    """A not-rendered field must not be scored even if policy covers it."""
+
+    truth = _populated_shell()
+    candidate = replace(truth, currency="EUR")
+    policy = build_default_comparison_policy()
+    visibility = _visibility_manifest(not_rendered_paths=("shell.currency",))
+
+    report = compare_shells_with_visibility(
+        truth, candidate, policy, visibility
+    )
+
+    assert report.is_match
+
+
+def test_compare_shells_with_visibility_skips_absent_manifest_entry() -> None:
+    """An absent manifest entry defaults to not rendered in v1."""
+
+    truth = _populated_shell()
+    candidate = replace(truth, currency="EUR")
+    policy = build_default_comparison_policy()
+    visibility = _visibility_manifest()
+
+    report = compare_shells_with_visibility(
+        truth, candidate, policy, visibility
+    )
+
+    assert report.is_match
+
+
+def test_compare_shells_with_visibility_respects_wildcard_paths() -> None:
+    """Wildcard manifest paths must make indexed line-item fields visible."""
+
+    truth = _populated_shell()
+    candidate = deepcopy(truth)
+    candidate.line_items[1].description = "Totally different service"
+    policy = build_default_comparison_policy()
+    visibility = _visibility_manifest(
+        visible_paths=("shell.line_items[*].description",)
+    )
+
+    report = compare_shells_with_visibility(
+        truth, candidate, policy, visibility
+    )
+
+    assert [m.path for m in report.mismatches] == [
+        "shell.line_items[1].description"
+    ]
+
+
+def test_compare_summaries_with_visibility_gates_bucket_presence_checks() -> (
+    None
+):
+    """Bucket presence mismatches should follow visibility gating too."""
+
+    shell = _shell_from_seed(0)
+    truth = summarize_domestic_vat_shell(shell)
+    candidate_buckets = dict(truth.bucket_summaries)
+    removed_key = sorted(candidate_buckets.keys())[0]
+    candidate_buckets.pop(removed_key)
+    candidate = replace(truth, bucket_summaries=candidate_buckets)
+    policy = build_default_comparison_policy()
+    hidden = _visibility_manifest()
+
+    hidden_report = compare_summaries_with_visibility(
+        truth, candidate, policy, hidden
+    )
+    assert hidden_report.is_match
+
+    visible = _visibility_manifest(
+        visible_paths=("summary.bucket_summaries.count",)
+    )
+    visible_report = compare_summaries_with_visibility(
+        truth, candidate, policy, visible
+    )
+    paths = {m.path for m in visible_report.mismatches}
+
     assert "summary.bucket_summaries.count" in paths
     assert f"summary.bucket_summaries[{removed_key}]" in paths
 

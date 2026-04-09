@@ -18,6 +18,11 @@ from src.invoice_gen.benchmark_case import (
     load_benchmark_case,
     save_benchmark_case,
 )
+from src.invoice_gen.template_visibility import (
+    NO_PDF_TEMPLATE_ID,
+    VisibilityStatus,
+    manifest_from_json,
+)
 
 
 _FIXED_GENERATED_AT = datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC)
@@ -91,6 +96,22 @@ def test_build_benchmark_case_persists_validator_failure() -> None:
     assert "stub" in case.xsd_validation.error
 
 
+def test_build_benchmark_case_adds_default_no_pdf_manifest() -> None:
+    """Fresh benchmark cases must carry the default pre-PDF manifest."""
+
+    case = build_benchmark_case(
+        case_id=_CASE_ID,
+        seed=_SEED,
+        generated_at=_FIXED_GENERATED_AT,
+        xsd_validator=_stub_validator_valid,
+    )
+
+    assert set(case.manifests) == {NO_PDF_TEMPLATE_ID}
+    manifest = case.manifests[NO_PDF_TEMPLATE_ID]
+    assert manifest.template_id == NO_PDF_TEMPLATE_ID
+    assert manifest.fields["shell.currency"] is VisibilityStatus.NOT_RENDERED
+
+
 # --- save + load round-trip ---------------------------------------------
 
 
@@ -132,8 +153,12 @@ def test_save_writes_expected_files(tmp_path: Path) -> None:
         "target.xml",
         "xsd_validation.json",
         "comparison_policy.json",
+        "manifests",
     }
     assert {p.name for p in case_dir.iterdir()} == expected
+    manifests_dir = case_dir / "manifests"
+    assert manifests_dir.is_dir()
+    assert {p.name for p in manifests_dir.iterdir()} == {"no_pdf.json"}
 
 
 def test_save_is_idempotent_for_same_case(tmp_path: Path) -> None:
@@ -162,6 +187,9 @@ def test_save_is_idempotent_for_same_case(tmp_path: Path) -> None:
         assert (dir_a / filename).read_bytes() == (
             dir_b / filename
         ).read_bytes()
+    assert (dir_a / "manifests" / "no_pdf.json").read_bytes() == (
+        dir_b / "manifests" / "no_pdf.json"
+    ).read_bytes()
 
 
 def test_save_preserves_non_utc_but_aware_generated_at(
@@ -247,6 +275,27 @@ def test_load_rejects_missing_file(tmp_path: Path) -> None:
         load_benchmark_case(case_dir)
 
 
+def test_load_rejects_missing_manifest_file(tmp_path: Path) -> None:
+    """Removing the default manifest must raise on load."""
+
+    case_dir = _write_round_trippable_case(tmp_path)
+    (case_dir / "manifests" / "no_pdf.json").unlink()
+
+    with pytest.raises(BenchmarkCaseError, match="missing no_pdf.json"):
+        load_benchmark_case(case_dir)
+
+
+def test_load_rejects_invalid_manifest_json(tmp_path: Path) -> None:
+    """Malformed manifest JSON must be wrapped as a benchmark-case error."""
+
+    case_dir = _write_round_trippable_case(tmp_path)
+    manifest_path = case_dir / "manifests" / "no_pdf.json"
+    manifest_path.write_text("not json {", encoding="utf-8")
+
+    with pytest.raises(BenchmarkCaseError, match="failed to load no_pdf.json"):
+        load_benchmark_case(case_dir)
+
+
 def test_load_rejects_unknown_keys_in_case_json(tmp_path: Path) -> None:
     """Injecting an unexpected key in case.json must raise on load."""
 
@@ -283,3 +332,22 @@ def test_benchmark_case_equality_is_value_based(tmp_path: Path) -> None:
 
     assert case_a == case_b
     assert isinstance(case_a, BenchmarkCase)
+
+
+def test_saved_manifest_round_trips_through_disk(tmp_path: Path) -> None:
+    """Saved manifest JSON must decode back to the case-owned manifest."""
+
+    case = build_benchmark_case(
+        case_id=_CASE_ID,
+        seed=_SEED,
+        generated_at=_FIXED_GENERATED_AT,
+        xsd_validator=_stub_validator_valid,
+    )
+
+    case_dir = tmp_path / _CASE_ID
+    save_benchmark_case(case, case_dir)
+    manifest = manifest_from_json(
+        (case_dir / "manifests" / "no_pdf.json").read_text(encoding="utf-8")
+    )
+
+    assert manifest == case.manifests[NO_PDF_TEMPLATE_ID]
