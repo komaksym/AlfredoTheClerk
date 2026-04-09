@@ -26,6 +26,7 @@ from src.invoice_gen.comparison import (
     policy_from_json,
     policy_to_dict,
     policy_to_json,
+    validate_template_visibility,
 )
 from src.invoice_gen.domain_shell import (
     AdnotationDefaults,
@@ -542,6 +543,7 @@ def test_default_policy_round_trips_through_json() -> None:
     decoded = policy_from_json(text)
 
     assert dict(decoded.fields) == dict(original.fields)
+    assert decoded.required_paths == original.required_paths
 
 
 def test_policy_to_json_is_deterministic() -> None:
@@ -582,6 +584,7 @@ def test_policy_from_dict_rejects_unknown_normalizer() -> None:
                 "normalizer": "made_up_normalizer",
             },
         },
+        "required_paths": [],
     }
 
     with pytest.raises(ComparisonError, match="unknown normalizer"):
@@ -596,6 +599,7 @@ def test_policy_from_dict_rejects_unknown_mode() -> None:
         "fields": {
             "shell.invoice_number": {"mode": "fuzzy"},
         },
+        "required_paths": [],
     }
 
     with pytest.raises(ComparisonError, match="unknown mode"):
@@ -610,6 +614,7 @@ def test_policy_from_dict_rejects_normalized_rule_without_normalizer() -> None:
         "fields": {
             "shell.invoice_number": {"mode": "normalized"},
         },
+        "required_paths": [],
     }
 
     with pytest.raises(ComparisonError, match="unknown normalizer"):
@@ -664,3 +669,147 @@ def test_non_empty_report_is_not_match() -> None:
         ]
     )
     assert not report.is_match
+
+
+# --- Required-paths bucket 1 enforcement --------------------------------
+
+
+def test_default_policy_required_paths_are_a_subset_of_scored_fields() -> None:
+    """Every required path must also be a scored field path."""
+
+    policy = build_default_comparison_policy()
+
+    assert policy.required_paths
+    assert policy.required_paths.issubset(policy.fields.keys())
+
+
+def test_default_policy_required_paths_are_the_conservative_m1_set() -> None:
+    """Pin the M1 conservative required set so changes are intentional."""
+
+    policy = build_default_comparison_policy()
+
+    assert policy.required_paths == frozenset(
+        {
+            "shell.invoice_number",
+            "shell.issue_date",
+            "shell.sale_date",
+            "shell.currency",
+            "shell.seller.nip",
+            "shell.seller.name",
+            "shell.buyer.nip",
+            "shell.buyer.name",
+            "shell.line_items.count",
+            "shell.line_items[*].description",
+            "shell.line_items[*].quantity",
+            "shell.line_items[*].unit_price_net",
+            "shell.line_items[*].vat_rate",
+        }
+    )
+
+
+def test_policy_rejects_required_path_not_in_scored_fields() -> None:
+    """Constructing a policy with an unknown required path must raise."""
+
+    with pytest.raises(ComparisonError, match="unscored fields"):
+        ComparisonPolicy(
+            fields={"shell.currency": FieldRule(mode=ComparisonMode.EXACT)},
+            required_paths=frozenset({"shell.invoice_number"}),
+        )
+
+
+def test_validate_template_visibility_passes_when_all_required_visible() -> (
+    None
+):
+    """A manifest covering every required path with VISIBLE returns []."""
+
+    policy = build_default_comparison_policy()
+    manifest = TemplateVisibilityManifest(
+        template_id="all_visible",
+        fields={
+            path: VisibilityStatus.VISIBLE for path in policy.required_paths
+        },
+    )
+
+    assert validate_template_visibility(policy, manifest) == []
+
+
+def test_validate_template_visibility_lists_missing_required_paths() -> None:
+    """Required paths marked NOT_RENDERED must be returned, sorted."""
+
+    policy = build_default_comparison_policy()
+    fields = {path: VisibilityStatus.VISIBLE for path in policy.required_paths}
+    fields["shell.currency"] = VisibilityStatus.NOT_RENDERED
+    fields["shell.invoice_number"] = VisibilityStatus.NOT_RENDERED
+    manifest = TemplateVisibilityManifest(
+        template_id="missing_two", fields=fields
+    )
+
+    missing = validate_template_visibility(policy, manifest)
+
+    assert missing == ["shell.currency", "shell.invoice_number"]
+
+
+def test_validate_template_visibility_treats_absent_paths_as_not_visible() -> (
+    None
+):
+    """Required paths absent from the manifest are reported as missing."""
+
+    policy = build_default_comparison_policy()
+    fields = {
+        path: VisibilityStatus.VISIBLE
+        for path in policy.required_paths
+        if path != "shell.sale_date"
+    }
+    manifest = TemplateVisibilityManifest(
+        template_id="absent_one", fields=fields
+    )
+
+    assert validate_template_visibility(policy, manifest) == ["shell.sale_date"]
+
+
+def test_validate_template_visibility_against_no_pdf_returns_full_set() -> None:
+    """The bootstrap no_pdf manifest must fail every required path."""
+
+    from src.invoice_gen.template_visibility import (
+        build_no_pdf_visibility_manifest,
+    )
+
+    policy = build_default_comparison_policy()
+    manifest = build_no_pdf_visibility_manifest(policy.fields.keys())
+
+    assert validate_template_visibility(policy, manifest) == sorted(
+        policy.required_paths
+    )
+
+
+def test_policy_from_dict_rejects_required_paths_not_a_list() -> None:
+    """A non-array ``required_paths`` payload must raise."""
+
+    payload = policy_to_dict(build_default_comparison_policy())
+    payload["required_paths"] = "shell.currency"
+
+    with pytest.raises(ComparisonError, match="required_paths must be"):
+        policy_from_dict(payload)
+
+
+def test_policy_from_dict_rejects_required_paths_with_duplicates() -> None:
+    """Duplicate entries in ``required_paths`` must raise."""
+
+    payload = policy_to_dict(build_default_comparison_policy())
+    payload["required_paths"] = [
+        "shell.currency",
+        "shell.currency",
+    ]
+
+    with pytest.raises(ComparisonError, match="duplicate entry"):
+        policy_from_dict(payload)
+
+
+def test_policy_from_dict_rejects_required_path_outside_fields() -> None:
+    """A required path not present in ``fields`` must raise on construct."""
+
+    payload = policy_to_dict(build_default_comparison_policy())
+    payload["required_paths"] = ["shell.does_not_exist"]
+
+    with pytest.raises(ComparisonError, match="unscored fields"):
+        policy_from_dict(payload)

@@ -6,6 +6,15 @@ scored and the rule for each one (``EXACT`` or ``NORMALIZED``). Field
 paths absent from the policy are silently skipped: that is the
 roadmap's "not scored" category.
 
+A policy also carries a ``required_paths`` set: the strict subset of
+scored paths that every real template must render. Bucket 1 in roadmap
+terms. :func:`validate_template_visibility` checks one manifest against
+that set so a template missing a downstream-required field fails the
+benchmark contract before it can mask itself behind a silently-skipped
+``NOT_RENDERED`` entry. The ``no_pdf`` bootstrap manifest is exempt at
+the call site: callers do not pass it to the validator because it
+deliberately marks every path ``NOT_RENDERED``.
+
 The two public comparators, :func:`compare_shells` and
 :func:`compare_summaries`, walk the canonical shell and derived summary
 explicitly (no reflection) and emit a :class:`ComparisonReport` listing
@@ -48,7 +57,7 @@ from src.invoice_gen.domestic_vat_shell_summary import (
 from src.invoice_gen.template_visibility import TemplateVisibilityManifest
 
 
-COMPARISON_POLICY_SCHEMA_VERSION = 1
+COMPARISON_POLICY_SCHEMA_VERSION = 2
 
 
 class ComparisonError(Exception):
@@ -83,9 +92,24 @@ class FieldRule:
 
 @dataclass(frozen=True, kw_only=True)
 class ComparisonPolicy:
-    """Frozen field-path → rule mapping for shell and summary scoring."""
+    """Frozen field-path → rule mapping for shell and summary scoring.
+
+    ``required_paths`` is the strict subset of ``fields`` that every real
+    template must render visibly. Each entry must be a key of ``fields``;
+    a required path that is not scored would be a contradiction.
+    """
 
     fields: Mapping[str, FieldRule]
+    required_paths: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        """Reject required paths that are not part of the scoring set."""
+
+        unknown = sorted(self.required_paths - self.fields.keys())
+        if unknown:
+            raise ComparisonError(
+                f"required_paths references unscored fields: {unknown}"
+            )
 
     def rule_for(self, path: str) -> FieldRule | None:
         """Return the rule for ``path`` or ``None`` if it is not scored.
@@ -271,7 +295,33 @@ def build_default_comparison_policy() -> ComparisonPolicy:
     _norm("summary.bucket_summaries[*].vat_total", "money")
     _norm("summary.bucket_summaries[*].gross_total", "money")
 
-    return ComparisonPolicy(fields=rules)
+    # --- bucket 1: required-downstream paths -----------------------------
+    # M1 required set: if the shell carries one of these fields, every
+    # real template must render it. Comparator semantics already handle
+    # `None` cleanly, so a B2C shell with no buyer NIP raises no alarm;
+    # the gate only fires when a B2B shell that *does* carry a NIP is
+    # rendered through a template that drops it. Summary totals are
+    # excluded because they are derived from line items, and requiring
+    # the line-item inputs is sufficient.
+    required_paths = frozenset(
+        {
+            "shell.invoice_number",
+            "shell.issue_date",
+            "shell.sale_date",
+            "shell.currency",
+            "shell.seller.nip",
+            "shell.seller.name",
+            "shell.buyer.nip",
+            "shell.buyer.name",
+            "shell.line_items.count",
+            "shell.line_items[*].description",
+            "shell.line_items[*].quantity",
+            "shell.line_items[*].unit_price_net",
+            "shell.line_items[*].vat_rate",
+        }
+    )
+
+    return ComparisonPolicy(fields=rules, required_paths=required_paths)
 
 
 # --- Public comparators ---------------------------------------------------
@@ -325,6 +375,27 @@ def compare_summaries_with_visibility(
     mismatches: list[Mismatch] = []
     _walk_summary(truth, candidate, policy, mismatches, visibility=visibility)
     return ComparisonReport(mismatches=mismatches)
+
+
+def validate_template_visibility(
+    policy: ComparisonPolicy,
+    manifest: TemplateVisibilityManifest,
+) -> list[str]:
+    """Return required policy paths the manifest does not mark visible.
+
+    Bucket 1 enforcement: every path in ``policy.required_paths`` must be
+    explicitly ``VISIBLE`` in ``manifest`` (absent or ``NOT_RENDERED``
+    paths both fail). The result is sorted so callers can render it
+    deterministically. An empty list means the manifest honors every
+    required field.
+
+    The ``no_pdf`` bootstrap manifest marks every path ``NOT_RENDERED``
+    on purpose, so callers must not pass it here; it would always fail.
+    """
+
+    return sorted(
+        path for path in policy.required_paths if not manifest.is_visible(path)
+    )
 
 
 # --- Shell walkers --------------------------------------------------------
@@ -775,7 +846,7 @@ _WILDCARD_PATTERN = re.compile(r"\[[^\]]+\]")
 # --- JSON encoding --------------------------------------------------------
 
 
-_POLICY_KEYS = frozenset({"schema_version", "fields"})
+_POLICY_KEYS = frozenset({"schema_version", "fields", "required_paths"})
 _FIELD_RULE_KEYS = frozenset({"mode", "normalizer"})
 _FIELD_RULE_REQUIRED_KEYS = frozenset({"mode"})
 
@@ -789,6 +860,7 @@ def policy_to_dict(policy: ComparisonPolicy) -> dict[str, Any]:
             path: _field_rule_to_dict(rule)
             for path, rule in sorted(policy.fields.items())
         },
+        "required_paths": sorted(policy.required_paths),
     }
 
 
@@ -836,7 +908,26 @@ def policy_from_dict(data: Any) -> ComparisonPolicy:
             )
         fields[path] = _field_rule_from_dict(rule_data, path=path)
 
-    return ComparisonPolicy(fields=fields)
+    required_raw = data["required_paths"]
+    if not isinstance(required_raw, list):
+        raise ComparisonError("policy.required_paths must be a JSON array")
+    required_paths: set[str] = set()
+    for entry in required_raw:
+        if not isinstance(entry, str) or not entry:
+            raise ComparisonError(
+                "policy.required_paths entries must be non-empty strings, "
+                f"got {entry!r}"
+            )
+        if entry in required_paths:
+            raise ComparisonError(
+                f"policy.required_paths has duplicate entry: {entry!r}"
+            )
+        required_paths.add(entry)
+
+    return ComparisonPolicy(
+        fields=fields,
+        required_paths=frozenset(required_paths),
+    )
 
 
 def policy_from_json(text: str) -> ComparisonPolicy:
