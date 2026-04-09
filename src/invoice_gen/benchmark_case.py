@@ -2,18 +2,20 @@
 
 A :class:`BenchmarkCase` bundles one canonical shell, its derived
 summary, the deterministic FA(3) target XML rendered with a frozen
-``generated_at``, and the local XSD validation result. The case can be
-written to a directory and loaded back losslessly, so benchmark fixtures
-become reviewable on disk and no longer need to be regenerated from
-seeds.
+``generated_at``, the local XSD validation result, the comparison
+policy, and per-template visibility manifests. The case can be written
+to a directory and loaded back losslessly, so benchmark fixtures become
+reviewable on disk and no longer need to be regenerated from seeds.
 
 On-disk layout (ROADMAP.md section 3):
 
-* ``case.json``            metadata, frozen ``generated_at``, versions
-* ``shell.json``           from ``domestic_vat_json.shell_to_json``
-* ``summary.json``         from ``domestic_vat_json.summary_to_json``
-* ``target.xml``           deterministic FA(3) XML
-* ``xsd_validation.json``  local XSD validation result
+* ``case.json``                 metadata, frozen ``generated_at``, versions
+* ``shell.json``                from ``domestic_vat_json.shell_to_json``
+* ``summary.json``              from ``domestic_vat_json.summary_to_json``
+* ``target.xml``                deterministic FA(3) XML
+* ``xsd_validation.json``       local XSD validation result
+* ``comparison_policy.json``    scoring contract
+* ``manifests/<template>.json`` render-visibility contract
 
 Any breaking change to the case or xsd_validation encoding must bump the
 relevant ``*_SCHEMA_VERSION`` constant.
@@ -22,7 +24,7 @@ relevant ``*_SCHEMA_VERSION`` constant.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +59,14 @@ from src.invoice_gen.domestic_vat_shell_summary import (
     summarize_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
+from src.invoice_gen.template_visibility import (
+    NO_PDF_TEMPLATE_ID,
+    TemplateVisibilityError,
+    TemplateVisibilityManifest,
+    build_no_pdf_visibility_manifest,
+    manifest_from_json,
+    manifest_to_json,
+)
 
 
 CASE_SCHEMA_VERSION = 1
@@ -69,6 +79,7 @@ _SUMMARY_FILENAME = "summary.json"
 _TARGET_XML_FILENAME = "target.xml"
 _XSD_VALIDATION_FILENAME = "xsd_validation.json"
 _COMPARISON_POLICY_FILENAME = "comparison_policy.json"
+_MANIFESTS_DIRECTORY = "manifests"
 
 
 _CASE_KEYS = frozenset(
@@ -113,6 +124,7 @@ class BenchmarkCase:
     target_xml: str
     xsd_validation: XsdValidationResult
     policy: ComparisonPolicy
+    manifests: Mapping[str, TemplateVisibilityManifest]
 
 
 XsdValidator = Callable[[str], XsdValidationResult]
@@ -151,6 +163,11 @@ def build_benchmark_case(
     resolved_policy = (
         policy if policy is not None else build_default_comparison_policy()
     )
+    manifests = {
+        NO_PDF_TEMPLATE_ID: build_no_pdf_visibility_manifest(
+            resolved_policy.fields.keys()
+        )
+    }
 
     return BenchmarkCase(
         case_id=case_id,
@@ -160,6 +177,7 @@ def build_benchmark_case(
         target_xml=target_xml,
         xsd_validation=xsd_validation,
         policy=resolved_policy,
+        manifests=manifests,
     )
 
 
@@ -190,6 +208,17 @@ def save_benchmark_case(case: BenchmarkCase, directory: Path) -> None:
     (directory / _COMPARISON_POLICY_FILENAME).write_text(
         policy_to_json(case.policy), encoding="utf-8"
     )
+    manifests_dir = directory / _MANIFESTS_DIRECTORY
+    manifests_dir.mkdir(parents=True, exist_ok=True)
+    for template_id, manifest in sorted(case.manifests.items()):
+        if manifest.template_id != template_id:
+            raise BenchmarkCaseError(
+                "manifest mapping key must match manifest.template_id: "
+                f"{template_id!r} != {manifest.template_id!r}"
+            )
+        (manifests_dir / f"{template_id}.json").write_text(
+            manifest_to_json(manifest), encoding="utf-8"
+        )
 
 
 def load_benchmark_case(directory: Path) -> BenchmarkCase:
@@ -205,6 +234,7 @@ def load_benchmark_case(directory: Path) -> BenchmarkCase:
     _require_file(directory, _TARGET_XML_FILENAME)
     _require_file(directory, _XSD_VALIDATION_FILENAME)
     _require_file(directory, _COMPARISON_POLICY_FILENAME)
+    manifests = _load_manifests(directory)
 
     metadata = _case_metadata_from_json(
         (directory / _CASE_FILENAME).read_text(encoding="utf-8")
@@ -238,6 +268,7 @@ def load_benchmark_case(directory: Path) -> BenchmarkCase:
         target_xml=target_xml,
         xsd_validation=xsd_validation,
         policy=policy,
+        manifests=manifests,
     )
 
 
@@ -359,6 +390,42 @@ def _xsd_validation_from_json(text: str) -> XsdValidationResult:
         )
 
     return XsdValidationResult(is_valid=is_valid, error=error)
+
+
+# --- manifests -----------------------------------------------------------
+
+
+def _load_manifests(
+    directory: Path,
+) -> dict[str, TemplateVisibilityManifest]:
+    """Load every manifest under ``directory/manifests``."""
+
+    manifests_dir = directory / _MANIFESTS_DIRECTORY
+    if not manifests_dir.is_dir():
+        raise BenchmarkCaseError(
+            f"missing {_MANIFESTS_DIRECTORY} in benchmark case {directory}"
+        )
+
+    manifests: dict[str, TemplateVisibilityManifest] = {}
+    for path in sorted(manifests_dir.glob("*.json")):
+        try:
+            manifest = manifest_from_json(path.read_text(encoding="utf-8"))
+        except TemplateVisibilityError as exc:
+            raise BenchmarkCaseError(
+                f"failed to load {path.name}: {exc}"
+            ) from exc
+        if manifest.template_id != path.stem:
+            raise BenchmarkCaseError(
+                "manifest filename must match template_id: "
+                f"{path.name!r} != {manifest.template_id!r}"
+            )
+        manifests[manifest.template_id] = manifest
+
+    if NO_PDF_TEMPLATE_ID not in manifests:
+        raise BenchmarkCaseError(
+            f"missing {NO_PDF_TEMPLATE_ID}.json in benchmark case {manifests_dir}"
+        )
+    return manifests
 
 
 # --- helpers -------------------------------------------------------------

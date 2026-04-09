@@ -45,6 +45,7 @@ from src.invoice_gen.domestic_vat_shell_summary import (
     DomesticVatInvoiceSummary,
     DomesticVatLineComputation,
 )
+from src.invoice_gen.template_visibility import TemplateVisibilityManifest
 
 
 COMPARISON_POLICY_SCHEMA_VERSION = 1
@@ -288,6 +289,19 @@ def compare_shells(
     return ComparisonReport(mismatches=mismatches)
 
 
+def compare_shells_with_visibility(
+    truth: DomesticVatInvoiceShell,
+    candidate: DomesticVatInvoiceShell,
+    policy: ComparisonPolicy,
+    visibility: TemplateVisibilityManifest,
+) -> ComparisonReport:
+    """Compare shells, scoring only fields visible in the template."""
+
+    mismatches: list[Mismatch] = []
+    _walk_shell(truth, candidate, policy, mismatches, visibility=visibility)
+    return ComparisonReport(mismatches=mismatches)
+
+
 def compare_summaries(
     truth: DomesticVatInvoiceSummary,
     candidate: DomesticVatInvoiceSummary,
@@ -300,6 +314,19 @@ def compare_summaries(
     return ComparisonReport(mismatches=mismatches)
 
 
+def compare_summaries_with_visibility(
+    truth: DomesticVatInvoiceSummary,
+    candidate: DomesticVatInvoiceSummary,
+    policy: ComparisonPolicy,
+    visibility: TemplateVisibilityManifest,
+) -> ComparisonReport:
+    """Compare summaries, scoring only fields visible in the template."""
+
+    mismatches: list[Mismatch] = []
+    _walk_summary(truth, candidate, policy, mismatches, visibility=visibility)
+    return ComparisonReport(mismatches=mismatches)
+
+
 # --- Shell walkers --------------------------------------------------------
 
 
@@ -308,6 +335,8 @@ def _walk_shell(
     candidate: DomesticVatInvoiceShell,
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk every scored field on the shell and record any mismatches."""
 
@@ -327,18 +356,32 @@ def _walk_shell(
             getattr(candidate, attr),
             policy,
             mismatches,
+            visibility=visibility,
         )
 
     _walk_party(
-        "shell.seller", truth.seller, candidate.seller, policy, mismatches
+        "shell.seller",
+        truth.seller,
+        candidate.seller,
+        policy,
+        mismatches,
+        visibility=visibility,
     )
-    _walk_buyer("shell.buyer", truth.buyer, candidate.buyer, policy, mismatches)
+    _walk_buyer(
+        "shell.buyer",
+        truth.buyer,
+        candidate.buyer,
+        policy,
+        mismatches,
+        visibility=visibility,
+    )
     _walk_line_items(
         "shell.line_items",
         truth.line_items,
         candidate.line_items,
         policy,
         mismatches,
+        visibility=visibility,
     )
     _walk_adnotations(
         "shell.adnotations",
@@ -346,6 +389,7 @@ def _walk_shell(
         candidate.adnotations,
         policy,
         mismatches,
+        visibility=visibility,
     )
 
 
@@ -355,6 +399,8 @@ def _walk_party(
     candidate: PartyShell,
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk every party (seller/buyer base) field."""
 
@@ -375,6 +421,7 @@ def _walk_party(
             getattr(candidate, attr),
             policy,
             mismatches,
+            visibility=visibility,
         )
 
 
@@ -384,10 +431,19 @@ def _walk_buyer(
     candidate: BuyerShell,
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk the buyer-specific fields on top of the party walk."""
 
-    _walk_party(base, truth, candidate, policy, mismatches)
+    _walk_party(
+        base,
+        truth,
+        candidate,
+        policy,
+        mismatches,
+        visibility=visibility,
+    )
     for attr in ("buyer_id_mode", "jst", "gv", "customer_ref"):
         _check_field(
             f"{base}.{attr}",
@@ -395,6 +451,7 @@ def _walk_buyer(
             getattr(candidate, attr),
             policy,
             mismatches,
+            visibility=visibility,
         )
 
 
@@ -404,6 +461,8 @@ def _walk_line_items(
     candidate_lines: list[LineItemShell],
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk every line item by position; line count is its own field."""
 
@@ -415,6 +474,7 @@ def _walk_line_items(
         candidate_count,
         policy,
         mismatches,
+        visibility=visibility,
     )
     if truth_count != candidate_count:
         return
@@ -435,6 +495,7 @@ def _walk_line_items(
                 getattr(candidate_item, attr),
                 policy,
                 mismatches,
+                visibility=visibility,
             )
 
 
@@ -444,6 +505,8 @@ def _walk_adnotations(
     candidate: AdnotationDefaults,
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk every adnotations flag and mode field."""
 
@@ -463,6 +526,7 @@ def _walk_adnotations(
             getattr(candidate, attr),
             policy,
             mismatches,
+            visibility=visibility,
         )
 
 
@@ -474,6 +538,8 @@ def _walk_summary(
     candidate: DomesticVatInvoiceSummary,
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk every scored field on the summary and record any mismatches."""
 
@@ -488,6 +554,7 @@ def _walk_summary(
             getattr(candidate, attr),
             policy,
             mismatches,
+            visibility=visibility,
         )
 
     _walk_line_computations(
@@ -496,6 +563,7 @@ def _walk_summary(
         candidate.line_computations,
         policy,
         mismatches,
+        visibility=visibility,
     )
     _walk_bucket_summaries(
         "summary.bucket_summaries",
@@ -503,6 +571,7 @@ def _walk_summary(
         candidate.bucket_summaries,
         policy,
         mismatches,
+        visibility=visibility,
     )
 
 
@@ -512,6 +581,8 @@ def _walk_line_computations(
     candidate_lines: list[DomesticVatLineComputation],
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk every computed line; line count is its own field."""
 
@@ -523,6 +594,7 @@ def _walk_line_computations(
         candidate_count,
         policy,
         mismatches,
+        visibility=visibility,
     )
     if truth_count != candidate_count:
         return
@@ -546,6 +618,7 @@ def _walk_line_computations(
                 getattr(candidate_item, attr),
                 policy,
                 mismatches,
+                visibility=visibility,
             )
 
 
@@ -555,6 +628,8 @@ def _walk_bucket_summaries(
     candidate_buckets: dict[Decimal, DomesticVatBucketSummary],
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Walk every VAT bucket; bucket count is its own field."""
 
@@ -566,30 +641,32 @@ def _walk_bucket_summaries(
         candidate_count,
         policy,
         mismatches,
+        visibility=visibility,
     )
 
     truth_keys = set(truth_buckets.keys())
     candidate_keys = set(candidate_buckets.keys())
     only_in_truth = sorted(truth_keys - candidate_keys)
     only_in_candidate = sorted(candidate_keys - truth_keys)
-    for missing_key in only_in_truth:
-        mismatches.append(
-            Mismatch(
-                path=f"{base}[{missing_key}]",
-                mode=ComparisonMode.EXACT,
-                expected="present",
-                actual="missing",
+    if _bucket_summaries_are_visible(base, visibility):
+        for missing_key in only_in_truth:
+            mismatches.append(
+                Mismatch(
+                    path=f"{base}[{missing_key}]",
+                    mode=ComparisonMode.EXACT,
+                    expected="present",
+                    actual="missing",
+                )
             )
-        )
-    for extra_key in only_in_candidate:
-        mismatches.append(
-            Mismatch(
-                path=f"{base}[{extra_key}]",
-                mode=ComparisonMode.EXACT,
-                expected="missing",
-                actual="present",
+        for extra_key in only_in_candidate:
+            mismatches.append(
+                Mismatch(
+                    path=f"{base}[{extra_key}]",
+                    mode=ComparisonMode.EXACT,
+                    expected="missing",
+                    actual="present",
+                )
             )
-        )
 
     for key in sorted(truth_keys & candidate_keys):
         bucket_base = f"{base}[{key}]"
@@ -602,6 +679,7 @@ def _walk_bucket_summaries(
                 getattr(candidate_bucket, attr),
                 policy,
                 mismatches,
+                visibility=visibility,
             )
 
 
@@ -614,11 +692,15 @@ def _check_field(
     candidate: Any,
     policy: ComparisonPolicy,
     mismatches: list[Mismatch],
+    *,
+    visibility: TemplateVisibilityManifest | None = None,
 ) -> None:
     """Apply the policy rule for ``path`` and record any mismatch."""
 
     rule = policy.rule_for(path)
     if rule is None:
+        return
+    if visibility is not None and not visibility.is_visible(path):
         return
 
     if rule.mode is ComparisonMode.EXACT:
@@ -651,6 +733,26 @@ def _check_field(
                 actual=_canonical_str(norm_candidate),
             )
         )
+
+
+def _bucket_summaries_are_visible(
+    base: str,
+    visibility: TemplateVisibilityManifest | None,
+) -> bool:
+    """Return whether bucket-presence mismatches should be reported."""
+
+    if visibility is None:
+        return True
+    return any(
+        visibility.is_visible(path)
+        for path in (
+            f"{base}.count",
+            f"{base}[*].vat_rate",
+            f"{base}[*].net_total",
+            f"{base}[*].vat_total",
+            f"{base}[*].gross_total",
+        )
+    )
 
 
 def _canonical_str(value: Any) -> str:
