@@ -18,6 +18,10 @@ from src.invoice_gen.benchmark_case import (
     load_benchmark_case,
     save_benchmark_case,
 )
+from src.invoice_gen.pdf_rendering import (
+    SELLER_BUYER_TEMPLATE_ID,
+    SELLER_BUYER_VISIBLE_PATHS,
+)
 from src.invoice_gen.template_visibility import (
     NO_PDF_TEMPLATE_ID,
     VisibilityStatus,
@@ -96,8 +100,8 @@ def test_build_benchmark_case_persists_validator_failure() -> None:
     assert "stub" in case.xsd_validation.error
 
 
-def test_build_benchmark_case_adds_default_no_pdf_manifest() -> None:
-    """Fresh benchmark cases must carry the default pre-PDF manifest."""
+def test_build_benchmark_case_adds_default_manifests() -> None:
+    """Fresh cases must carry the no_pdf bootstrap and the first PDF template."""
 
     case = build_benchmark_case(
         case_id=_CASE_ID,
@@ -106,10 +110,19 @@ def test_build_benchmark_case_adds_default_no_pdf_manifest() -> None:
         xsd_validator=_stub_validator_valid,
     )
 
-    assert set(case.manifests) == {NO_PDF_TEMPLATE_ID}
-    manifest = case.manifests[NO_PDF_TEMPLATE_ID]
-    assert manifest.template_id == NO_PDF_TEMPLATE_ID
-    assert manifest.fields["shell.currency"] is VisibilityStatus.NOT_RENDERED
+    assert set(case.manifests) == {NO_PDF_TEMPLATE_ID, SELLER_BUYER_TEMPLATE_ID}
+
+    no_pdf = case.manifests[NO_PDF_TEMPLATE_ID]
+    assert no_pdf.template_id == NO_PDF_TEMPLATE_ID
+    assert no_pdf.fields["shell.currency"] is VisibilityStatus.NOT_RENDERED
+
+    seller_buyer = case.manifests[SELLER_BUYER_TEMPLATE_ID]
+    assert seller_buyer.template_id == SELLER_BUYER_TEMPLATE_ID
+    # Every path the renderer claims to render must be VISIBLE in the
+    # persisted manifest, and nothing else.
+    assert dict(seller_buyer.fields) == {
+        path: VisibilityStatus.VISIBLE for path in SELLER_BUYER_VISIBLE_PATHS
+    }
 
 
 # --- save + load round-trip ---------------------------------------------
@@ -158,7 +171,10 @@ def test_save_writes_expected_files(tmp_path: Path) -> None:
     assert {p.name for p in case_dir.iterdir()} == expected
     manifests_dir = case_dir / "manifests"
     assert manifests_dir.is_dir()
-    assert {p.name for p in manifests_dir.iterdir()} == {"no_pdf.json"}
+    assert {p.name for p in manifests_dir.iterdir()} == {
+        "no_pdf.json",
+        f"{SELLER_BUYER_TEMPLATE_ID}.json",
+    }
 
 
 def test_save_is_idempotent_for_same_case(tmp_path: Path) -> None:
@@ -187,9 +203,13 @@ def test_save_is_idempotent_for_same_case(tmp_path: Path) -> None:
         assert (dir_a / filename).read_bytes() == (
             dir_b / filename
         ).read_bytes()
-    assert (dir_a / "manifests" / "no_pdf.json").read_bytes() == (
-        dir_b / "manifests" / "no_pdf.json"
-    ).read_bytes()
+    for manifest_filename in (
+        "no_pdf.json",
+        f"{SELLER_BUYER_TEMPLATE_ID}.json",
+    ):
+        assert (dir_a / "manifests" / manifest_filename).read_bytes() == (
+            dir_b / "manifests" / manifest_filename
+        ).read_bytes()
 
 
 def test_save_preserves_non_utc_but_aware_generated_at(
@@ -335,7 +355,7 @@ def test_benchmark_case_equality_is_value_based(tmp_path: Path) -> None:
 
 
 def test_saved_manifest_round_trips_through_disk(tmp_path: Path) -> None:
-    """Saved manifest JSON must decode back to the case-owned manifest."""
+    """Every saved manifest JSON must decode back to its case-owned twin."""
 
     case = build_benchmark_case(
         case_id=_CASE_ID,
@@ -346,8 +366,11 @@ def test_saved_manifest_round_trips_through_disk(tmp_path: Path) -> None:
 
     case_dir = tmp_path / _CASE_ID
     save_benchmark_case(case, case_dir)
-    manifest = manifest_from_json(
-        (case_dir / "manifests" / "no_pdf.json").read_text(encoding="utf-8")
-    )
 
-    assert manifest == case.manifests[NO_PDF_TEMPLATE_ID]
+    for template_id in (NO_PDF_TEMPLATE_ID, SELLER_BUYER_TEMPLATE_ID):
+        manifest = manifest_from_json(
+            (case_dir / "manifests" / f"{template_id}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert manifest == case.manifests[template_id]
