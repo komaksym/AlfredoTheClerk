@@ -16,13 +16,27 @@ from src.invoice_gen.pdf_rendering import SELLER_BUYER_TEMPLATE_ID
 _FIXED_SEED = 42
 
 
-def _words_signature(pdf_bytes: bytes) -> tuple:
+def _normalized_word_boxes(pdf_bytes: bytes) -> tuple:
+    """Return a stable text-plus-box fingerprint for one rendered PDF.
+
+    The CLI determinism test compares extraction results, not raw PDF
+    bytes. Normalizing to ordered, rounded word boxes keeps the
+    assertion focused on parser-visible output.
+    """
+
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         words = pdf.pages[0].extract_words()
     return tuple(
-        (w["text"], round(float(w["x0"]), 2), round(float(w["top"]), 2))
+        (
+            w["text"],
+            round(float(w["x0"]), 2),
+            round(float(w["top"]), 2),
+            round(float(w["x1"]), 2),
+            round(float(w["bottom"]), 2),
+        )
         for w in sorted(
             words,
+            # Approximate reading order before comparing the extracted page.
             key=lambda w: (round(float(w["top"]), 1), round(float(w["x0"]), 1)),
         )
     )
@@ -77,9 +91,9 @@ def test_generate_invoice_pdf_is_deterministic_with_seed(
     path_b, _ = generate_invoice_pdf(seed=_FIXED_SEED, output_dir=dir_b)
 
     assert path_a.name == path_b.name
-    assert _words_signature(path_a.read_bytes()) == _words_signature(
-        path_b.read_bytes()
-    )
+    assert _normalized_word_boxes(
+        path_a.read_bytes()
+    ) == _normalized_word_boxes(path_b.read_bytes())
 
 
 def test_generate_invoice_pdf_creates_output_dir_if_absent(
