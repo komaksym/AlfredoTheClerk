@@ -19,6 +19,8 @@
     font-size: 10pt;
     color: #000;
   }
+  .header { margin: 0 0 8mm 0; }
+  .header p { margin: 0 0 1mm 0; }
   .row { display: flex; gap: 20mm; }
   .col { flex: 1; }
   h2 { font-size: 11pt; margin: 0 0 4mm 0; }
@@ -27,6 +29,12 @@
 </style>
 </head>
 <body>
+  <div class="header">
+    <p>Numer: __INVOICE_NUMBER__</p>
+    <p>Wystawiono: __ISSUE_DATE__</p>
+    <p>Sprzedano: __SALE_DATE__</p>
+    <p>Waluta: __CURRENCY__</p>
+  </div>
   <div class="row">
     <div class="col">
       <h2>Sprzedawca</h2>
