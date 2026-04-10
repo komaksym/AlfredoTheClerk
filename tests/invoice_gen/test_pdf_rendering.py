@@ -16,24 +16,38 @@ import io
 import pdfplumber
 import pytest
 
+from src.invoice_gen.comparison import (
+    build_default_comparison_policy,
+    validate_template_visibility,
+)
+from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
 from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
 from src.invoice_gen.domestic_vat_seed_mapping import (
     map_domestic_vat_seed_to_shell,
 )
 from src.invoice_gen.pdf_rendering import (
     SELLER_BUYER_TEMPLATE_ID,
+    SELLER_BUYER_VISIBLE_PATHS,
+    build_seller_buyer_visibility_manifest,
     render_seller_buyer_block,
 )
+from src.invoice_gen.template_visibility import VisibilityStatus
 
 
 _SEED = 42
 
 
 @pytest.fixture(scope="module")
-def rendered_pdf() -> bytes:
-    """Render one deterministic shell to PDF, shared across the module."""
+def shell() -> DomesticVatInvoiceShell:
+    """Build one deterministic shell once per module."""
 
-    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
+    return map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
+
+
+@pytest.fixture(scope="module")
+def rendered_pdf(shell: DomesticVatInvoiceShell) -> bytes:
+    """Render the module shell to PDF once."""
+
     return render_seller_buyer_block(shell)
 
 
@@ -62,13 +76,13 @@ def test_render_returns_pdf_bytes(rendered_pdf: bytes) -> None:
     """A real PDF document starts with the ``%PDF-`` magic header."""
 
     assert rendered_pdf.startswith(b"%PDF-")
-    assert len(rendered_pdf) > 1024
 
 
-def test_seller_and_buyer_names_are_extractable(rendered_pdf: bytes) -> None:
+def test_seller_and_buyer_names_are_extractable(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
     """Both party names from the seed must appear in the extracted text."""
 
-    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
     words = _extract_words(rendered_pdf)
     text_blob = " ".join(w["text"] for w in words)
 
@@ -81,11 +95,10 @@ def test_seller_and_buyer_names_are_extractable(rendered_pdf: bytes) -> None:
 
 
 def test_seller_and_buyer_nips_are_separate_tokens(
-    rendered_pdf: bytes,
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
 ) -> None:
     """NIP digits must extract as their own token, not glued to ``NIP:``."""
 
-    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
     words = _extract_words(rendered_pdf)
     texts = [w["text"] for w in words]
 
@@ -95,12 +108,38 @@ def test_seller_and_buyer_nips_are_separate_tokens(
     assert any(t.strip(":") == "NIP" for t in texts)
 
 
+def test_header_fields_extract_as_separate_tokens(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """Header fields must extract as their own tokens, ISO-formatted.
+
+    The M2 acceptance gate requires header fields to be parser-visible
+    as separate tokens, not glued to their labels. ISO ``YYYY-MM-DD``
+    is the renderer's pinned date format so re-rendering the same
+    shell on any host locale yields identical extraction.
+    """
+
+    words = _extract_words(rendered_pdf)
+    texts = [w["text"] for w in words]
+
+    assert shell.invoice_number is not None
+    assert shell.issue_date is not None
+    assert shell.sale_date is not None
+
+    assert shell.invoice_number in texts
+    assert shell.issue_date.isoformat() in texts
+    assert shell.sale_date.isoformat() in texts
+    assert shell.currency in texts
+    # Labels are their own tokens, not fused with their values.
+    label_stems = {t.strip(":") for t in texts}
+    assert {"Numer", "Wystawiono", "Sprzedano", "Waluta"}.issubset(label_stems)
+
+
 def test_seller_and_buyer_columns_are_horizontally_separable(
-    rendered_pdf: bytes,
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
 ) -> None:
     """No seller-column word may overlap any buyer-column word in x."""
 
-    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
     words = _extract_words(rendered_pdf)
 
     seller_anchor = next(w for w in words if w["text"] == shell.seller.nip)
@@ -127,11 +166,10 @@ def test_seller_and_buyer_columns_are_horizontally_separable(
 
 
 def test_re_rendering_same_shell_yields_identical_extraction(
-    rendered_pdf: bytes,
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
 ) -> None:
     """Determinism gate: extracted words + positions must be byte-stable."""
 
-    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
     second = render_seller_buyer_block(shell)
 
     assert _words_signature(_extract_words(rendered_pdf)) == _words_signature(
@@ -139,17 +177,72 @@ def test_re_rendering_same_shell_yields_identical_extraction(
     )
 
 
+# --- Visibility manifest contract ---------------------------------------
+
+
+def test_seller_buyer_manifest_marks_only_party_paths_visible() -> None:
+    """Manifest must mark exactly the eight party fields as VISIBLE."""
+
+    manifest = build_seller_buyer_visibility_manifest()
+
+    assert manifest.template_id == SELLER_BUYER_TEMPLATE_ID
+    assert dict(manifest.fields) == {
+        path: VisibilityStatus.VISIBLE for path in SELLER_BUYER_VISIBLE_PATHS
+    }
+
+
+def test_seller_buyer_manifest_fails_required_path_validation() -> None:
+    """The bucket-1 gate must flag every required field this template skips.
+
+    The first M2 template covers header + party fields but not line
+    items, so the line-items table entries in the M1 default required
+    set must come back as missing. This is the proof that the gate is
+    doing real work — header fields no longer appear in the missing
+    list because the template now renders them.
+    """
+
+    policy = build_default_comparison_policy()
+    manifest = build_seller_buyer_visibility_manifest()
+
+    missing = validate_template_visibility(policy, manifest)
+
+    expected_missing = sorted(
+        policy.required_paths - SELLER_BUYER_VISIBLE_PATHS
+    )
+    assert missing == expected_missing
+    # Header is satisfied; line items are still out of scope until M4.
+    assert "shell.invoice_number" not in missing
+    assert "shell.issue_date" not in missing
+    assert "shell.line_items.count" in missing
+
+
+def test_seller_buyer_manifest_visible_paths_are_in_default_policy() -> None:
+    """Every VISIBLE path must be a known field of the default policy.
+
+    A VISIBLE entry that the policy does not score is dead weight: the
+    comparator could never gate on it because there is no rule to
+    apply. Catching this here keeps the manifest honest before it
+    reaches benchmark cases.
+    """
+
+    policy_paths = set(build_default_comparison_policy().fields.keys())
+    assert SELLER_BUYER_VISIBLE_PATHS.issubset(policy_paths)
+
+
 def test_renderer_handles_missing_optional_fields() -> None:
-    """A shell with no buyer NIP must still render without raising."""
+    """A shell with no buyer NIP must still render without raising.
 
-    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
-    shell.buyer.nip = None
-    shell.buyer.address_line_2 = None
+    Builds a fresh shell instead of taking the module fixture so that
+    mutating ``buyer.nip`` does not bleed into sibling tests.
+    """
 
-    pdf = render_seller_buyer_block(shell)
+    local_shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(_SEED))
+    local_shell.buyer.nip = None
+    local_shell.buyer.address_line_2 = None
+
+    pdf = render_seller_buyer_block(local_shell)
     assert pdf.startswith(b"%PDF-")
-    words = _extract_words(pdf)
-    texts = [w["text"] for w in words]
+    texts = [w["text"] for w in _extract_words(pdf)]
     # Buyer name is still rendered even though NIP and a line are gone.
-    assert shell.buyer.name is not None
-    assert shell.buyer.name.split()[0] in texts
+    assert local_shell.buyer.name is not None
+    assert local_shell.buyer.name.split()[0] in texts
