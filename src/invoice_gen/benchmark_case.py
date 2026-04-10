@@ -59,6 +59,10 @@ from src.invoice_gen.domestic_vat_shell_summary import (
     summarize_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
+from src.invoice_gen.pdf_rendering import (
+    SELLER_BUYER_TEMPLATE_ID,
+    build_seller_buyer_visibility_manifest,
+)
 from src.invoice_gen.template_visibility import (
     NO_PDF_TEMPLATE_ID,
     TemplateVisibilityError,
@@ -166,7 +170,8 @@ def build_benchmark_case(
     manifests = {
         NO_PDF_TEMPLATE_ID: build_no_pdf_visibility_manifest(
             resolved_policy.fields.keys()
-        )
+        ),
+        SELLER_BUYER_TEMPLATE_ID: build_seller_buyer_visibility_manifest(),
     }
 
     return BenchmarkCase(
