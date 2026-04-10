@@ -51,16 +51,36 @@ def rendered_pdf(shell: DomesticVatInvoiceShell) -> bytes:
     return render_seller_buyer_block(shell)
 
 
-def _extract_words(pdf_bytes: bytes) -> list[dict]:
+def _extract_page_words(pdf_bytes: bytes) -> list[dict]:
+    """Return pdfplumber word records from the first page of one PDF."""
+
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         return pdf.pages[0].extract_words()
 
 
-def _words_signature(words: list[dict]) -> tuple:
+def _normalized_word_boxes(words: list[dict]) -> tuple:
+    """Reduce raw pdfplumber words to a stable comparison fingerprint.
+
+    ``extract_words()`` returns dicts with many fields and float-heavy
+    coordinates. The determinism tests only care about parser-visible
+    geometry, so this helper:
+
+    * orders words in reading order (top-to-bottom, then left-to-right)
+    * keeps only the text plus bounding-box edges
+    * rounds coordinates to ignore microscopic float noise
+    """
+
     return tuple(
-        (w["text"], round(float(w["x0"]), 2), round(float(w["top"]), 2))
+        (
+            w["text"],
+            round(float(w["x0"]), 2),
+            round(float(w["top"]), 2),
+            round(float(w["x1"]), 2),
+            round(float(w["bottom"]), 2),
+        )
         for w in sorted(
             words,
+            # Approximate reading order before comparing the extracted page.
             key=lambda w: (round(float(w["top"]), 1), round(float(w["x0"]), 1)),
         )
     )
@@ -83,7 +103,7 @@ def test_seller_and_buyer_names_are_extractable(
 ) -> None:
     """Both party names from the seed must appear in the extracted text."""
 
-    words = _extract_words(rendered_pdf)
+    words = _extract_page_words(rendered_pdf)
     text_blob = " ".join(w["text"] for w in words)
 
     assert shell.seller.name is not None
@@ -99,7 +119,7 @@ def test_seller_and_buyer_nips_are_separate_tokens(
 ) -> None:
     """NIP digits must extract as their own token, not glued to ``NIP:``."""
 
-    words = _extract_words(rendered_pdf)
+    words = _extract_page_words(rendered_pdf)
     texts = [w["text"] for w in words]
 
     assert shell.seller.nip in texts
@@ -119,7 +139,7 @@ def test_header_fields_extract_as_separate_tokens(
     shell on any host locale yields identical extraction.
     """
 
-    words = _extract_words(rendered_pdf)
+    words = _extract_page_words(rendered_pdf)
     texts = [w["text"] for w in words]
 
     assert shell.invoice_number is not None
@@ -140,7 +160,7 @@ def test_seller_and_buyer_columns_are_horizontally_separable(
 ) -> None:
     """No seller-column word may overlap any buyer-column word in x."""
 
-    words = _extract_words(rendered_pdf)
+    words = _extract_page_words(rendered_pdf)
 
     seller_anchor = next(w for w in words if w["text"] == shell.seller.nip)
     buyer_anchor = next(w for w in words if w["text"] == shell.buyer.nip)
@@ -168,13 +188,13 @@ def test_seller_and_buyer_columns_are_horizontally_separable(
 def test_re_rendering_same_shell_yields_identical_extraction(
     shell: DomesticVatInvoiceShell, rendered_pdf: bytes
 ) -> None:
-    """Determinism gate: extracted words + positions must be byte-stable."""
+    """Determinism gate: extracted words + full boxes must be stable."""
 
     second = render_seller_buyer_block(shell)
 
-    assert _words_signature(_extract_words(rendered_pdf)) == _words_signature(
-        _extract_words(second)
-    )
+    assert _normalized_word_boxes(
+        _extract_page_words(rendered_pdf)
+    ) == _normalized_word_boxes(_extract_page_words(second))
 
 
 # --- Visibility manifest contract ---------------------------------------
@@ -242,7 +262,7 @@ def test_renderer_handles_missing_optional_fields() -> None:
 
     pdf = render_seller_buyer_block(local_shell)
     assert pdf.startswith(b"%PDF-")
-    texts = [w["text"] for w in _extract_words(pdf)]
+    texts = [w["text"] for w in _extract_page_words(pdf)]
     # Buyer name is still rendered even though NIP and a line are gone.
     assert local_shell.buyer.name is not None
     assert local_shell.buyer.name.split()[0] in texts
