@@ -25,6 +25,15 @@ class Line:
     bottom: float
 
 
+@dataclass
+class Block:
+    lines: list[Word]
+    x0: float
+    x1: float
+    top: float
+    bottom: float
+
+
 def normalize_text(text):
     return text.lower().strip()
 
@@ -95,9 +104,79 @@ def parse_lines(words):
     return lines
 
 
+def check_same_block(cur_line, next_line, largest_between_line_gap):
+    between_line_gap = next_line.top - cur_line.bottom
+    is_same_block = between_line_gap < largest_between_line_gap
+    return is_same_block
+
+
+def calc_largest_line_gap(lines):
+    gaps = []
+    for i in range(len(lines) - 1):
+        cur_line = lines[i]
+        next_line = lines[i + 1]
+
+        gap = next_line.top - cur_line.bottom
+        gaps.append(gap)
+
+    gaps.sort()
+    largest_gap = (gaps[-2] + gaps[-1]) / 2
+    return largest_gap
+
+
 def parse_blocks(lines):
     blocks = []
+    largest_between_line_gap = calc_largest_line_gap(lines)
 
+    i = 0
+    while i < len(lines) - 1:
+        cur_line = lines[i]
+        # Lines in a single block
+        block_lines = [cur_line]
+
+        # Bounding Box coords
+        min_x0 = float("inf")
+        max_x1 = float("-inf")
+        min_top = float("inf")
+        max_bottom = float("-inf")
+
+        # Seach for candidates starting from the next word
+        j = i + 1
+        # Iter over candidates
+        while j < len(lines):
+            cand_line = lines[j]
+            # If same line
+            if check_same_block(cur_line, cand_line, largest_between_line_gap):
+                block_lines.append(cand_line)
+
+                cur_line = cand_line
+
+                # BBX coords
+                min_x0 = min(min_x0, cand_line.x0)
+                max_x1 = max(max_x1, cand_line.x1)
+                min_top = min(min_top, cand_line.top)
+                max_bottom = max(max_bottom, cand_line.bottom)
+
+                # Search for next candidate
+                j += 1
+
+            # Next line, reset
+            else:
+                break
+        # Continue to build lines from the new word which wasn't recognized in the same line
+        i = j
+        # Add line to lines
+        blocks.append(
+            Block(
+                lines=block_lines,
+                x0=min_x0,
+                x1=max_x1,
+                top=min_top,
+                bottom=max_bottom,
+            )
+        )
+
+    breakpoint()
     return blocks
 
 
@@ -116,7 +195,8 @@ def main():
         # Populate lines
         lines = parse_lines(words)
         # Populate blocks
-        print(lines)
+        blocks = parse_blocks(lines)
+        print(blocks)
 
 
 if __name__ == "__main__":
