@@ -93,10 +93,10 @@ def parse_lines(words: list[Word]) -> list[Line]:
         cur_word = words[i]
         line_words = [cur_word]
 
-        min_x0 = float("inf")
-        max_x1 = float("-inf")
-        min_top = float("inf")
-        max_bottom = float("-inf")
+        min_x0 = cur_word.x0
+        max_x1 = cur_word.x1
+        min_top = cur_word.top
+        max_bottom = cur_word.bottom
 
         j = i + 1
         while j < len(words):
@@ -157,10 +157,10 @@ def parse_blocks(lines: list[Line]) -> list[Block]:
         cur_line = lines[i]
         block_lines = [cur_line]
 
-        min_x0 = float("inf")
-        max_x1 = float("-inf")
-        min_top = float("inf")
-        max_bottom = float("-inf")
+        min_x0 = cur_line.x0
+        max_x1 = cur_line.x1
+        min_top = cur_line.top
+        max_bottom = cur_line.bottom
 
         j = i + 1
         while j < len(lines):
