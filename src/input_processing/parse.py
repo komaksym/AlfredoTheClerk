@@ -153,7 +153,7 @@ def parse_blocks(lines: list[Line]) -> list[Block]:
     largest_between_line_gap = calc_largest_line_gap(lines)
 
     i = 0
-    while i < len(lines) - 1:
+    while i < len(lines):
         cur_line = lines[i]
         block_lines = [cur_line]
 
