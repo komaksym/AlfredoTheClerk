@@ -1,3 +1,10 @@
+"""Geometric PDF parser: words → lines → blocks → sub-blocks.
+
+Clusters pdfplumber word-level extractions into hierarchical
+layout structures using only bounding-box geometry (y-overlap
+for lines, y-gap for blocks, x-gutter for sub-blocks).
+"""
+
 import pdfplumber
 from pathlib import Path
 from dataclasses import dataclass
@@ -8,6 +15,8 @@ REPO_ROOT_PATH = Path(__file__).resolve().parents[2]
 
 @dataclass
 class Word:
+    """Single word extracted from PDF with bounding box."""
+
     text: str
     x0: float
     x1: float
@@ -18,6 +27,8 @@ class Word:
 
 @dataclass
 class Line:
+    """Horizontal group of words sharing vertical overlap."""
+
     words: list[Word]
     x0: float
     x1: float
@@ -27,6 +38,8 @@ class Line:
 
 @dataclass
 class Block:
+    """Vertical group of lines separated by large y-gaps."""
+
     lines: list[Line]
     x0: float
     x1: float
@@ -36,6 +49,8 @@ class Block:
 
 @dataclass
 class SubBlock:
+    """Column within a block, split by x-gutters."""
+
     words: list[Word]
     x0: float
     x1: float
@@ -43,63 +58,60 @@ class SubBlock:
     bottom: float
 
 
-def normalize_text(text):
+def normalize_text(text: str) -> str:
     return text.lower().strip()
 
 
-def check_same_line(w1, w2):
+def check_same_line(w1: Word, w2: Word) -> bool:
+    """Check if two words share enough vertical overlap to be on the same line.
+
+    Uses interval overlap on the y-axis rather than comparing a single
+    y-coordinate, so it adapts to mixed font sizes and OCR jitter.
+    """
     overlap = min(w1.bottom, w2.bottom) - max(w1.top, w2.top)
-    same_line = overlap > 0.5 * min(w1.height, w2.height)
-    return same_line
+    return overlap > 0.5 * min(w1.height, w2.height)
 
 
-def parse_words(text):
-    words = [
+def parse_words(text: list[dict]) -> list[Word]:
+    """Convert raw pdfplumber word dicts to Word dataclasses."""
+    return [
         Word(w["text"], w["x0"], w["x1"], w["top"], w["bottom"], w["height"])
         for w in text
     ]
-    return words
 
 
-def parse_lines(words):
-    lines = []
+def parse_lines(words: list[Word]) -> list[Line]:
+    """Group words into lines by y-overlap.
+
+    Walks words sequentially; consecutive words that overlap
+    vertically with the anchor word are merged into one line.
+    """
+    lines: list[Line] = []
 
     i = 0
     while i < len(words):
         cur_word = words[i]
-        # Words in a single line
         line_words = [cur_word]
 
-        # Bounding Box coords
         min_x0 = float("inf")
         max_x1 = float("-inf")
         min_top = float("inf")
         max_bottom = float("-inf")
 
-        # Seach for candidates starting from the next word
         j = i + 1
-        # Iter over candidates
         while j < len(words):
             cand_word = words[j]
-            # If same line
             if check_same_line(cur_word, cand_word):
                 line_words.append(cand_word)
-
-                # BBX coords
                 min_x0 = min(min_x0, cand_word.x0)
                 max_x1 = max(max_x1, cand_word.x1)
                 min_top = min(min_top, cand_word.top)
                 max_bottom = max(max_bottom, cand_word.bottom)
-
-                # Search for next candidate
                 j += 1
-
-            # Next line, reset
             else:
                 break
-        # Continue to build lines from the new word which wasn't recognized in the same line
+
         i = j
-        # Add line to lines
         lines.append(
             Line(
                 words=line_words,
@@ -113,68 +125,58 @@ def parse_lines(words):
     return lines
 
 
-def check_same_block(cur_line, next_line, largest_between_line_gap):
+def check_same_block(
+    cur_line: Line, next_line: Line, largest_between_line_gap: float
+) -> bool:
+    """True if the y-gap between two lines is below the block-break threshold."""
     between_line_gap = next_line.top - cur_line.bottom
-    is_same_block = between_line_gap < largest_between_line_gap
-    return is_same_block
+    return between_line_gap < largest_between_line_gap
 
 
-def calc_largest_line_gap(lines):
-    gaps = []
+def calc_largest_line_gap(lines: list[Line]) -> float:
+    """Compute block-break threshold as the average of the two largest gaps.
+
+    Sorted gaps let us separate normal line spacing from section breaks.
+    """
+    gaps: list[float] = []
     for i in range(len(lines) - 1):
-        cur_line = lines[i]
-        next_line = lines[i + 1]
-
-        gap = next_line.top - cur_line.bottom
+        gap = lines[i + 1].top - lines[i].bottom
         gaps.append(gap)
 
     gaps.sort()
-    largest_gap = (gaps[-2] + gaps[-1]) / 2
-    return largest_gap
+    return (gaps[-2] + gaps[-1]) / 2
 
 
-def parse_blocks(lines):
-    blocks = []
+def parse_blocks(lines: list[Line]) -> list[Block]:
+    """Group lines into blocks by y-gap thresholding."""
+    blocks: list[Block] = []
     largest_between_line_gap = calc_largest_line_gap(lines)
 
     i = 0
     while i < len(lines) - 1:
         cur_line = lines[i]
-        # Lines in a single block
         block_lines = [cur_line]
 
-        # Bounding Box coords
         min_x0 = float("inf")
         max_x1 = float("-inf")
         min_top = float("inf")
         max_bottom = float("-inf")
 
-        # Seach for candidates starting from the next word
         j = i + 1
-        # Iter over candidates
         while j < len(lines):
             cand_line = lines[j]
-            # If same line
             if check_same_block(cur_line, cand_line, largest_between_line_gap):
                 block_lines.append(cand_line)
-
                 cur_line = cand_line
-
-                # BBX coords
                 min_x0 = min(min_x0, cand_line.x0)
                 max_x1 = max(max_x1, cand_line.x1)
                 min_top = min(min_top, cand_line.top)
                 max_bottom = max(max_bottom, cand_line.bottom)
-
-                # Search for next candidate
                 j += 1
-
-            # Next line, reset
             else:
                 break
-        # Continue to build lines from the new word which wasn't recognized in the same line
+
         i = j
-        # Add line to lines
         blocks.append(
             Block(
                 lines=block_lines,
@@ -188,13 +190,20 @@ def parse_blocks(lines):
     return blocks
 
 
-def calculate_inblock_gaps(block):
+def calculate_inblock_gaps(
+    block: Block,
+) -> dict[int, list[tuple[float, float]]]:
+    """Find wide inter-word gaps per line that could be column gutters.
+
+    A gap qualifies if it's >= 10% of the block width (relative
+    threshold so it works regardless of page size or units).
+    """
     block_width = block.x1 - block.x0
     gutter_threshold = block_width * 0.1
-    in_block_gaps = {}
+    in_block_gaps: dict[int, list[tuple[float, float]]] = {}
 
     for idx, line in enumerate(block.lines):
-        line_gaps = []
+        line_gaps: list[tuple[float, float]] = []
         for i in range(len(line.words) - 1):
             cur_word = line.words[i]
             next_word = line.words[i + 1]
@@ -208,9 +217,16 @@ def calculate_inblock_gaps(block):
     return in_block_gaps
 
 
-def get_gutters(in_block_gaps, num_lines):
-    """Find gaps that overlap across >=50% of lines in the block."""
-    all_gaps = []
+def get_gutters(
+    in_block_gaps: dict[int, list[tuple[float, float]]], num_lines: int
+) -> list[tuple[float, float]]:
+    """Find x-gaps that overlap across >=50% of lines in the block.
+
+    Merges overlapping gap intervals across lines by tightening
+    to their intersection (max of starts, min of ends). A gutter
+    is valid only if it spans the majority of lines.
+    """
+    all_gaps: list[tuple[tuple[float, float], int]] = []
     for line_idx, gaps in in_block_gaps.items():
         for gap in gaps:
             all_gaps.append((gap, line_idx))
@@ -218,14 +234,14 @@ def get_gutters(in_block_gaps, num_lines):
     if not all_gaps:
         return []
 
-    # Group overlapping gaps across lines
-    # Each gutter candidate: [running_start, running_end, set of line indices]
-    gutters = []
+    # Each candidate: [tightened_start, tightened_end, {line indices}]
+    gutters: list[list] = []
     for gap, line_idx in all_gaps:
         merged = False
         for gutter in gutters:
             overlap = min(gap[1], gutter[1]) - max(gap[0], gutter[0])
             if overlap > 0:
+                # Tighten to intersection
                 gutter[0] = max(gap[0], gutter[0])
                 gutter[1] = min(gap[1], gutter[1])
                 gutter[2].add(line_idx)
@@ -240,8 +256,12 @@ def get_gutters(in_block_gaps, num_lines):
     return valid_gutters
 
 
-def parse_sub_blocks(block):
-    """Split a block into sub-blocks by x-gutters. Supports N gutters -> N+1 sub-blocks."""
+def parse_sub_blocks(block: Block) -> list[SubBlock]:
+    """Split a block into sub-blocks by x-gutters.
+
+    N gutters produce N+1 sub-blocks (columns). Words are assigned
+    to columns by their x-center position.
+    """
     in_block_gaps = calculate_inblock_gaps(block)
     gutters = get_gutters(in_block_gaps, len(block.lines))
 
@@ -256,16 +276,16 @@ def parse_sub_blocks(block):
             )
         ]
 
-    # Build column boundaries from gutters
-    boundaries = []
+    # Column boundaries: [block.x0, gutter1.start], [gutter1.end, gutter2.start], ...
+    boundaries: list[tuple[float, float]] = []
     boundaries.append((block.x0, gutters[0][0]))
     for i in range(len(gutters) - 1):
         boundaries.append((gutters[i][1], gutters[i + 1][0]))
     boundaries.append((gutters[-1][1], block.x1))
 
-    sub_blocks = []
+    sub_blocks: list[SubBlock] = []
     for col_left, col_right in boundaries:
-        col_words = []
+        col_words: list[Word] = []
         for line in block.lines:
             for word in line.words:
                 word_center = (word.x0 + word.x1) / 2
@@ -285,7 +305,7 @@ def parse_sub_blocks(block):
     return sub_blocks
 
 
-def main():
+def main() -> None:
     pdf_sample = (
         REPO_ROOT_PATH
         / "data/synthetic_data/FV2026_11_390_seller_buyer_block_v1.pdf"
@@ -295,18 +315,12 @@ def main():
         page = pdf.pages[0]
         text = page.extract_words()
 
-        # Populate words
         words = parse_words(text)
-        # Populate lines
         lines = parse_lines(words)
-        # Populate blocks
         blocks = parse_blocks(lines)
-        # Populate sub-blocks
-        for i, block in enumerate(blocks):
-            sub_blocks = parse_sub_blocks(block)
-            print(f"\n--- Block {i} ---")
-            for j, sb in enumerate(sub_blocks):
-                print(f"  Sub-block {j}: {[w.text for w in sb.words]}")
+        sub_blocks = []
+        for block in blocks:
+            sub_blocks.append(parse_sub_blocks(block))
 
 
 if __name__ == "__main__":
