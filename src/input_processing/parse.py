@@ -27,7 +27,16 @@ class Line:
 
 @dataclass
 class Block:
-    lines: list[Word]
+    lines: list[Line]
+    x0: float
+    x1: float
+    top: float
+    bottom: float
+
+
+@dataclass
+class SubBlock:
+    words: list[Word]
     x0: float
     x1: float
     top: float
@@ -176,8 +185,104 @@ def parse_blocks(lines):
             )
         )
 
-    breakpoint()
     return blocks
+
+
+def calculate_inblock_gaps(block):
+    block_width = block.x1 - block.x0
+    gutter_threshold = block_width * 0.1
+    in_block_gaps = {}
+
+    for idx, line in enumerate(block.lines):
+        line_gaps = []
+        for i in range(len(line.words) - 1):
+            cur_word = line.words[i]
+            next_word = line.words[i + 1]
+
+            between_word_gap = next_word.x0 - cur_word.x1
+            if between_word_gap >= gutter_threshold:
+                line_gaps.append((cur_word.x1, next_word.x0))
+        if line_gaps:
+            in_block_gaps[idx] = line_gaps
+
+    return in_block_gaps
+
+
+def get_gutters(in_block_gaps, num_lines):
+    """Find gaps that overlap across >=50% of lines in the block."""
+    all_gaps = []
+    for line_idx, gaps in in_block_gaps.items():
+        for gap in gaps:
+            all_gaps.append((gap, line_idx))
+
+    if not all_gaps:
+        return []
+
+    # Group overlapping gaps across lines
+    # Each gutter candidate: [running_start, running_end, set of line indices]
+    gutters = []
+    for gap, line_idx in all_gaps:
+        merged = False
+        for gutter in gutters:
+            overlap = min(gap[1], gutter[1]) - max(gap[0], gutter[0])
+            if overlap > 0:
+                gutter[0] = max(gap[0], gutter[0])
+                gutter[1] = min(gap[1], gutter[1])
+                gutter[2].add(line_idx)
+                merged = True
+                break
+        if not merged:
+            gutters.append([gap[0], gap[1], {line_idx}])
+
+    min_lines = num_lines * 0.5
+    valid_gutters = [(g[0], g[1]) for g in gutters if len(g[2]) >= min_lines]
+    valid_gutters.sort(key=lambda g: g[0])
+    return valid_gutters
+
+
+def parse_sub_blocks(block):
+    """Split a block into sub-blocks by x-gutters. Supports N gutters -> N+1 sub-blocks."""
+    in_block_gaps = calculate_inblock_gaps(block)
+    gutters = get_gutters(in_block_gaps, len(block.lines))
+
+    if not gutters:
+        return [
+            SubBlock(
+                words=[w for line in block.lines for w in line.words],
+                x0=block.x0,
+                x1=block.x1,
+                top=block.top,
+                bottom=block.bottom,
+            )
+        ]
+
+    # Build column boundaries from gutters
+    boundaries = []
+    boundaries.append((block.x0, gutters[0][0]))
+    for i in range(len(gutters) - 1):
+        boundaries.append((gutters[i][1], gutters[i + 1][0]))
+    boundaries.append((gutters[-1][1], block.x1))
+
+    sub_blocks = []
+    for col_left, col_right in boundaries:
+        col_words = []
+        for line in block.lines:
+            for word in line.words:
+                word_center = (word.x0 + word.x1) / 2
+                if col_left <= word_center <= col_right:
+                    col_words.append(word)
+        if col_words:
+            sub_blocks.append(
+                SubBlock(
+                    words=col_words,
+                    x0=min(w.x0 for w in col_words),
+                    x1=max(w.x1 for w in col_words),
+                    top=min(w.top for w in col_words),
+                    bottom=max(w.bottom for w in col_words),
+                )
+            )
+
+    return sub_blocks
 
 
 def main():
@@ -196,7 +301,12 @@ def main():
         lines = parse_lines(words)
         # Populate blocks
         blocks = parse_blocks(lines)
-        print(blocks)
+        # Populate sub-blocks
+        for i, block in enumerate(blocks):
+            sub_blocks = parse_sub_blocks(block)
+            print(f"\n--- Block {i} ---")
+            for j, sb in enumerate(sub_blocks):
+                print(f"  Sub-block {j}: {[w.text for w in sb.words]}")
 
 
 if __name__ == "__main__":
