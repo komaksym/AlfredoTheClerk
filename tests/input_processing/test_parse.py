@@ -19,7 +19,7 @@ def make_word(
     text: str, x0: float, x1: float, top: float, bottom: float
 ) -> Word:
     """Create a Word with auto-computed height."""
-    return Word(text, x0, x1, top, bottom, height=bottom - top)
+    return Word(text, x0, x1, top, bottom)
 
 
 def make_line(words: list[Word]) -> Line:
