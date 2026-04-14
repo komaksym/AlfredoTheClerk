@@ -22,7 +22,10 @@ class Word:
     x1: float
     top: float
     bottom: float
-    height: float
+
+    @property
+    def height(self) -> float:
+        return self.bottom - self.top
 
 
 @dataclass
@@ -75,7 +78,7 @@ def check_same_line(w1: Word, w2: Word) -> bool:
 def parse_words(text: list[dict]) -> list[Word]:
     """Convert raw pdfplumber word dicts to Word dataclasses."""
     return [
-        Word(w["text"], w["x0"], w["x1"], w["top"], w["bottom"], w["height"])
+        Word(w["text"], w["x0"], w["x1"], w["bottom"], w["height"])
         for w in text
     ]
 
