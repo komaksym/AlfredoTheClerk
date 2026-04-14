@@ -80,112 +80,65 @@ def parse_words(text: list[dict]) -> list[Word]:
     ]
 
 
+def bbox_of(items: list) -> tuple[float, float, float, float]:
+    """Return (x0, x1, top, bottom) enveloping all items."""
+    x0 = min(it.x0 for it in items)
+    x1 = max(it.x1 for it in items)
+    top = min(it.top for it in items)
+    bottom = max(it.bottom for it in items)
+    return x0, x1, top, bottom
+
+
 def parse_lines(words: list[Word]) -> list[Line]:
-    """Group words into lines by y-overlap.
-
-    Walks words sequentially; consecutive words that overlap
-    vertically with the anchor word are merged into one line.
-    """
+    """Group words into lines by y-overlap with the anchor word."""
     lines: list[Line] = []
-
     i = 0
     while i < len(words):
-        cur_word = words[i]
-        line_words = [cur_word]
-
-        min_x0 = cur_word.x0
-        max_x1 = cur_word.x1
-        min_top = cur_word.top
-        max_bottom = cur_word.bottom
+        anchor = words[i]
+        group = [anchor]
 
         j = i + 1
-        while j < len(words):
-            cand_word = words[j]
-            if check_same_line(cur_word, cand_word):
-                line_words.append(cand_word)
-                min_x0 = min(min_x0, cand_word.x0)
-                max_x1 = max(max_x1, cand_word.x1)
-                min_top = min(min_top, cand_word.top)
-                max_bottom = max(max_bottom, cand_word.bottom)
-                j += 1
-            else:
-                break
+        while j < len(words) and check_same_line(anchor, words[j]):
+            group.append(words[j])
+            j += 1
 
+        x0, x1, top, bottom = bbox_of(group)
+        lines.append(Line(words=group, x0=x0, x1=x1, top=top, bottom=bottom))
         i = j
-        lines.append(
-            Line(
-                words=line_words,
-                x0=min_x0,
-                x1=max_x1,
-                top=min_top,
-                bottom=max_bottom,
-            )
-        )
 
     return lines
 
 
-def check_same_block(
-    cur_line: Line, next_line: Line, largest_between_line_gap: float
-) -> bool:
-    """True if the y-gap between two lines is below the block-break threshold."""
-    between_line_gap = next_line.top - cur_line.bottom
-    return between_line_gap < largest_between_line_gap
-
-
 def calc_largest_line_gap(lines: list[Line]) -> float:
-    """Compute block-break threshold as the average of the two largest gaps.
-
-    Sorted gaps let us separate normal line spacing from section breaks.
-    """
-    gaps: list[float] = []
-    for i in range(len(lines) - 1):
-        gap = lines[i + 1].top - lines[i].bottom
-        gaps.append(gap)
-
-    gaps.sort()
+    """Compute block-break threshold as the average of the two largest gaps."""
+    gaps = sorted(
+        lines[i + 1].top - lines[i].bottom for i in range(len(lines) - 1)
+    )
     return (gaps[-2] + gaps[-1]) / 2
 
 
 def parse_blocks(lines: list[Line]) -> list[Block]:
     """Group lines into blocks by y-gap thresholding."""
-    blocks: list[Block] = []
-    largest_between_line_gap = calc_largest_line_gap(lines)
+    if not lines:
+        return []
 
+    threshold = calc_largest_line_gap(lines)
+    blocks: list[Block] = []
     i = 0
     while i < len(lines):
-        cur_line = lines[i]
-        block_lines = [cur_line]
-
-        min_x0 = cur_line.x0
-        max_x1 = cur_line.x1
-        min_top = cur_line.top
-        max_bottom = cur_line.bottom
+        group = [lines[i]]
 
         j = i + 1
         while j < len(lines):
-            cand_line = lines[j]
-            if check_same_block(cur_line, cand_line, largest_between_line_gap):
-                block_lines.append(cand_line)
-                cur_line = cand_line
-                min_x0 = min(min_x0, cand_line.x0)
-                max_x1 = max(max_x1, cand_line.x1)
-                min_top = min(min_top, cand_line.top)
-                max_bottom = max(max_bottom, cand_line.bottom)
-                j += 1
-            else:
+            gap = lines[j].top - lines[j - 1].bottom
+            if gap >= threshold:
                 break
+            group.append(lines[j])
+            j += 1
 
+        x0, x1, top, bottom = bbox_of(group)
+        blocks.append(Block(lines=group, x0=x0, x1=x1, top=top, bottom=bottom))
         i = j
-        blocks.append(
-            Block(
-                lines=block_lines,
-                x0=min_x0,
-                x1=max_x1,
-                top=min_top,
-                bottom=max_bottom,
-            )
-        )
 
     return blocks
 

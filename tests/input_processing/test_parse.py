@@ -7,7 +7,6 @@ from src.input_processing.parse import (
     check_same_line,
     parse_words,
     parse_lines,
-    check_same_block,
     calc_largest_line_gap,
     parse_blocks,
     calculate_inblock_gaps,
@@ -145,20 +144,6 @@ class TestCalcLargestLineGap:
         ]
         # gaps: [4, 52] → threshold = (4+52)/2 = 28
         assert calc_largest_line_gap(lines) == 28.0
-
-
-class TestCheckSameBlock:
-    """Y-gap comparison against block-break threshold."""
-
-    def test_same_block(self):
-        l1 = make_line([make_word("a", 10, 50, 100, 112)])
-        l2 = make_line([make_word("b", 10, 50, 116, 128)])
-        assert check_same_block(l1, l2, 28) is True
-
-    def test_different_block(self):
-        l1 = make_line([make_word("a", 10, 50, 100, 112)])
-        l2 = make_line([make_word("b", 10, 50, 180, 192)])
-        assert check_same_block(l1, l2, 28) is False
 
 
 class TestParseBlocks:
