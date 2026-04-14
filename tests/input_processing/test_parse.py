@@ -1,6 +1,9 @@
 """Tests for geometric PDF parser (words → lines → blocks → sub-blocks)."""
 
+import pdfplumber
+
 from src.input_processing.parse import (
+    REPO_ROOT_PATH,
     Word,
     Line,
     Block,
@@ -12,6 +15,7 @@ from src.input_processing.parse import (
     calculate_inblock_gaps,
     get_gutters,
     parse_sub_blocks,
+    parse_data,
 )
 
 
@@ -313,3 +317,42 @@ class TestParseSubBlocks:
         assert subs[0].words[0].text == "A"
         assert subs[1].words[0].text == "B"
         assert subs[2].words[0].text == "C"
+
+
+class TestParseData:
+    """End-to-end pipeline against the real synthetic invoice."""
+
+    def test_synthetic_invoice_splits_seller_buyer(self):
+        pdf_path = (
+            REPO_ROOT_PATH
+            / "data/synthetic_data/FV2026_11_390_seller_buyer_block_v1.pdf"
+        )
+        with pdfplumber.open(pdf_path) as pdf:
+            result = parse_data(pdf)
+
+        # One list of sub-blocks per block
+        assert len(result) >= 2
+
+        all_texts = [
+            w.text
+            for block_subs in result
+            for sb in block_subs
+            for w in sb.words
+        ]
+        assert "Sprzedawca" in all_texts
+        assert "Nabywca" in all_texts
+
+        # The seller/buyer block should split into 2 sub-blocks (left/right columns)
+        seller_buyer_block = next(
+            block_subs
+            for block_subs in result
+            if any(
+                w.text == "Sprzedawca" for sb in block_subs for w in sb.words
+            )
+        )
+        assert len(seller_buyer_block) == 2
+
+        left_texts = [w.text for w in seller_buyer_block[0].words]
+        right_texts = [w.text for w in seller_buyer_block[1].words]
+        assert "Sprzedawca" in left_texts
+        assert "Nabywca" in right_texts
