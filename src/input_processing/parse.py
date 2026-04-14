@@ -6,6 +6,7 @@ for lines, y-gap for blocks, x-gutter for sub-blocks).
 """
 
 import pdfplumber
+from pdfplumber.pdf import PDF
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -78,8 +79,7 @@ def check_same_line(w1: Word, w2: Word) -> bool:
 def parse_words(text: list[dict]) -> list[Word]:
     """Convert raw pdfplumber word dicts to Word dataclasses."""
     return [
-        Word(w["text"], w["x0"], w["x1"], w["bottom"], w["height"])
-        for w in text
+        Word(w["text"], w["x0"], w["x1"], w["top"], w["bottom"]) for w in text
     ]
 
 
@@ -279,6 +279,31 @@ def parse_sub_blocks(block: Block) -> list[SubBlock]:
     return sub_blocks
 
 
+def parse_data(pdf_file: PDF) -> list[list[SubBlock]]:
+    """Run the full parse pipeline on a single-page PDF.
+
+    Extracts words via pdfplumber and clusters them into sub-blocks:
+    words → lines (y-overlap) → blocks (y-gap) → sub-blocks (x-gutter).
+    Returns one list of sub-blocks per top-level block.
+    """
+    if len(pdf_file.pages) != 1:
+        raise ValueError(
+            f"Expected single-page PDF, got {len(pdf_file.pages)} pages"
+        )
+
+    page = pdf_file.pages[0]
+    text = page.extract_words()
+
+    words = parse_words(text)
+    lines = parse_lines(words)
+    blocks = parse_blocks(lines)
+    sub_blocks = []
+    for block in blocks:
+        sub_blocks.append(parse_sub_blocks(block))
+
+    return sub_blocks
+
+
 def main() -> None:
     pdf_sample = (
         REPO_ROOT_PATH
@@ -286,15 +311,8 @@ def main() -> None:
     )
 
     with pdfplumber.open(pdf_sample) as pdf:
-        page = pdf.pages[0]
-        text = page.extract_words()
-
-        words = parse_words(text)
-        lines = parse_lines(words)
-        blocks = parse_blocks(lines)
-        sub_blocks = []
-        for block in blocks:
-            sub_blocks.append(parse_sub_blocks(block))
+        data = parse_data(pdf)
+        print(data)
 
 
 if __name__ == "__main__":
