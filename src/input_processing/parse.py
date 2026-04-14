@@ -110,11 +110,29 @@ def parse_lines(words: list[Word]) -> list[Line]:
 
 
 def calc_largest_line_gap(lines: list[Line]) -> float:
-    """Compute block-break threshold as the average of the two largest gaps."""
+    """Compute block-break threshold as the midpoint of the largest jump
+    between consecutive sorted gaps.
+
+    Sorting groups gaps into clusters (e.g. line spacing vs block
+    separators); the biggest jump marks the natural boundary between them.
+    """
     gaps = sorted(
         lines[i + 1].top - lines[i].bottom for i in range(len(lines) - 1)
     )
-    return (gaps[-2] + gaps[-1]) / 2
+
+    if len(gaps) < 2:
+        raise ValueError(
+            f"Invoice must have at least 3 lines for block detection, got {len(gaps)}"
+        )
+
+    largest_gap = 0
+    first_gap, second_gap = 0, 0
+    for i in range(1, len(gaps)):
+        if gaps[i] - gaps[i - 1] > largest_gap:
+            largest_gap = gaps[i] - gaps[i - 1]
+            first_gap, second_gap = gaps[i - 1], gaps[i]
+
+    return (first_gap + second_gap) / 2
 
 
 def parse_blocks(lines: list[Line]) -> list[Block]:
