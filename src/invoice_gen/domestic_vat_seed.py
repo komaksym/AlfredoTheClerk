@@ -8,7 +8,7 @@ from decimal import Decimal
 import random
 import re
 
-_NIP_PATTERN = re.compile(r"^[1-9](?:\d[1-9]|[1-9]\d)\d{7}$")
+NIP_PATTERN = re.compile(r"^[1-9](?:\d[1-9]|[1-9]\d)\d{7}$")
 _NIP_WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
 _EMAIL_ROLES = ("biuro", "kontakt", "info", "sklep")
 _LEGAL_STOP_WORDS = frozenset({"sp", "z", "o", "fhu", "sa"})
@@ -303,7 +303,7 @@ def _build_nip(rng: random.Random) -> str:
 
         nip = "".join(prefix_digits) + str(checksum)
 
-        if not _NIP_PATTERN.fullmatch(nip):
+        if not NIP_PATTERN.fullmatch(nip):
             continue
 
         return nip
