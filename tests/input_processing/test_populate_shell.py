@@ -1,4 +1,4 @@
-"""Tests for tier-1 NIP extraction into DomesticVatInvoiceShell."""
+"""Tests for deterministic field extraction into DomesticVatInvoiceShell."""
 
 from datetime import date
 
@@ -9,6 +9,8 @@ from src.input_processing.parse import REPO_ROOT_PATH, SubBlock, parse_data
 from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
     FieldEvidence,
+    extract_party_addresses_from_subblock,
+    extract_party_name_from_subblock,
     extract_labeled_field,
     extract_nip_from_subblock,
     find_below_neighbor,
@@ -18,6 +20,7 @@ from src.input_processing.populate_shell import (
     find_value_word,
     header_words,
     populate_shell,
+    subblock_lines,
     threshold_for,
     validate_nip_checksum,
 )
@@ -33,6 +36,23 @@ def make_sub_block(words) -> SubBlock:
         top=min(w.top for w in words),
         bottom=max(w.bottom for w in words),
     )
+
+
+def make_text_line(texts: list[str], top: float, start_x: float = 0) -> list:
+    words = []
+    x0 = start_x
+    for text in texts:
+        x1 = x0 + max(8, len(text) * 5)
+        words.append(make_word(text, x0, x1, top, top + 10))
+        x0 = x1 + 5
+    return words
+
+
+def make_party_sub_block(lines: list[list[str]]) -> SubBlock:
+    words = []
+    for idx, texts in enumerate(lines):
+        words.extend(make_text_line(texts, idx * 20))
+    return make_sub_block(words)
 
 
 @pytest.mark.parametrize(
@@ -237,6 +257,172 @@ class TestExtractLabeledField:
         assert ev.bbox is None
 
 
+class TestSubblockLines:
+    def test_orders_lines_top_to_bottom_and_words_left_to_right(self):
+        sub_block = make_sub_block(
+            [
+                *make_text_line(["Beta", "Gamma"], 20, start_x=30),
+                *make_text_line(["Alpha"], 0),
+                *make_text_line(["Delta"], 40),
+            ]
+        )
+
+        lines = subblock_lines(sub_block)
+
+        assert [[word.text for word in line] for line in lines] == [
+            ["Alpha"],
+            ["Beta", "Gamma"],
+            ["Delta"],
+        ]
+
+    def test_returns_only_non_empty_visual_lines(self):
+        sub_block = make_sub_block(
+            [
+                *make_text_line(["Alpha"], 0),
+                *make_text_line(["Beta"], 40),
+            ]
+        )
+
+        lines = subblock_lines(sub_block)
+
+        assert len(lines) == 2
+        assert all(lines)
+
+
+class TestExtractPartyNameFromSubblock:
+    def test_resolves_single_line_between_anchor_and_nip(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep", "Domowy"],
+                ["NIP:", "8637940261"],
+            ]
+        )
+
+        ev = extract_party_name_from_subblock(sub_block)
+
+        assert ev.value == "Sklep Domowy"
+        assert ev.source == "spatial"
+        assert ev.confidence == 1.0
+        assert ev.bbox is not None
+
+    def test_unresolved_when_no_line_exists_between_anchor_and_nip(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["NIP:", "8637940261"],
+            ]
+        )
+
+        ev = extract_party_name_from_subblock(sub_block)
+
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.bbox is None
+
+    def test_unresolved_when_multiple_lines_exist_between_anchor_and_nip(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["Domowy"],
+                ["NIP:", "8637940261"],
+            ]
+        )
+
+        ev = extract_party_name_from_subblock(sub_block)
+
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.bbox is not None
+
+
+class TestExtractPartyAddressesFromSubblock:
+    def test_unresolved_when_no_lines_exist_below_nip(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value is None
+        assert address_2_ev.value is None
+        assert address_1_ev.bbox is None
+        assert address_2_ev.bbox is None
+
+    def test_maps_single_line_below_nip_to_address_line_1(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["ul.", "Polna", "29"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value == "ul. Polna 29"
+        assert address_1_ev.source == "spatial"
+        assert address_1_ev.confidence == 1.0
+        assert address_1_ev.bbox is not None
+        assert address_2_ev.value is None
+        assert address_2_ev.source == "unresolved"
+
+    def test_maps_two_lines_below_nip_in_order(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["ul.", "Polna", "29"],
+                ["90-001", "Lodz"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value == "ul. Polna 29"
+        assert address_2_ev.value == "90-001 Lodz"
+        assert address_1_ev.source == "spatial"
+        assert address_2_ev.source == "spatial"
+        assert address_1_ev.bbox is not None
+        assert address_2_ev.bbox is not None
+
+    def test_unresolved_when_more_than_two_lines_exist_below_nip(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["ul.", "Polna", "29"],
+                ["90-001", "Lodz"],
+                ["Polska"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value is None
+        assert address_2_ev.value is None
+        assert address_1_ev.source == "unresolved"
+        assert address_2_ev.source == "unresolved"
+        assert address_1_ev.bbox is not None
+        assert address_2_ev.bbox is not None
+
+
 def test_field_evidence_accepts_date():
     ev = FieldEvidence(
         value=date(2026, 1, 1),
@@ -277,8 +463,14 @@ def test_populate_shell_e2e():
     with pdfplumber.open(pdf_path) as pdf:
         shell, evidence = populate_shell(parse_data(pdf))
 
+    assert shell.seller.name == "Sklep Domowy Komfort sp. z o.o."
     assert shell.seller.nip == "8637940261"
+    assert shell.seller.address_line_1 == "ul. Polna 29"
+    assert shell.seller.address_line_2 == "90-001 Lodz"
+    assert shell.buyer.name == "Meblotronik sp. z o.o."
     assert shell.buyer.nip == "5423511615"
+    assert shell.buyer.address_line_1 == "ul. Ogrodowa 70 m. 3"
+    assert shell.buyer.address_line_2 == "00-001 Warszawa"
     assert shell.invoice_number == "FV2026/11/390"
     assert shell.issue_date == date(2026, 11, 24)
     assert shell.sale_date == date(2026, 11, 23)
@@ -287,6 +479,19 @@ def test_populate_shell_e2e():
         ev = evidence[key]
         assert ev.source == "regex"
         assert ev.confidence >= 0.5
+        assert ev.bbox is not None
+
+    for key in (
+        "seller.name",
+        "seller.address_line_1",
+        "seller.address_line_2",
+        "buyer.name",
+        "buyer.address_line_1",
+        "buyer.address_line_2",
+    ):
+        ev = evidence[key]
+        assert ev.source == "spatial"
+        assert ev.confidence == 1.0
         assert ev.bbox is not None
 
     for key in ("invoice_number", "issue_date", "sale_date"):
