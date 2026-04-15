@@ -1,14 +1,24 @@
 """Tests for tier-1 NIP extraction into DomesticVatInvoiceShell."""
 
+from datetime import date
+
 import pdfplumber
 import pytest
 
 from src.input_processing.parse import REPO_ROOT_PATH, SubBlock, parse_data
 from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
+    FieldEvidence,
+    extract_labeled_field,
     extract_nip_from_subblock,
+    find_below_neighbor,
+    find_label,
+    find_right_neighbor,
     find_seller_buyer_subblocks,
+    find_value_word,
+    header_words,
     populate_shell,
+    threshold_for,
     validate_nip_checksum,
 )
 
@@ -118,7 +128,148 @@ class TestExtractNipFromSubblock:
         assert ev.source == "unresolved"
 
 
-def test_nip_e2e():
+@pytest.mark.parametrize(
+    "anchor, expected",
+    [
+        ("nr", 100),  # short → strict
+        ("numer", 90),  # medium
+        ("wystawiono", 80),  # long → loose
+    ],
+)
+def test_threshold_for(anchor, expected):
+    assert threshold_for(anchor) == expected
+
+
+class TestFindLabel:
+    def _words(self):
+        return [
+            make_word("Numer:", 0, 30, 0, 10),
+            make_word("FV2026/11/390", 35, 100, 0, 10),
+            make_word("Wystawiono:", 0, 50, 20, 30),
+            make_word("2026-11-24", 55, 120, 20, 30),
+        ]
+
+    def test_single_token_anchor_matches(self):
+        match = find_label(self._words(), ["numer"])
+        assert match is not None
+        assert match[0].text == "Numer:"
+        assert match[1] >= 90
+
+    def test_long_anchor_tolerates_noise(self):
+        match = find_label(self._words(), ["wystawiono"])
+        assert match is not None
+        assert match[0].text == "Wystawiono:"
+
+    def test_bigram_anchor_matches_adjacent_words(self):
+        words = [
+            make_word("Faktura", 0, 40, 0, 10),
+            make_word("nr", 45, 60, 0, 10),
+            make_word("FV2026", 65, 120, 0, 10),
+        ]
+        match = find_label(words, ["faktura nr"])
+        assert match is not None
+        assert match[0].text == "Faktura"
+
+    def test_no_match_below_threshold(self):
+        words = [make_word("Cena:", 0, 30, 0, 10)]
+        assert find_label(words, ["numer"]) is None
+
+
+class TestNeighborLookup:
+    def test_right_neighbor_picked_on_same_line(self):
+        label = make_word("Numer:", 0, 30, 0, 10)
+        value = make_word("FV2026", 35, 100, 0, 10)
+        other = make_word("Below", 0, 30, 40, 50)
+
+        assert find_right_neighbor(label, [label, value, other]) is value
+
+    def test_right_neighbor_none_when_only_below(self):
+        label = make_word("Numer:", 0, 30, 0, 10)
+        below = make_word("FV2026", 0, 30, 40, 50)
+
+        assert find_right_neighbor(label, [label, below]) is None
+
+    def test_below_neighbor_picked_when_x_aligned(self):
+        label = make_word("Numer:", 0, 30, 0, 10)
+        below = make_word("FV2026", 0, 30, 40, 50)
+
+        assert find_below_neighbor(label, [label, below]) is below
+
+    def test_value_word_prefers_right_over_below(self):
+        label = make_word("Numer:", 0, 30, 0, 10)
+        right = make_word("FV2026", 35, 100, 0, 10)
+        below = make_word("OTHER", 0, 30, 40, 50)
+
+        assert find_value_word(label, [label, right, below]) is right
+
+
+class TestExtractLabeledField:
+    def _header(self):
+        return [
+            make_word("Numer:", 0, 30, 0, 10),
+            make_word("FV2026/11/390", 35, 100, 0, 10),
+            make_word("Wystawiono:", 0, 50, 20, 30),
+            make_word("2026-11-24", 55, 120, 20, 30),
+            make_word("Sprzedano:", 0, 50, 40, 50),
+            make_word("not-a-date", 55, 120, 40, 50),
+        ]
+
+    def test_invoice_number_parsed(self):
+        ev = extract_labeled_field(self._header(), ["numer"], str.strip)
+        assert ev.value == "FV2026/11/390"
+        assert ev.source == "fuzzy"
+        assert ev.confidence >= 0.9
+        assert ev.bbox is not None
+
+    def test_date_parse_failure_is_unresolved(self):
+        ev = extract_labeled_field(
+            self._header(), ["sprzedano"], date.fromisoformat
+        )
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.confidence == 0.0
+        assert ev.bbox is not None  # bbox kept for debugging
+
+    def test_missing_label_is_unresolved(self):
+        ev = extract_labeled_field(self._header(), ["nonexistent"], str.strip)
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.bbox is None
+
+
+def test_field_evidence_accepts_date():
+    ev = FieldEvidence(
+        value=date(2026, 1, 1),
+        source="fuzzy",
+        confidence=0.95,
+        bbox=(0, 10, 0, 10),
+    )
+    assert ev.value == date(2026, 1, 1)
+
+
+def test_header_words_filters_by_y():
+    header_sb = SubBlock(
+        words=[make_word("Numer:", 0, 30, 0, 10)],
+        x0=0,
+        x1=30,
+        top=0,
+        bottom=10,
+    )
+    party_sb = SubBlock(
+        words=[make_word("Sprzedawca", 0, 50, 40, 50)],
+        x0=0,
+        x1=50,
+        top=40,
+        bottom=50,
+    )
+
+    result = header_words([[header_sb, party_sb]], party_sb, None)
+    texts = [w.text for w in result]
+    assert "Numer:" in texts
+    assert "Sprzedawca" not in texts
+
+
+def test_populate_shell_e2e():
     pdf_path = (
         REPO_ROOT_PATH
         / "data/synthetic_data/FV2026_11_390_seller_buyer_block_v1.pdf"
@@ -128,9 +279,18 @@ def test_nip_e2e():
 
     assert shell.seller.nip == "8637940261"
     assert shell.buyer.nip == "5423511615"
+    assert shell.invoice_number == "FV2026/11/390"
+    assert shell.issue_date == date(2026, 11, 24)
+    assert shell.sale_date == date(2026, 11, 23)
 
     for key in ("seller.nip", "buyer.nip"):
         ev = evidence[key]
         assert ev.source == "regex"
         assert ev.confidence >= 0.5
+        assert ev.bbox is not None
+
+    for key in ("invoice_number", "issue_date", "sale_date"):
+        ev = evidence[key]
+        assert ev.source == "fuzzy"
+        assert ev.confidence >= 0.85
         assert ev.bbox is not None
