@@ -72,12 +72,14 @@ def check_same_line(w1: Word, w2: Word) -> bool:
     Uses interval overlap on the y-axis rather than comparing a single
     y-coordinate, so it adapts to mixed font sizes and OCR jitter.
     """
+
     overlap = min(w1.bottom, w2.bottom) - max(w1.top, w2.top)
     return overlap > 0.5 * min(w1.height, w2.height)
 
 
 def parse_words(text: list[dict]) -> list[Word]:
     """Convert raw pdfplumber word dicts to Word dataclasses."""
+
     return [
         Word(w["text"], w["x0"], w["x1"], w["top"], w["bottom"]) for w in text
     ]
@@ -85,6 +87,7 @@ def parse_words(text: list[dict]) -> list[Word]:
 
 def bbox_of(items: list) -> tuple[float, float, float, float]:
     """Return (x0, x1, top, bottom) enveloping all items."""
+
     x0 = min(it.x0 for it in items)
     x1 = max(it.x1 for it in items)
     top = min(it.top for it in items)
@@ -94,6 +97,7 @@ def bbox_of(items: list) -> tuple[float, float, float, float]:
 
 def parse_lines(words: list[Word]) -> list[Line]:
     """Group words into lines by y-overlap with the anchor word."""
+
     lines: list[Line] = []
     i = 0
     while i < len(words):
@@ -119,6 +123,7 @@ def calc_largest_line_gap(lines: list[Line]) -> float:
     Sorting groups gaps into clusters (e.g. line spacing vs block
     separators); the biggest jump marks the natural boundary between them.
     """
+
     gaps = sorted(
         lines[i + 1].top - lines[i].bottom for i in range(len(lines) - 1)
     )
@@ -140,6 +145,7 @@ def calc_largest_line_gap(lines: list[Line]) -> float:
 
 def parse_blocks(lines: list[Line]) -> list[Block]:
     """Group lines into blocks by y-gap thresholding."""
+
     if not lines:
         return []
 
@@ -172,6 +178,7 @@ def calculate_inblock_gaps(
     A gap qualifies if it's >= 10% of the block width (relative
     threshold so it works regardless of page size or units).
     """
+
     block_width = block.x1 - block.x0
     gutter_threshold = block_width * 0.1
     in_block_gaps: dict[int, list[tuple[float, float]]] = {}
@@ -200,6 +207,7 @@ def get_gutters(
     to their intersection (max of starts, min of ends). A gutter
     is valid only if it spans the majority of lines.
     """
+
     all_gaps: list[tuple[tuple[float, float], int]] = []
     for line_idx, gaps in in_block_gaps.items():
         for gap in gaps:
@@ -236,6 +244,7 @@ def parse_sub_blocks(block: Block) -> list[SubBlock]:
     N gutters produce N+1 sub-blocks (columns). Words are assigned
     to columns by their x-center position.
     """
+
     in_block_gaps = calculate_inblock_gaps(block)
     gutters = get_gutters(in_block_gaps, len(block.lines))
 
@@ -286,6 +295,7 @@ def parse_data(pdf_file: PDF) -> list[list[SubBlock]]:
     words → lines (y-overlap) → blocks (y-gap) → sub-blocks (x-gutter).
     Returns one list of sub-blocks per top-level block.
     """
+
     if len(pdf_file.pages) != 1:
         raise ValueError(
             f"Expected single-page PDF, got {len(pdf_file.pages)} pages"

@@ -23,11 +23,13 @@ def make_word(
     text: str, x0: float, x1: float, top: float, bottom: float
 ) -> Word:
     """Create a Word with auto-computed height."""
+
     return Word(text, x0, x1, top, bottom)
 
 
 def make_line(words: list[Word]) -> Line:
     """Create a Line with bbox derived from its words."""
+
     return Line(
         words=words,
         x0=min(w.x0 for w in words),
@@ -39,6 +41,7 @@ def make_line(words: list[Word]) -> Line:
 
 def make_block(lines: list[Line]) -> Block:
     """Create a Block with bbox derived from its lines."""
+
     return Block(
         lines=lines,
         x0=min(line.x0 for line in lines),
@@ -69,6 +72,7 @@ class TestCheckSameLine:
 
     def test_different_lines_minimal_overlap(self):
         """Tall word barely clips into small word — not same line."""
+
         w1 = make_word("a", 0, 10, 100, 112)  # height 12
         w2 = make_word("b", 0, 10, 108, 124)  # height 16
         # overlap=4, threshold=6
@@ -76,6 +80,7 @@ class TestCheckSameLine:
 
     def test_different_font_sizes_same_line(self):
         """Mixed font sizes with sufficient overlap — same line."""
+
         w1 = make_word("big", 0, 50, 100, 124)  # height 24
         w2 = make_word("small", 60, 80, 106, 118)  # height 12
         # overlap=12, threshold=6
@@ -172,6 +177,7 @@ class TestCalculateInblockGaps:
 
     def test_detects_gutter(self):
         """Two-column block: gap between columns exceeds 10% of block width."""
+
         lines = [
             make_line(
                 [
@@ -195,6 +201,7 @@ class TestCalculateInblockGaps:
 
     def test_no_gutter(self):
         """Single-column: word spacing below 10% threshold."""
+
         lines = [
             make_line(
                 [
@@ -212,6 +219,7 @@ class TestGetGutters:
 
     def test_valid_gutter(self):
         """Gaps in both lines overlap → valid gutter."""
+
         in_block_gaps = {
             0: [(140, 300)],
             1: [(160, 300)],
@@ -223,6 +231,7 @@ class TestGetGutters:
 
     def test_gap_in_minority_of_lines(self):
         """Gap in 1 of 4 lines (<50%) → rejected."""
+
         in_block_gaps = {
             0: [(140, 300)],
         }
@@ -230,6 +239,7 @@ class TestGetGutters:
 
     def test_two_gutters(self):
         """Three-column layout produces two gutters."""
+
         in_block_gaps = {
             0: [(100, 180), (280, 350)],
             1: [(110, 175), (285, 345)],
@@ -247,6 +257,7 @@ class TestParseSubBlocks:
 
     def test_two_column_split(self):
         """Seller/buyer side-by-side → 2 sub-blocks."""
+
         lines = [
             make_line(
                 [
@@ -280,6 +291,7 @@ class TestParseSubBlocks:
 
     def test_single_column_no_split(self):
         """No gutter detected → single sub-block."""
+
         lines = [
             make_line(
                 [
@@ -295,6 +307,7 @@ class TestParseSubBlocks:
 
     def test_three_column_split(self):
         """Three-column layout → 3 sub-blocks."""
+
         lines = [
             make_line(
                 [
