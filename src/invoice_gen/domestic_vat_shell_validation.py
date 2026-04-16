@@ -64,7 +64,86 @@ def validate_domestic_vat_shell(
     return ShellValidationResult(errors=errors)
 
 
+def validate_header_only_shell(
+    shell: DomesticVatInvoiceShell,
+) -> ShellValidationResult:
+    """Validate a header-only partial shell for M3 extraction.
+
+    Skips line_items, issue_city, payment_form, and adnotations
+    because these fields are not populated by header-only extraction.
+    """
+
+    errors: list[ShellValidationError] = []
+
+    _validate_header_invoice_fields(shell, errors)
+    _validate_party_fields(shell.seller, "seller", errors)
+    _validate_buyer_fields(shell.buyer, errors)
+    _validate_cross_party_rules(shell, errors)
+
+    return ShellValidationResult(errors=errors)
+
+
 # --- Shell-section validators --------------------------------------------
+
+
+def _validate_header_invoice_fields(
+    shell: DomesticVatInvoiceShell,
+    errors: list[ShellValidationError],
+) -> None:
+    """Validate header-level fields for partial shells.
+
+    Skips issue_city and payment_form (not extracted / not rendered).
+    """
+
+    if shell.profile is not InvoiceProfile.DOMESTIC_VAT:
+        _add_error(
+            errors,
+            path="profile",
+            code="unsupported_value",
+            message="profile must be DOMESTIC_VAT",
+        )
+
+    if shell.currency != "PLN":
+        _add_error(
+            errors,
+            path="currency",
+            code="unsupported_value",
+            message="currency must be PLN for the domestic VAT MVP",
+        )
+
+    if shell.issue_date is None:
+        _add_error(
+            errors,
+            path="issue_date",
+            code="required",
+            message="issue_date is required",
+        )
+
+    if shell.sale_date is None:
+        _add_error(
+            errors,
+            path="sale_date",
+            code="required",
+            message="sale_date is required",
+        )
+
+    if (
+        shell.issue_date is not None
+        and shell.sale_date is not None
+        and shell.sale_date > shell.issue_date
+    ):
+        _add_error(
+            errors,
+            path="sale_date",
+            code="invalid_relation",
+            message="sale_date must not be later than issue_date",
+        )
+
+    _validate_required_string(
+        shell.invoice_number,
+        "invoice_number",
+        errors,
+    )
 
 
 def _validate_invoice_fields(
