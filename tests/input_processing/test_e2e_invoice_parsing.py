@@ -1,3 +1,5 @@
+"""End-to-end tests for parsing a fixture PDF into benchmark comparison results."""
+
 from src.invoice_gen.benchmark_case import build_benchmark_case
 from src.invoice_gen.pdf_rendering import build_seller_buyer_visibility_manifest
 from src.invoice_gen.benchmark_case import (
@@ -26,6 +28,8 @@ def _stub_validator_valid(_xml: str) -> XsdValidationResult:
 
 
 def test_compare_header_extraction_e2e_fixture_pdf() -> None:
+    """A real fixture PDF should round-trip back to the benchmark truth."""
+
     case = build_benchmark_case(
         case_id=_CASE_ID,
         seed=_SEED,
@@ -54,6 +58,8 @@ def test_compare_header_extraction_e2e_fixture_pdf() -> None:
 
 
 def test_compare_header_extraction_e2e_detects_truth_mismatch() -> None:
+    """Mutating benchmark truth should surface a scored mismatch."""
+
     case = build_benchmark_case(
         case_id=_CASE_ID,
         seed=_SEED,
