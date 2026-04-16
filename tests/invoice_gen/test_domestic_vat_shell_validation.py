@@ -13,7 +13,9 @@ from src.invoice_gen.domestic_vat_seed_mapping import (
 )
 from src.invoice_gen.domestic_vat_shell_validation import (
     validate_domestic_vat_shell,
+    validate_header_only_shell,
 )
+from src.invoice_gen.domain_shell import build_domestic_vat_shell
 
 
 def test_validate_domestic_vat_shell_accepts_valid_mapped_shell() -> None:
@@ -140,6 +142,122 @@ def test_domestic_vat_shell_validation_import_does_not_load_ksef_schema(
         module_name == "ksef_schema" or module_name.startswith("ksef_schema.")
         for module_name in sys.modules
     )
+
+
+# --- Scoped header-only validation tests ---------------------------------
+
+
+def test_validate_header_only_shell_accepts_populated_header() -> None:
+    """A header-only shell with all extracted fields should validate."""
+
+    shell = _make_valid_header_shell()
+
+    result = validate_header_only_shell(shell)
+
+    assert result.is_valid is True
+    assert result.errors == []
+
+
+def test_validate_header_only_shell_skips_line_items() -> None:
+    """Empty line_items must not cause errors in header-only mode."""
+
+    shell = _make_valid_header_shell()
+    shell.line_items = []
+
+    result = validate_header_only_shell(shell)
+
+    assert not any(e.path == "line_items" for e in result.errors)
+    assert result.is_valid is True
+
+
+def test_validate_header_only_shell_skips_issue_city() -> None:
+    """Missing issue_city must not cause errors in header-only mode."""
+
+    shell = _make_valid_header_shell()
+    shell.issue_city = None
+
+    result = validate_header_only_shell(shell)
+
+    assert not any(e.path == "issue_city" for e in result.errors)
+    assert result.is_valid is True
+
+
+def test_validate_header_only_shell_skips_payment_form() -> None:
+    """Invalid payment_form must not cause errors in header-only mode."""
+
+    shell = _make_valid_header_shell()
+    shell.payment_form = 999
+
+    result = validate_header_only_shell(shell)
+
+    assert not any(e.path == "payment_form" for e in result.errors)
+    assert result.is_valid is True
+
+
+def test_validate_header_only_shell_skips_adnotations() -> None:
+    """Adnotation defaults are not checked in header-only mode."""
+
+    shell = _make_valid_header_shell()
+    shell.adnotations.margin_mode = "active"
+
+    result = validate_header_only_shell(shell)
+
+    assert not any("adnotations" in e.path for e in result.errors)
+    assert result.is_valid is True
+
+
+def test_validate_header_only_shell_still_requires_issue_date() -> None:
+    """Missing issue_date must still be rejected."""
+
+    shell = _make_valid_header_shell()
+    shell.issue_date = None
+
+    result = validate_header_only_shell(shell)
+
+    _assert_has_error(result, "issue_date", "required")
+
+
+def test_validate_header_only_shell_still_validates_nip() -> None:
+    """Invalid seller NIP must still be rejected."""
+
+    shell = _make_valid_header_shell()
+    shell.seller.nip = "0000000000"
+
+    result = validate_header_only_shell(shell)
+
+    _assert_has_error(result, "seller.nip", "invalid_format")
+
+
+def test_validate_header_only_shell_still_checks_cross_party_nip() -> None:
+    """Matching seller/buyer NIP must still be rejected."""
+
+    shell = _make_valid_header_shell()
+    shell.buyer.nip = shell.seller.nip
+
+    result = validate_header_only_shell(shell)
+
+    _assert_has_error(result, "buyer.nip", "invalid_relation")
+
+
+def _make_valid_header_shell():
+    """Build a header-only shell that should pass scoped validation."""
+
+    from datetime import date
+
+    shell = build_domestic_vat_shell()
+    shell.issue_date = date(2026, 11, 24)
+    shell.sale_date = date(2026, 11, 23)
+    shell.invoice_number = "FV2026/11/390"
+    shell.seller.nip = "8637940261"
+    shell.seller.name = "Firma Testowa Sp. z o.o."
+    shell.seller.address_line_1 = "ul. Testowa 1"
+    shell.seller.address_line_2 = "00-001 Warszawa"
+    shell.buyer.nip = "5423511615"
+    shell.buyer.name = "Odbiorca Testowy S.A."
+    shell.buyer.address_line_1 = "ul. Inna 5"
+    shell.buyer.address_line_2 = "31-200 Kraków"
+
+    return shell
 
 
 def _assert_has_error(result: object, path: str, code: str) -> None:
