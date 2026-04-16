@@ -433,6 +433,45 @@ def test_field_evidence_accepts_date():
     assert ev.value == date(2026, 1, 1)
 
 
+def test_field_evidence_raw_text_defaults_to_none():
+    """Omitting raw_text should default to None for backward compatibility."""
+
+    ev = FieldEvidence(
+        value="test",
+        source="spatial",
+        confidence=1.0,
+        bbox=(0, 0, 10, 10),
+    )
+    assert ev.raw_text is None
+
+
+def test_nip_extraction_preserves_hyphenated_raw_text():
+    """raw_text should carry the original hyphenated form from the PDF."""
+
+    words = make_text_line(["NIP", "863-794-02-61"], top=50)
+    sb = make_sub_block(words)
+
+    ev = extract_nip_from_subblock(sb)
+
+    assert ev.value == "8637940261"
+    assert ev.raw_text == "863-794-02-61"
+
+
+def test_spatial_evidence_raw_text_matches_value():
+    """For spatial extraction, raw_text should equal the joined line text."""
+
+    anchor_line = make_text_line(["Sprzedawca"], top=0)
+    name_line = make_text_line(["Firma", "Testowa"], top=15)
+    nip_line = make_text_line(["NIP", "8637940261"], top=30)
+    addr_line = make_text_line(["ul.", "Testowa", "1"], top=45)
+
+    sb = make_sub_block(anchor_line + name_line + nip_line + addr_line)
+    ev = extract_party_name_from_subblock(sb)
+
+    assert ev.source == "spatial"
+    assert ev.raw_text == ev.value
+
+
 def test_header_words_filters_by_y():
     header_sb = SubBlock(
         words=[make_word("Numer:", 0, 30, 0, 10)],
