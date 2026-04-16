@@ -64,6 +64,7 @@ class FieldEvidence:
     source: EvidenceSource
     confidence: float
     bbox: tuple[float, float, float, float] | None
+    raw_text: str | None = None
 
 
 def validate_nip_checksum(digits: str) -> bool:
@@ -155,6 +156,7 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
             source="regex",
             confidence=confidence,
             bbox=bbox,
+            raw_text=match.group(),
         )
 
     return FieldEvidence(
@@ -194,11 +196,14 @@ def _line_words(lines: list[list[Word]]) -> list[Word]:
 def _spatial_line_evidence(words: list[Word]) -> FieldEvidence:
     """Build a high-confidence spatial FieldEvidence from a single line of words."""
 
+    text = _line_text(words)
+
     return FieldEvidence(
-        value=_line_text(words),
+        value=text,
         source="spatial",
         confidence=1.0,
         bbox=bbox_of(words),
+        raw_text=text,
     )
 
 
@@ -448,15 +453,25 @@ def extract_labeled_field(
 
     bbox = bbox_of([label_word, value_word])
 
+    raw_text = value_word.text
+
     try:
-        value = parser(value_word.text)
+        value = parser(raw_text)
     except (ValueError, TypeError):
         return FieldEvidence(
-            value=None, source="unresolved", confidence=0.0, bbox=bbox
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox,
+            raw_text=raw_text,
         )
 
     return FieldEvidence(
-        value=value, source="fuzzy", confidence=score / 100, bbox=bbox
+        value=value,
+        source="fuzzy",
+        confidence=score / 100,
+        bbox=bbox,
+        raw_text=raw_text,
     )
 
 
