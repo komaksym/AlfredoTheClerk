@@ -13,9 +13,13 @@ from src.invoice_gen.domestic_vat_seed_mapping import (
 )
 from src.invoice_gen.domestic_vat_shell_validation import (
     validate_domestic_vat_shell,
+    validate_header_and_line_items_shell,
     validate_header_only_shell,
 )
-from src.invoice_gen.domain_shell import build_domestic_vat_shell
+from src.invoice_gen.domain_shell import (
+    LineItemShell,
+    build_domestic_vat_shell,
+)
 
 
 def test_validate_domestic_vat_shell_accepts_valid_mapped_shell() -> None:
@@ -237,6 +241,94 @@ def test_validate_header_only_shell_still_checks_cross_party_nip() -> None:
     result = validate_header_only_shell(shell)
 
     _assert_has_error(result, "buyer.nip", "invalid_relation")
+
+
+# --- validate_header_and_line_items_shell (M4 scoped validator) ---------
+
+
+def test_validate_header_and_line_items_shell_accepts_seed_mapped_shell() -> (
+    None
+):
+    """The seed-42 mapped shell should pass the M4 scoped validator."""
+
+    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(seed=42))
+
+    result = validate_header_and_line_items_shell(shell)
+
+    assert result.is_valid is True
+    assert result.errors == []
+
+
+def test_validate_header_and_line_items_shell_rejects_missing_line_items() -> (
+    None
+):
+    """Empty line_items must still fail the M4 scoped validator."""
+
+    shell = _make_valid_header_and_line_items_shell()
+    shell.line_items = []
+
+    result = validate_header_and_line_items_shell(shell)
+
+    _assert_has_error(result, "line_items", "required")
+
+
+def test_validate_header_and_line_items_shell_rejects_bad_line_item_values() -> (
+    None
+):
+    """Non-positive quantity/price and disallowed VAT rates must be rejected."""
+
+    shell = _make_valid_header_and_line_items_shell()
+    shell.line_items[0].quantity = Decimal("-1")
+    shell.line_items[0].unit_price_net = Decimal("0")
+    shell.line_items[0].vat_rate = Decimal("99")
+
+    result = validate_header_and_line_items_shell(shell)
+
+    _assert_has_error(result, "line_items[0].quantity", "invalid_value")
+    _assert_has_error(result, "line_items[0].unit_price_net", "invalid_value")
+    _assert_has_error(result, "line_items[0].vat_rate", "unsupported_value")
+
+
+def test_validate_header_and_line_items_shell_ignores_unrendered_fields() -> (
+    None
+):
+    """Missing issue_city, payment_form, and adnotations must not fail.
+
+    The M4 template does not render these yet, so the scoped validator
+    treats them as out of scope.
+    """
+
+    shell = _make_valid_header_and_line_items_shell()
+    shell.issue_city = None
+    shell.payment_form = None
+    shell.adnotations = None
+
+    result = validate_header_and_line_items_shell(shell)
+
+    assert result.is_valid is True
+
+
+def _make_valid_header_and_line_items_shell():
+    """Build a shell that should pass the M4 scoped validator."""
+
+    shell = _make_valid_header_shell()
+    shell.line_items = [
+        LineItemShell(
+            description="Krzesło biurowe",
+            unit="szt.",
+            quantity=Decimal("2"),
+            unit_price_net=Decimal("975.40"),
+            vat_rate=Decimal("23"),
+        ),
+        LineItemShell(
+            description="Lampka LED",
+            unit="szt.",
+            quantity=Decimal("5"),
+            unit_price_net=Decimal("49.99"),
+            vat_rate=Decimal("5"),
+        ),
+    ]
+    return shell
 
 
 def _make_valid_header_shell():
