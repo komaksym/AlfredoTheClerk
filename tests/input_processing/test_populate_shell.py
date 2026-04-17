@@ -1,18 +1,26 @@
 """Tests for deterministic field extraction into DomesticVatInvoiceShell."""
 
 from datetime import date
+from decimal import Decimal
 
 import pdfplumber
 import pytest
 
-from src.input_processing.parse import REPO_ROOT_PATH, SubBlock, parse_data
+from src.input_processing.parse import (
+    REPO_ROOT_PATH,
+    ParsedTable,
+    SubBlock,
+    TableCell,
+    parse_data,
+)
 from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
     FieldEvidence,
+    extract_labeled_field,
+    extract_line_items_rows,
+    extract_nip_from_subblock,
     extract_party_addresses_from_subblock,
     extract_party_name_from_subblock,
-    extract_labeled_field,
-    extract_nip_from_subblock,
     find_below_neighbor,
     find_label,
     find_right_neighbor,
@@ -538,3 +546,183 @@ def test_populate_shell_e2e():
         assert ev.source == "fuzzy"
         assert ev.confidence >= 0.85
         assert ev.bbox is not None
+
+
+# --- Line-item extractor -------------------------------------------------
+
+
+_LINE_ITEM_HEADER_TEXTS = (
+    "Lp.",
+    "Nazwa",
+    "J.m.",
+    "Ilość",
+    "Cena netto",
+    "Stawka VAT",
+)
+
+
+def _cell(text: str | None, x0: float = 0.0) -> TableCell:
+    """Build a TableCell with a distinct bbox per column for assertions."""
+
+    return TableCell(text=text, bbox=(x0, 0.0, x0 + 10.0, 10.0))
+
+
+def _header_row() -> list[TableCell]:
+    return [
+        _cell(text, i * 20.0) for i, text in enumerate(_LINE_ITEM_HEADER_TEXTS)
+    ]
+
+
+def _data_row(
+    lp: str,
+    description: str | None,
+    unit: str | None,
+    quantity: str | None,
+    unit_price_net: str | None,
+    vat_rate: str | None,
+) -> list[TableCell]:
+    return [
+        _cell(lp, 0.0),
+        _cell(description, 20.0),
+        _cell(unit, 40.0),
+        _cell(quantity, 60.0),
+        _cell(unit_price_net, 80.0),
+        _cell(vat_rate, 100.0),
+    ]
+
+
+def _make_table(rows: list[list[TableCell]]) -> ParsedTable:
+    return ParsedTable(bbox=(0.0, 0.0, 120.0, 100.0), rows=rows)
+
+
+def test_extract_line_items_rows_populates_all_fields() -> None:
+    table = _make_table(
+        [
+            _header_row(),
+            _data_row("1", "Krzesło biurowe", "szt.", "2", "975.40", "23"),
+            _data_row("2", "Lampka LED", "szt.", "5", "49.99", "5"),
+        ]
+    )
+
+    rows = extract_line_items_rows([table])
+
+    assert len(rows) == 2
+
+    first = rows[0]
+    assert first["description"].value == "Krzesło biurowe"
+    assert first["description"].source == "spatial"
+    assert first["description"].confidence == 1.0
+    assert first["description"].bbox == (20.0, 0.0, 30.0, 10.0)
+    assert first["description"].raw_text == "Krzesło biurowe"
+
+    assert first["unit"].value == "szt."
+    assert first["unit"].source == "spatial"
+
+    assert first["quantity"].value == Decimal("2")
+    assert first["quantity"].source == "spatial"
+    assert first["quantity"].confidence == 1.0
+
+    assert first["unit_price_net"].value == Decimal("975.40")
+    assert first["vat_rate"].value == Decimal("23")
+
+    second = rows[1]
+    assert second["description"].value == "Lampka LED"
+    assert second["quantity"].value == Decimal("5")
+    assert second["unit_price_net"].value == Decimal("49.99")
+    assert second["vat_rate"].value == Decimal("5")
+
+
+def test_extract_line_items_rows_strips_surrounding_whitespace() -> None:
+    table = _make_table(
+        [
+            _header_row(),
+            _data_row("1", "  Krzesło  ", " szt. ", " 2 ", " 10.00 ", " 23 "),
+        ]
+    )
+
+    rows = extract_line_items_rows([table])
+
+    assert rows[0]["description"].value == "Krzesło"
+    assert rows[0]["unit"].value == "szt."
+    assert rows[0]["quantity"].value == Decimal("2")
+    assert rows[0]["unit_price_net"].value == Decimal("10.00")
+    assert rows[0]["vat_rate"].value == Decimal("23")
+
+
+def test_extract_line_items_rows_returns_empty_without_matching_header() -> (
+    None
+):
+    """A table without the six expected labels must not be treated as line items."""
+
+    unrelated = _make_table(
+        [
+            [_cell("Foo", 0.0), _cell("Bar", 20.0)],
+            [_cell("1", 0.0), _cell("2", 20.0)],
+        ]
+    )
+
+    assert extract_line_items_rows([unrelated]) == []
+    assert extract_line_items_rows([]) == []
+
+
+def test_extract_line_items_rows_unparseable_decimal_is_unresolved() -> None:
+    """Non-Decimal cells yield unresolved evidence but preserve bbox + raw_text."""
+
+    table = _make_table(
+        [
+            _header_row(),
+            _data_row("1", "Krzesło", "szt.", "not-a-number", "975.40", "23"),
+        ]
+    )
+
+    rows = extract_line_items_rows([table])
+    quantity = rows[0]["quantity"]
+
+    assert quantity.value is None
+    assert quantity.source == "unresolved"
+    assert quantity.confidence == 0.0
+    assert quantity.bbox == (60.0, 0.0, 70.0, 10.0)
+    assert quantity.raw_text == "not-a-number"
+
+
+def test_extract_line_items_rows_empty_text_cells_are_unresolved() -> None:
+    """Empty / whitespace-only / None cells for strings resolve to None."""
+
+    table = _make_table(
+        [
+            _header_row(),
+            _data_row("1", None, "   ", "2", "10.00", "23"),
+        ]
+    )
+
+    rows = extract_line_items_rows([table])
+
+    description = rows[0]["description"]
+    assert description.value is None
+    assert description.source == "unresolved"
+    assert description.confidence == 0.0
+    assert description.raw_text is None
+
+    unit = rows[0]["unit"]
+    assert unit.value is None
+    assert unit.source == "unresolved"
+    assert unit.raw_text == "   "
+
+
+def test_extract_line_items_rows_picks_first_matching_table() -> None:
+    """Earlier non-matching tables are skipped; the first matching table wins."""
+
+    decoy = _make_table(
+        [[_cell("x", 0.0), _cell("y", 20.0)]],
+    )
+    target = _make_table(
+        [
+            _header_row(),
+            _data_row("1", "Krzesło", "szt.", "2", "10.00", "23"),
+        ]
+    )
+
+    rows = extract_line_items_rows([decoy, target])
+
+    assert len(rows) == 1
+    assert rows[0]["description"].value == "Krzesło"
