@@ -12,6 +12,7 @@ moment the same shell starts producing different extracted text.
 from __future__ import annotations
 
 import io
+from decimal import Decimal
 
 import pdfplumber
 import pytest
@@ -211,14 +212,16 @@ def test_seller_buyer_manifest_marks_only_party_paths_visible() -> None:
     }
 
 
-def test_seller_buyer_manifest_fails_required_path_validation() -> None:
-    """The bucket-1 gate must flag every required field this template skips.
+def test_seller_buyer_manifest_required_path_validation_after_m4_slice1() -> (
+    None
+):
+    """Bucket-1 gate: header + parties + line items are now all covered.
 
-    The first M2 template covers header + party fields but not line
-    items, so the line-items table entries in the M1 default required
-    set must come back as missing. This is the proof that the gate is
-    doing real work — header fields no longer appear in the missing
-    list because the template now renders them.
+    After M4 slice 1 extended the template with a bordered line-items
+    table, every required path in the default policy is visible.
+    The gate should return an empty missing-list; if later work trims
+    the required set or adds new required paths, the subset assertion
+    keeps this test honest.
     """
 
     policy = build_default_comparison_policy()
@@ -230,10 +233,10 @@ def test_seller_buyer_manifest_fails_required_path_validation() -> None:
         policy.required_paths - SELLER_BUYER_VISIBLE_PATHS
     )
     assert missing == expected_missing
-    # Header is satisfied; line items are still out of scope until M4.
     assert "shell.invoice_number" not in missing
     assert "shell.issue_date" not in missing
-    assert "shell.line_items.count" in missing
+    assert "shell.line_items.count" not in missing
+    assert "shell.line_items[*].description" not in missing
 
 
 def test_seller_buyer_manifest_visible_paths_are_in_default_policy() -> None:
@@ -266,3 +269,73 @@ def test_renderer_handles_missing_optional_fields() -> None:
     # Buyer name is still rendered even though NIP and a line are gone.
     assert local_shell.buyer.name is not None
     assert local_shell.buyer.name.split()[0] in texts
+
+
+# --- M4 slice 1: line-items table ---------------------------------------
+
+
+def _extract_first_table(pdf_bytes: bytes) -> list[list[str | None]]:
+    """Return ``pdfplumber.extract_tables()`` cells from the first page."""
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        tables = pdf.pages[0].extract_tables()
+    assert len(tables) == 1, f"expected exactly one table, got {len(tables)}"
+    return tables[0]
+
+
+def test_line_items_table_has_expected_header_row(
+    rendered_pdf: bytes,
+) -> None:
+    """The header row must expose the six column labels as separate cells."""
+
+    table = _extract_first_table(rendered_pdf)
+
+    header = [cell.strip() if cell else "" for cell in table[0]]
+    assert header == [
+        "Lp.",
+        "Nazwa",
+        "J.m.",
+        "Ilość",
+        "Cena netto",
+        "Stawka VAT",
+    ]
+
+
+def test_line_items_rows_round_trip_canonical_values(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """Each rendered cell must match the frozen Decimal formatting exactly.
+
+    This is the round-trip contract the M4 extractor will rely on: a
+    cell string parsed back to ``Decimal`` must equal the shell value.
+    """
+
+    table = _extract_first_table(rendered_pdf)
+    data_rows = table[1:]
+
+    assert len(data_rows) == len(shell.line_items)
+    for index, (row, item) in enumerate(
+        zip(data_rows, shell.line_items), start=1
+    ):
+        cells = [(cell or "").strip() for cell in row]
+        lp, description, unit, quantity, unit_price_net, vat_rate = cells
+
+        assert lp == str(index)
+        assert description == item.description
+        assert unit == item.unit
+        assert item.quantity is not None
+        assert item.unit_price_net is not None
+        assert item.vat_rate is not None
+        assert Decimal(quantity) == item.quantity
+        assert Decimal(unit_price_net) == item.unit_price_net
+        assert Decimal(vat_rate) == item.vat_rate
+
+
+def test_re_rendering_same_shell_yields_identical_tables(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """Table-extraction determinism: cell strings must be byte-stable."""
+
+    second = render_seller_buyer_block(shell)
+
+    assert _extract_first_table(rendered_pdf) == _extract_first_table(second)
