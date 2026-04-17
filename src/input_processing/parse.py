@@ -62,6 +62,27 @@ class SubBlock:
     bottom: float
 
 
+@dataclass(frozen=True)
+class TableCell:
+    """One cell extracted from a bordered PDF table.
+
+    ``text`` is ``None`` when pdfplumber reports the cell as empty.
+    ``bbox`` carries the cell's ``(x0, top, x1, bottom)`` so downstream
+    evidence can cite the exact region on the page.
+    """
+
+    text: str | None
+    bbox: tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
+class ParsedTable:
+    """One bordered table and its cells, as seen by pdfplumber."""
+
+    bbox: tuple[float, float, float, float]
+    rows: list[list[TableCell]]
+
+
 def normalize_text(text: str) -> str:
     return text.lower().strip()
 
@@ -286,6 +307,46 @@ def parse_sub_blocks(block: Block) -> list[SubBlock]:
             )
 
     return sub_blocks
+
+
+_TABLE_LINE_SETTINGS = {
+    "vertical_strategy": "lines",
+    "horizontal_strategy": "lines",
+}
+
+
+def parse_tables(pdf_file: PDF) -> list[ParsedTable]:
+    """Return every bordered table on a single-page PDF.
+
+    Uses pdfplumber's ``lines`` detection strategy so only tables
+    with real drawn borders are recognized. The rendered M4 line-items
+    table uses ``border: 0.3mm solid #000`` precisely to make this
+    deterministic.
+    """
+
+    if len(pdf_file.pages) != 1:
+        raise ValueError(
+            f"Expected single-page PDF, got {len(pdf_file.pages)} pages"
+        )
+
+    page = pdf_file.pages[0]
+    detected = page.find_tables(table_settings=_TABLE_LINE_SETTINGS)
+    if not detected:
+        return []
+
+    texts_per_table = page.extract_tables(table_settings=_TABLE_LINE_SETTINGS)
+
+    parsed: list[ParsedTable] = []
+    for table, text_rows in zip(detected, texts_per_table, strict=True):
+        rows: list[list[TableCell]] = []
+        for row_obj, text_row in zip(table.rows, text_rows, strict=True):
+            row_cells: list[TableCell] = []
+            for cell_bbox, text in zip(row_obj.cells, text_row, strict=True):
+                row_cells.append(TableCell(text=text, bbox=cell_bbox))
+            rows.append(row_cells)
+        parsed.append(ParsedTable(bbox=table.bbox, rows=rows))
+
+    return parsed
 
 
 def parse_data(pdf_file: PDF) -> list[list[SubBlock]]:
