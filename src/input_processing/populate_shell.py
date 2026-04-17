@@ -4,6 +4,7 @@ Current scope covers:
 - seller/buyer NIP via regex inside party sub-blocks
 - seller/buyer name and address lines via spatial row positions
 - invoice number and issue/sale dates via fuzzy header labels
+- line-items table rows when a parsed bordered table is supplied
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Callable, Literal
 from pprint import pprint
@@ -20,11 +22,13 @@ from rapidfuzz import fuzz
 
 from src.invoice_gen.domain_shell import (
     DomesticVatInvoiceShell,
+    LineItemShell,
     build_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_seed import NIP_PATTERN
 
 from .parse import (
+    ParsedTable,
     SubBlock,
     Word,
     bbox_of,
@@ -60,7 +64,7 @@ EvidenceSource = Literal["regex", "fuzzy", "spatial", "llm", "unresolved"]
 class FieldEvidence:
     """Provenance for a single populated shell field."""
 
-    value: str | date | None
+    value: str | date | Decimal | None
     source: EvidenceSource
     confidence: float
     bbox: tuple[float, float, float, float] | None
@@ -475,10 +479,164 @@ def extract_labeled_field(
     )
 
 
+_LINE_ITEM_HEADER_ANCHORS = (
+    "lp.",
+    "nazwa",
+    "j.m.",
+    "ilość",
+    "cena netto",
+    "stawka vat",
+)
+_LINE_ITEM_HEADER_THRESHOLD = 80
+_LINE_ITEM_FIELD_NAMES = (
+    "description",
+    "unit",
+    "quantity",
+    "unit_price_net",
+    "vat_rate",
+)
+
+
+def _match_line_items_header(row: list) -> bool:
+    """Return True if ``row`` fuzzy-matches the six expected header labels."""
+
+    if len(row) != len(_LINE_ITEM_HEADER_ANCHORS):
+        return False
+
+    for cell, anchor in zip(row, _LINE_ITEM_HEADER_ANCHORS, strict=True):
+        text = (cell.text or "").strip()
+        if not text:
+            return False
+        score = fuzz.ratio(normalize_text(text), anchor)
+        if score < _LINE_ITEM_HEADER_THRESHOLD:
+            return False
+
+    return True
+
+
+def _unresolved_cell_evidence(
+    cell_text: str | None,
+    bbox: tuple[float, float, float, float],
+) -> FieldEvidence:
+    """FieldEvidence for a cell whose value could not be resolved."""
+
+    return FieldEvidence(
+        value=None,
+        source="unresolved",
+        confidence=0.0,
+        bbox=bbox,
+        raw_text=cell_text,
+    )
+
+
+def _string_cell_evidence(
+    cell_text: str | None,
+    bbox: tuple[float, float, float, float],
+) -> FieldEvidence:
+    """FieldEvidence for a string-valued line-item cell (description, unit)."""
+
+    if cell_text is None or not cell_text.strip():
+        return _unresolved_cell_evidence(cell_text, bbox)
+
+    stripped = cell_text.strip()
+    return FieldEvidence(
+        value=stripped,
+        source="spatial",
+        confidence=1.0,
+        bbox=bbox,
+        raw_text=cell_text,
+    )
+
+
+def _decimal_cell_evidence(
+    cell_text: str | None,
+    bbox: tuple[float, float, float, float],
+) -> FieldEvidence:
+    """FieldEvidence for a Decimal-valued cell (quantity / price / vat rate)."""
+
+    if cell_text is None or not cell_text.strip():
+        return _unresolved_cell_evidence(cell_text, bbox)
+
+    try:
+        parsed = Decimal(cell_text.strip())
+    except InvalidOperation:
+        return _unresolved_cell_evidence(cell_text, bbox)
+
+    return FieldEvidence(
+        value=parsed,
+        source="spatial",
+        confidence=1.0,
+        bbox=bbox,
+        raw_text=cell_text,
+    )
+
+
+def extract_line_items_rows(
+    parsed_tables: list[ParsedTable],
+) -> list[dict[str, FieldEvidence]]:
+    """Return per-row evidence dicts for the first detected line-items table.
+
+    Picks the first table whose header row fuzzy-matches the expected
+    six column labels. Each data row becomes a dict keyed by shell
+    field name (``description``, ``unit``, ``quantity``,
+    ``unit_price_net``, ``vat_rate``). Returns ``[]`` when no table
+    matches — the caller treats that as "no line items extracted".
+    """
+
+    target: ParsedTable | None = None
+    for table in parsed_tables:
+        if not table.rows:
+            continue
+        if _match_line_items_header(table.rows[0]):
+            target = table
+            break
+
+    if target is None:
+        return []
+
+    rows: list[dict[str, FieldEvidence]] = []
+    for row in target.rows[1:]:
+        if len(row) != len(_LINE_ITEM_HEADER_ANCHORS):
+            continue
+
+        # Column order matches the rendered template:
+        # Lp., Nazwa, J.m., Ilość, Cena netto, Stawka VAT.
+        _, description_cell, unit_cell, quantity_cell, price_cell, vat_cell = (
+            row
+        )
+
+        rows.append(
+            {
+                "description": _string_cell_evidence(
+                    description_cell.text, description_cell.bbox
+                ),
+                "unit": _string_cell_evidence(unit_cell.text, unit_cell.bbox),
+                "quantity": _decimal_cell_evidence(
+                    quantity_cell.text, quantity_cell.bbox
+                ),
+                "unit_price_net": _decimal_cell_evidence(
+                    price_cell.text, price_cell.bbox
+                ),
+                "vat_rate": _decimal_cell_evidence(
+                    vat_cell.text, vat_cell.bbox
+                ),
+            }
+        )
+
+    return rows
+
+
 def populate_shell(
     parsed_data: list[list[SubBlock]],
+    parsed_tables: list[ParsedTable] | None = None,
 ) -> tuple[DomesticVatInvoiceShell, dict[str, FieldEvidence]]:
-    """Populate header + party fields with evidence."""
+    """Populate header + party fields — and line items when tables are given.
+
+    ``parsed_tables`` is optional to preserve the M3 header-only
+    entry path. When supplied, rows extracted from the first
+    line-items table become ``LineItemShell`` entries plus
+    ``line_items[i].*`` evidence.
+    """
 
     shell = build_domestic_vat_shell()
     evidence: dict[str, FieldEvidence] = {}
@@ -537,7 +695,37 @@ def populate_shell(
     evidence["issue_date"] = issue_ev
     evidence["sale_date"] = sale_ev
 
+    if parsed_tables is not None:
+        for row_index, row_ev in enumerate(
+            extract_line_items_rows(parsed_tables)
+        ):
+            for field_name in _LINE_ITEM_FIELD_NAMES:
+                evidence[f"line_items[{row_index}].{field_name}"] = row_ev[
+                    field_name
+                ]
+            shell.line_items.append(
+                LineItemShell(
+                    description=_as_str(row_ev["description"].value),
+                    unit=_as_str(row_ev["unit"].value),
+                    quantity=_as_decimal(row_ev["quantity"].value),
+                    unit_price_net=_as_decimal(row_ev["unit_price_net"].value),
+                    vat_rate=_as_decimal(row_ev["vat_rate"].value),
+                )
+            )
+
     return shell, evidence
+
+
+def _as_str(value: str | date | Decimal | None) -> str | None:
+    """Narrow a FieldEvidence value that is expected to be a string."""
+
+    return value if isinstance(value, str) else None
+
+
+def _as_decimal(value: str | date | Decimal | None) -> Decimal | None:
+    """Narrow a FieldEvidence value that is expected to be a Decimal."""
+
+    return value if isinstance(value, Decimal) else None
 
 
 def main() -> None:
