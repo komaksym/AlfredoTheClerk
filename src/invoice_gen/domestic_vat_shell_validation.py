@@ -83,6 +83,28 @@ def validate_header_only_shell(
     return ShellValidationResult(errors=errors)
 
 
+def validate_header_and_line_items_shell(
+    shell: DomesticVatInvoiceShell,
+) -> ShellValidationResult:
+    """Validate header, parties, and line items for M4 extraction.
+
+    Skips issue_city, payment_form, and adnotations — those fields
+    are not rendered by the current template and not populated by
+    the M4 extractor. Roadmap §2 requires scoped validation for
+    partial-shell milestones rather than the full-shell validator.
+    """
+
+    errors: list[ShellValidationError] = []
+
+    _validate_header_invoice_fields(shell, errors)
+    _validate_party_fields(shell.seller, "seller", errors)
+    _validate_buyer_fields(shell.buyer, errors)
+    _validate_cross_party_rules(shell, errors)
+    _validate_line_items(shell.line_items, errors)
+
+    return ShellValidationResult(errors=errors)
+
+
 # --- Shell-section validators --------------------------------------------
 
 
