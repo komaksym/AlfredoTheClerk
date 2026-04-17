@@ -1,10 +1,11 @@
 """Native-PDF rendering for the first M2 template.
 
-This is the M2 renderer deliverable: turn one canonical shell into a
-PDF that pdfplumber can extract cleanly. The template covers the
-invoice header (number, issue date, sale date, currency) and the
-seller/buyer two-column block. Line items, totals, and adnotations
-are out of scope until M4.
+This is the M2 renderer deliverable, extended in M4 slice 1: turn one
+canonical shell into a PDF that pdfplumber can extract cleanly. The
+template covers the invoice header (number, issue date, sale date,
+currency), the seller/buyer two-column block, and a bordered
+line-items table. Totals and adnotations are out of scope until
+later M4 slices.
 
 Determinism contract (per ROADMAP.md M2 acceptance):
 
@@ -32,7 +33,11 @@ from datetime import date
 from html import escape
 from pathlib import Path
 
-from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
+from src.invoice_gen.domain_shell import (
+    DomesticVatInvoiceShell,
+    LineItemShell,
+)
+from src.invoice_gen.domestic_vat_money import format_decimal
 from src.invoice_gen.template_visibility import (
     TemplateVisibilityManifest,
     VisibilityStatus,
@@ -60,8 +65,21 @@ SELLER_BUYER_VISIBLE_PATHS: frozenset[str] = frozenset(
         "shell.buyer.nip",
         "shell.buyer.address_line_1",
         "shell.buyer.address_line_2",
+        "shell.line_items.count",
+        "shell.line_items[*].description",
+        "shell.line_items[*].unit",
+        "shell.line_items[*].quantity",
+        "shell.line_items[*].unit_price_net",
+        "shell.line_items[*].vat_rate",
     }
 )
+
+# Fraction-digit caps must match the frozen JSON serialization rules in
+# :mod:`src.invoice_gen.domestic_vat_json` so that values rendered into
+# the PDF round-trip through extraction back to canonical Decimals.
+_QUANTITY_MAX_FRACTION_DIGITS = 6
+_UNIT_PRICE_NET_MAX_FRACTION_DIGITS = 8
+_VAT_RATE_MAX_FRACTION_DIGITS = 0
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _TEMPLATE_PATH = _TEMPLATES_DIR / f"{SELLER_BUYER_TEMPLATE_ID}.html"
@@ -76,6 +94,57 @@ def _format_iso_date(value: date | None) -> str:
     """
 
     return value.isoformat() if value is not None else ""
+
+
+def _render_line_items_rows(line_items: list[LineItemShell]) -> str:
+    """Build the ``<tbody>`` inner HTML for the line-items table.
+
+    Cell formatting mirrors the frozen JSON serialization rules so the
+    extractor can round-trip rendered values back to canonical
+    Decimals. Empty / ``None`` values render as empty cells; the row
+    itself is still emitted so layout stays stable row-by-row for
+    downstream extraction.
+    """
+
+    rows: list[str] = []
+    for index, item in enumerate(line_items, start=1):
+        description = escape(item.description or "")
+        unit = escape(item.unit or "")
+        quantity = (
+            format_decimal(
+                item.quantity,
+                max_fraction_digits=_QUANTITY_MAX_FRACTION_DIGITS,
+            )
+            if item.quantity is not None
+            else ""
+        )
+        unit_price_net = (
+            format_decimal(
+                item.unit_price_net,
+                max_fraction_digits=_UNIT_PRICE_NET_MAX_FRACTION_DIGITS,
+            )
+            if item.unit_price_net is not None
+            else ""
+        )
+        vat_rate = (
+            format_decimal(
+                item.vat_rate,
+                max_fraction_digits=_VAT_RATE_MAX_FRACTION_DIGITS,
+            )
+            if item.vat_rate is not None
+            else ""
+        )
+        rows.append(
+            "      <tr>"
+            f'<td class="num">{index}</td>'
+            f"<td>{description}</td>"
+            f"<td>{unit}</td>"
+            f'<td class="num">{quantity}</td>'
+            f'<td class="num">{unit_price_net}</td>'
+            f'<td class="num">{vat_rate}</td>'
+            "</tr>"
+        )
+    return "\n".join(rows)
 
 
 def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
@@ -111,6 +180,9 @@ def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
         .replace("__BUYER_NIP__", escape(buyer.nip or ""))
         .replace("__BUYER_ADDR1__", escape(buyer.address_line_1 or ""))
         .replace("__BUYER_ADDR2__", escape(buyer.address_line_2 or ""))
+        .replace(
+            "__LINE_ITEMS_ROWS__", _render_line_items_rows(shell.line_items)
+        )
     )
     return HTML(string=rendered, base_url=str(_TEMPLATES_DIR)).write_pdf()
 
