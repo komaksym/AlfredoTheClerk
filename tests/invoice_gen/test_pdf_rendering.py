@@ -26,6 +26,9 @@ from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
 from src.invoice_gen.domestic_vat_seed_mapping import (
     map_domestic_vat_seed_to_shell,
 )
+from src.invoice_gen.domestic_vat_shell_summary import (
+    summarize_domestic_vat_shell,
+)
 from src.invoice_gen.pdf_rendering import (
     SELLER_BUYER_TEMPLATE_ID,
     SELLER_BUYER_VISIBLE_PATHS,
@@ -36,6 +39,10 @@ from src.invoice_gen.template_visibility import VisibilityStatus
 
 
 _SEED = 42
+_TABLE_LINE_SETTINGS = {
+    "vertical_strategy": "lines",
+    "horizontal_strategy": "lines",
+}
 
 
 @pytest.fixture(scope="module")
@@ -202,7 +209,7 @@ def test_re_rendering_same_shell_yields_identical_extraction(
 
 
 def test_seller_buyer_manifest_marks_only_party_paths_visible() -> None:
-    """Manifest must mark exactly the eight party fields as VISIBLE."""
+    """Manifest must mark every renderer-visible path as VISIBLE."""
 
     manifest = build_seller_buyer_visibility_manifest()
 
@@ -274,13 +281,27 @@ def test_renderer_handles_missing_optional_fields() -> None:
 # --- M4 slice 1: line-items table ---------------------------------------
 
 
-def _extract_first_table(pdf_bytes: bytes) -> list[list[str | None]]:
-    """Return ``pdfplumber.extract_tables()`` cells from the first page."""
+def _extract_tables(pdf_bytes: bytes) -> list[list[list[str | None]]]:
+    """Return every bordered table extracted from the first page."""
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        tables = pdf.pages[0].extract_tables()
-    assert len(tables) == 1, f"expected exactly one table, got {len(tables)}"
-    return tables[0]
+        tables = pdf.pages[0].extract_tables(
+            table_settings=_TABLE_LINE_SETTINGS
+        )
+    assert len(tables) == 2, f"expected exactly two tables, got {len(tables)}"
+    return tables
+
+
+def _extract_first_table(pdf_bytes: bytes) -> list[list[str | None]]:
+    """Return the rendered line-items table."""
+
+    return _extract_tables(pdf_bytes)[0]
+
+
+def _extract_second_table(pdf_bytes: bytes) -> list[list[str | None]]:
+    """Return the rendered VAT-summary table."""
+
+    return _extract_tables(pdf_bytes)[1]
 
 
 def test_line_items_table_has_expected_header_row(
@@ -339,3 +360,68 @@ def test_re_rendering_same_shell_yields_identical_tables(
     second = render_seller_buyer_block(shell)
 
     assert _extract_first_table(rendered_pdf) == _extract_first_table(second)
+
+
+# --- M4 slice 2: VAT summary table --------------------------------------
+
+
+def test_summary_table_has_expected_header_row_and_bucket_count(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """The second table must expose bucket rows plus a final ``Razem`` row."""
+
+    summary = summarize_domestic_vat_shell(shell)
+    table = _extract_second_table(rendered_pdf)
+
+    header = [cell.strip() if cell else "" for cell in table[0]]
+    assert header == [
+        "Stawka VAT",
+        "Wartość netto",
+        "VAT",
+        "Wartość brutto",
+    ]
+
+    data_rows = table[1:]
+    assert len(data_rows) == len(summary.bucket_summaries) + 1
+    assert (data_rows[-1][0] or "").strip() == "Razem"
+
+
+def test_summary_rows_round_trip_canonical_values(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """Each VAT bucket cell and the final totals row must parse back exactly."""
+
+    summary = summarize_domestic_vat_shell(shell)
+    table = _extract_second_table(rendered_pdf)
+    data_rows = table[1:]
+    bucket_rows = data_rows[:-1]
+    totals_row = [(cell or "").strip() for cell in data_rows[-1]]
+
+    assert len(bucket_rows) == len(summary.bucket_summaries)
+    for row, (vat_rate, bucket) in zip(
+        bucket_rows,
+        sorted(summary.bucket_summaries.items()),
+        strict=True,
+    ):
+        cells = [(cell or "").strip() for cell in row]
+        rate_text, net_total, vat_total, gross_total = cells
+
+        assert Decimal(rate_text) == vat_rate
+        assert Decimal(net_total) == bucket.net_total
+        assert Decimal(vat_total) == bucket.vat_total
+        assert Decimal(gross_total) == bucket.gross_total
+
+    assert totals_row[0] == "Razem"
+    assert Decimal(totals_row[1]) == summary.invoice_net_total
+    assert Decimal(totals_row[2]) == summary.invoice_vat_total
+    assert Decimal(totals_row[3]) == summary.invoice_gross_total
+
+
+def test_re_rendering_same_shell_yields_identical_summary_table(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """The extracted VAT-summary table must stay identical on re-render."""
+
+    second = render_seller_buyer_block(shell)
+
+    assert _extract_second_table(rendered_pdf) == _extract_second_table(second)
