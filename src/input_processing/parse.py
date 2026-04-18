@@ -83,6 +83,19 @@ class ParsedTable:
     rows: list[list[TableCell]]
 
 
+@dataclass(frozen=True)
+class ParsedDocument:
+    """Single-page parse output: word-level sub-blocks plus bordered tables.
+
+    Bundles the two geometry layers extracted from one PDF so downstream
+    code can take a single argument instead of running ``parse_data`` and
+    ``parse_tables`` independently.
+    """
+
+    sub_blocks: list[list[SubBlock]]
+    tables: list[ParsedTable]
+
+
 def normalize_text(text: str) -> str:
     return text.lower().strip()
 
@@ -349,12 +362,16 @@ def parse_tables(pdf_file: PDF) -> list[ParsedTable]:
     return parsed
 
 
-def parse_data(pdf_file: PDF) -> list[list[SubBlock]]:
+def parse_data(pdf_file: PDF) -> ParsedDocument:
     """Run the full parse pipeline on a single-page PDF.
 
-    Extracts words via pdfplumber and clusters them into sub-blocks:
-    words → lines (y-overlap) → blocks (y-gap) → sub-blocks (x-gutter).
-    Returns one list of sub-blocks per top-level block.
+    Extracts two geometry layers in one pass:
+
+    * words → lines (y-overlap) → blocks (y-gap) → sub-blocks (x-gutter)
+    * bordered tables via pdfplumber's ``lines`` strategy
+
+    Both are bundled into one :class:`ParsedDocument` so downstream
+    extractors can consume a single value.
     """
 
     if len(pdf_file.pages) != 1:
@@ -368,11 +385,11 @@ def parse_data(pdf_file: PDF) -> list[list[SubBlock]]:
     words = parse_words(text)
     lines = parse_lines(words)
     blocks = parse_blocks(lines)
-    sub_blocks = []
-    for block in blocks:
-        sub_blocks.append(parse_sub_blocks(block))
+    sub_blocks = [parse_sub_blocks(block) for block in blocks]
 
-    return sub_blocks
+    tables = parse_tables(pdf_file)
+
+    return ParsedDocument(sub_blocks=sub_blocks, tables=tables)
 
 
 def main() -> None:
@@ -382,8 +399,8 @@ def main() -> None:
     )
 
     with pdfplumber.open(pdf_sample) as pdf:
-        data = parse_data(pdf)
-        print(data)
+        document = parse_data(pdf)
+        print(document)
 
 
 if __name__ == "__main__":
