@@ -28,6 +28,7 @@ from src.invoice_gen.domain_shell import (
 from src.invoice_gen.domestic_vat_seed import NIP_PATTERN
 
 from .parse import (
+    ParsedDocument,
     ParsedTable,
     SubBlock,
     Word,
@@ -627,20 +628,19 @@ def extract_line_items_rows(
 
 
 def populate_shell(
-    parsed_data: list[list[SubBlock]],
-    parsed_tables: list[ParsedTable] | None = None,
+    parsed_document: ParsedDocument,
 ) -> tuple[DomesticVatInvoiceShell, dict[str, FieldEvidence]]:
-    """Populate header + party fields — and line items when tables are given.
+    """Populate header + party fields plus line items from one ParsedDocument.
 
-    ``parsed_tables`` is optional to preserve the M3 header-only
-    entry path. When supplied, rows extracted from the first
-    line-items table become ``LineItemShell`` entries plus
-    ``line_items[i].*`` evidence.
+    Line items are populated from ``parsed_document.tables`` — an empty
+    list (no bordered tables on the page) simply yields no line items
+    and no ``line_items[*]`` evidence keys.
     """
 
     shell = build_domestic_vat_shell()
     evidence: dict[str, FieldEvidence] = {}
 
+    parsed_data = parsed_document.sub_blocks
     seller_sb, buyer_sb = find_seller_buyer_subblocks(parsed_data)
 
     party_subblocks = (
@@ -695,23 +695,22 @@ def populate_shell(
     evidence["issue_date"] = issue_ev
     evidence["sale_date"] = sale_ev
 
-    if parsed_tables is not None:
-        for row_index, row_ev in enumerate(
-            extract_line_items_rows(parsed_tables)
-        ):
-            for field_name in _LINE_ITEM_FIELD_NAMES:
-                evidence[f"line_items[{row_index}].{field_name}"] = row_ev[
-                    field_name
-                ]
-            shell.line_items.append(
-                LineItemShell(
-                    description=_as_str(row_ev["description"].value),
-                    unit=_as_str(row_ev["unit"].value),
-                    quantity=_as_decimal(row_ev["quantity"].value),
-                    unit_price_net=_as_decimal(row_ev["unit_price_net"].value),
-                    vat_rate=_as_decimal(row_ev["vat_rate"].value),
-                )
+    for row_index, row_ev in enumerate(
+        extract_line_items_rows(parsed_document.tables)
+    ):
+        for field_name in _LINE_ITEM_FIELD_NAMES:
+            evidence[f"line_items[{row_index}].{field_name}"] = row_ev[
+                field_name
+            ]
+        shell.line_items.append(
+            LineItemShell(
+                description=_as_str(row_ev["description"].value),
+                unit=_as_str(row_ev["unit"].value),
+                quantity=_as_decimal(row_ev["quantity"].value),
+                unit_price_net=_as_decimal(row_ev["unit_price_net"].value),
+                vat_rate=_as_decimal(row_ev["vat_rate"].value),
             )
+        )
 
     return shell, evidence
 
