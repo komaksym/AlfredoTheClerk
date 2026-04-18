@@ -341,14 +341,15 @@ class TestParseData:
             / "data/synthetic_data/FV2026_11_390_seller_buyer_block_v1.pdf"
         )
         with pdfplumber.open(pdf_path) as pdf:
-            result = parse_data(pdf)
+            document = parse_data(pdf)
 
+        sub_blocks = document.sub_blocks
         # One list of sub-blocks per block
-        assert len(result) >= 2
+        assert len(sub_blocks) >= 2
 
         all_texts = [
             w.text
-            for block_subs in result
+            for block_subs in sub_blocks
             for sb in block_subs
             for w in sb.words
         ]
@@ -358,7 +359,7 @@ class TestParseData:
         # The seller/buyer block should split into 2 sub-blocks (left/right columns)
         seller_buyer_block = next(
             block_subs
-            for block_subs in result
+            for block_subs in sub_blocks
             if any(
                 w.text == "Sprzedawca" for sb in block_subs for w in sb.words
             )
@@ -369,3 +370,6 @@ class TestParseData:
         right_texts = [w.text for w in seller_buyer_block[1].words]
         assert "Sprzedawca" in left_texts
         assert "Nabywca" in right_texts
+
+        # The line-items table is now part of the same parse call.
+        assert len(document.tables) >= 1
