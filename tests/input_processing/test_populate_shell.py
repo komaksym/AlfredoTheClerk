@@ -510,6 +510,8 @@ def test_populate_shell_e2e():
     with pdfplumber.open(pdf_path) as pdf:
         shell, evidence = populate_shell(parse_data(pdf))
 
+    # parse_data now bundles tables too; populate_shell consumes both in one call.
+
     assert shell.seller.name == "Sklep Domowy Komfort sp. z o.o."
     assert shell.seller.nip == "8637940261"
     assert shell.seller.address_line_1 == "ul. Polna 29"
