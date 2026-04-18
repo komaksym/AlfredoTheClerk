@@ -627,6 +627,128 @@ def extract_line_items_rows(
     return rows
 
 
+_SUMMARY_HEADER_ANCHORS = (
+    "stawka vat",
+    "wartość netto",
+    "vat",
+    "wartość brutto",
+)
+_SUMMARY_HEADER_THRESHOLD = 80
+_SUMMARY_TOTALS_LABEL = "razem"
+
+
+def _match_summary_header(row: list) -> bool:
+    """Return True if ``row`` fuzzy-matches the four summary-table headers."""
+
+    if len(row) != len(_SUMMARY_HEADER_ANCHORS):
+        return False
+
+    for cell, anchor in zip(row, _SUMMARY_HEADER_ANCHORS, strict=True):
+        text = (cell.text or "").strip()
+        if not text:
+            return False
+        score = fuzz.ratio(normalize_text(text), anchor)
+        if score < _SUMMARY_HEADER_THRESHOLD:
+            return False
+
+    return True
+
+
+def _is_totals_row(first_cell_text: str | None) -> bool:
+    """Return True when the first cell marks the grand-totals (``Razem``) row."""
+
+    if first_cell_text is None:
+        return False
+
+    return normalize_text(first_cell_text) == _SUMMARY_TOTALS_LABEL
+
+
+def _vat_rate_cell_evidence(
+    cell_text: str | None,
+    bbox: tuple[float, float, float, float],
+) -> FieldEvidence:
+    """FieldEvidence for a VAT-rate cell; tolerates a trailing ``%`` suffix."""
+
+    if cell_text is None or not cell_text.strip():
+        return _unresolved_cell_evidence(cell_text, bbox)
+
+    stripped = cell_text.strip().rstrip("%").strip()
+
+    try:
+        parsed = Decimal(stripped)
+    except InvalidOperation:
+        return _unresolved_cell_evidence(cell_text, bbox)
+
+    return FieldEvidence(
+        value=parsed,
+        source="spatial",
+        confidence=1.0,
+        bbox=bbox,
+        raw_text=cell_text,
+    )
+
+
+def extract_summary_rows(
+    parsed_tables: list[ParsedTable],
+) -> tuple[dict[Decimal, dict[str, FieldEvidence]], dict[str, FieldEvidence]]:
+    """Return ``(bucket_evidence, totals_evidence)`` from the summary table.
+
+    Picks the first table whose header row fuzzy-matches the four
+    summary labels. Each data row parses into either a per-bucket
+    evidence dict keyed by its parsed VAT rate, or — when the first
+    cell reads ``Razem`` — the three invoice grand totals. Returns
+    ``({}, {})`` when no table matches.
+    """
+
+    target: ParsedTable | None = None
+    for table in parsed_tables:
+        if not table.rows:
+            continue
+        if _match_summary_header(table.rows[0]):
+            target = table
+            break
+
+    if target is None:
+        return {}, {}
+
+    bucket_evidence: dict[Decimal, dict[str, FieldEvidence]] = {}
+    totals_evidence: dict[str, FieldEvidence] = {}
+
+    for row in target.rows[1:]:
+        if len(row) != len(_SUMMARY_HEADER_ANCHORS):
+            continue
+
+        rate_cell, net_cell, vat_cell, gross_cell = row
+
+        if _is_totals_row(rate_cell.text):
+            totals_evidence["invoice_net_total"] = _decimal_cell_evidence(
+                net_cell.text, net_cell.bbox
+            )
+            totals_evidence["invoice_vat_total"] = _decimal_cell_evidence(
+                vat_cell.text, vat_cell.bbox
+            )
+            totals_evidence["invoice_gross_total"] = _decimal_cell_evidence(
+                gross_cell.text, gross_cell.bbox
+            )
+            continue
+
+        vat_rate_ev = _vat_rate_cell_evidence(rate_cell.text, rate_cell.bbox)
+        if not isinstance(vat_rate_ev.value, Decimal):
+            # Unparseable rate → cannot key the bucket; skip.
+            continue
+
+        bucket_evidence[vat_rate_ev.value] = {
+            "vat_rate": vat_rate_ev,
+            "net_total": _decimal_cell_evidence(net_cell.text, net_cell.bbox),
+            "vat_total": _decimal_cell_evidence(vat_cell.text, vat_cell.bbox),
+            "gross_total": _decimal_cell_evidence(
+                gross_cell.text, gross_cell.bbox
+            ),
+        }
+
+    return bucket_evidence, totals_evidence
+
+
 def populate_shell(
     parsed_document: ParsedDocument,
 ) -> tuple[DomesticVatInvoiceShell, dict[str, FieldEvidence]]:
@@ -711,6 +833,17 @@ def populate_shell(
                 vat_rate=_as_decimal(row_ev["vat_rate"].value),
             )
         )
+
+    bucket_evidence, totals_evidence = extract_summary_rows(
+        parsed_document.tables
+    )
+
+    for key, ev in totals_evidence.items():
+        evidence[f"summary.{key}"] = ev
+
+    for rate, row_ev in bucket_evidence.items():
+        for attr, ev in row_ev.items():
+            evidence[f"summary.bucket_summaries[{rate}].{attr}"] = ev
 
     return shell, evidence
 
