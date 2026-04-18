@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
 from src.input_processing.extraction_comparison import (
     HeaderExtractionResult,
+    build_extracted_summary,
     compare_header_extraction,
 )
 from src.input_processing.extraction_diagnostics import ExtractionDiagnostics
@@ -118,3 +120,89 @@ def test_header_extraction_result_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         result.shell = build_domestic_vat_shell()  # type: ignore[misc]
+
+
+def _decimal_ev(value: Decimal | None) -> FieldEvidence:
+    return FieldEvidence(
+        value=value,
+        source="spatial" if value is not None else "unresolved",
+        confidence=1.0 if value is not None else 0.0,
+        bbox=(0.0, 0.0, 10.0, 10.0),
+    )
+
+
+def test_build_extracted_summary_roundtrips_buckets_and_totals() -> None:
+    """Evidence keyed per-bucket + per-total should assemble a full summary."""
+
+    evidence = {
+        "summary.invoice_net_total": _decimal_ev(Decimal("1200.00")),
+        "summary.invoice_vat_total": _decimal_ev(Decimal("240.00")),
+        "summary.invoice_gross_total": _decimal_ev(Decimal("1440.00")),
+        "summary.bucket_summaries[23].vat_rate": _decimal_ev(Decimal("23")),
+        "summary.bucket_summaries[23].net_total": _decimal_ev(
+            Decimal("1000.00")
+        ),
+        "summary.bucket_summaries[23].vat_total": _decimal_ev(
+            Decimal("230.00")
+        ),
+        "summary.bucket_summaries[23].gross_total": _decimal_ev(
+            Decimal("1230.00")
+        ),
+        "summary.bucket_summaries[5].vat_rate": _decimal_ev(Decimal("5")),
+        "summary.bucket_summaries[5].net_total": _decimal_ev(Decimal("200.00")),
+        "summary.bucket_summaries[5].vat_total": _decimal_ev(Decimal("10.00")),
+        "summary.bucket_summaries[5].gross_total": _decimal_ev(
+            Decimal("210.00")
+        ),
+    }
+
+    summary = build_extracted_summary(evidence)
+
+    assert summary.invoice_net_total == Decimal("1200.00")
+    assert summary.invoice_vat_total == Decimal("240.00")
+    assert summary.invoice_gross_total == Decimal("1440.00")
+    assert summary.line_computations == []
+
+    assert set(summary.bucket_summaries.keys()) == {
+        Decimal("23"),
+        Decimal("5"),
+    }
+    bucket_23 = summary.bucket_summaries[Decimal("23")]
+    assert bucket_23.vat_rate == Decimal("23")
+    assert bucket_23.net_total == Decimal("1000.00")
+    assert bucket_23.vat_total == Decimal("230.00")
+    assert bucket_23.gross_total == Decimal("1230.00")
+
+
+def test_build_extracted_summary_missing_totals_resolve_to_none() -> None:
+    """Absent totals/bucket entries should surface as None, not raise."""
+
+    evidence: dict[str, FieldEvidence] = {
+        "summary.bucket_summaries[23].vat_rate": _decimal_ev(Decimal("23")),
+    }
+
+    summary = build_extracted_summary(evidence)
+
+    assert summary.invoice_net_total is None
+    assert summary.invoice_vat_total is None
+    assert summary.invoice_gross_total is None
+    assert summary.bucket_summaries[Decimal("23")].net_total is None
+
+
+def test_build_extracted_summary_ignores_unrelated_evidence_keys() -> None:
+    """Keys outside the summary namespace must not leak into bucket_fields."""
+
+    evidence = {
+        "seller.nip": FieldEvidence(
+            value="1234567890",
+            source="regex",
+            confidence=1.0,
+            bbox=None,
+        ),
+        "summary.invoice_net_total": _decimal_ev(Decimal("10.00")),
+    }
+
+    summary = build_extracted_summary(evidence)
+
+    assert summary.bucket_summaries == {}
+    assert summary.invoice_net_total == Decimal("10.00")
