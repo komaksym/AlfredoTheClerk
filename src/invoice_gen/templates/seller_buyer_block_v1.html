@@ -41,6 +41,7 @@
   .items th { font-weight: bold; }
   .items tr { page-break-inside: avoid; }
   .items .num { text-align: right; }
+  .totals { margin-top: 6mm; }
 </style>
 </head>
 <body>
@@ -79,6 +80,20 @@
     </thead>
     <tbody>
 __LINE_ITEMS_ROWS__
+    </tbody>
+  </table>
+  <table class="items totals">
+    <thead>
+      <tr>
+        <th>Stawka VAT</th>
+        <th class="num">Wartość netto</th>
+        <th class="num">VAT</th>
+        <th class="num">Wartość brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+__BUCKET_ROWS__
+__TOTALS_ROW__
     </tbody>
   </table>
 </body>
