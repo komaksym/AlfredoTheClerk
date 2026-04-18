@@ -21,7 +21,7 @@ from .extraction_diagnostics import (
     ExtractionDiagnostics,
     build_extraction_diagnostics,
 )
-from .parse import ParsedTable, SubBlock
+from .parse import ParsedDocument
 from .populate_shell import FieldEvidence, populate_shell
 
 
@@ -37,14 +37,14 @@ class HeaderExtractionResult:
 
 
 def compare_header_extraction(
-    parsed_data: list[list[SubBlock]],
+    parsed_document: ParsedDocument,
     truth: DomesticVatInvoiceShell,
     policy: ComparisonPolicy,
     visibility: TemplateVisibilityManifest,
 ) -> HeaderExtractionResult:
     """Run the header extraction pipeline and compare the result to truth."""
 
-    shell, evidence = populate_shell(parsed_data)
+    shell, evidence = populate_shell(parsed_document)
     validation = validate_header_only_shell(shell)
     diagnostics = build_extraction_diagnostics(evidence)
     comparison = compare_shells_with_visibility(
@@ -72,15 +72,14 @@ class LineItemExtractionResult:
 
 
 def compare_line_item_extraction(
-    parsed_data: list[list[SubBlock]],
-    parsed_tables: list[ParsedTable],
+    parsed_document: ParsedDocument,
     truth: DomesticVatInvoiceShell,
     policy: ComparisonPolicy,
     visibility: TemplateVisibilityManifest,
 ) -> LineItemExtractionResult:
     """Run header + line-item extraction and compare the result to truth."""
 
-    shell, evidence = populate_shell(parsed_data, parsed_tables)
+    shell, evidence = populate_shell(parsed_document)
     validation = validate_header_and_line_items_shell(shell)
     diagnostics = build_extraction_diagnostics(evidence)
     comparison = compare_shells_with_visibility(
