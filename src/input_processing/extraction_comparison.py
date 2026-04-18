@@ -61,8 +61,8 @@ def compare_header_extraction(
 
 
 @dataclass(frozen=True, kw_only=True)
-class LineItemExtractionResult:
-    """Bundled output of one header + line-item extraction comparison run."""
+class HeaderAndLineItemsExtractionResult:
+    """Bundled output of one header + line-items extraction comparison run."""
 
     shell: DomesticVatInvoiceShell
     evidence: dict[str, FieldEvidence]
@@ -71,13 +71,13 @@ class LineItemExtractionResult:
     comparison: ComparisonReport
 
 
-def compare_line_item_extraction(
+def compare_header_and_line_items_extraction(
     parsed_document: ParsedDocument,
     truth: DomesticVatInvoiceShell,
     policy: ComparisonPolicy,
     visibility: TemplateVisibilityManifest,
-) -> LineItemExtractionResult:
-    """Run header + line-item extraction and compare the result to truth."""
+) -> HeaderAndLineItemsExtractionResult:
+    """Run header + line-items extraction and compare the result to truth."""
 
     shell, evidence = populate_shell(parsed_document)
     validation = validate_header_and_line_items_shell(shell)
@@ -86,7 +86,7 @@ def compare_line_item_extraction(
         truth, shell, policy, visibility
     )
 
-    return LineItemExtractionResult(
+    return HeaderAndLineItemsExtractionResult(
         shell=shell,
         evidence=evidence,
         validation=validation,
