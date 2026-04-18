@@ -21,6 +21,7 @@ from src.input_processing.populate_shell import (
     extract_nip_from_subblock,
     extract_party_addresses_from_subblock,
     extract_party_name_from_subblock,
+    extract_summary_rows,
     find_below_neighbor,
     find_label,
     find_right_neighbor,
@@ -728,3 +729,154 @@ def test_extract_line_items_rows_picks_first_matching_table() -> None:
 
     assert len(rows) == 1
     assert rows[0]["description"].value == "Krzesło"
+
+
+# --- Summary (VAT-bucket) extractor --------------------------------------
+
+
+_SUMMARY_HEADER_TEXTS = (
+    "Stawka VAT",
+    "Wartość netto",
+    "VAT",
+    "Wartość brutto",
+)
+
+
+def _summary_header_row() -> list[TableCell]:
+    return [
+        _cell(text, i * 20.0) for i, text in enumerate(_SUMMARY_HEADER_TEXTS)
+    ]
+
+
+def _summary_data_row(
+    vat_rate: str | None,
+    net_total: str | None,
+    vat_total: str | None,
+    gross_total: str | None,
+) -> list[TableCell]:
+    return [
+        _cell(vat_rate, 0.0),
+        _cell(net_total, 20.0),
+        _cell(vat_total, 40.0),
+        _cell(gross_total, 60.0),
+    ]
+
+
+def test_extract_summary_rows_single_bucket_plus_razem() -> None:
+    table = _make_table(
+        [
+            _summary_header_row(),
+            _summary_data_row("23", "1000.00", "230.00", "1230.00"),
+            _summary_data_row("Razem", "1000.00", "230.00", "1230.00"),
+        ]
+    )
+
+    buckets, totals = extract_summary_rows([table])
+
+    assert set(buckets.keys()) == {Decimal("23")}
+    bucket = buckets[Decimal("23")]
+    assert bucket["vat_rate"].value == Decimal("23")
+    assert bucket["vat_rate"].source == "spatial"
+    assert bucket["net_total"].value == Decimal("1000.00")
+    assert bucket["vat_total"].value == Decimal("230.00")
+    assert bucket["gross_total"].value == Decimal("1230.00")
+
+    assert totals["invoice_net_total"].value == Decimal("1000.00")
+    assert totals["invoice_vat_total"].value == Decimal("230.00")
+    assert totals["invoice_gross_total"].value == Decimal("1230.00")
+    assert all(ev.source == "spatial" for ev in totals.values())
+
+
+def test_extract_summary_rows_multiple_buckets() -> None:
+    table = _make_table(
+        [
+            _summary_header_row(),
+            _summary_data_row("23", "1000.00", "230.00", "1230.00"),
+            _summary_data_row("5", "200.00", "10.00", "210.00"),
+            _summary_data_row("Razem", "1200.00", "240.00", "1440.00"),
+        ]
+    )
+
+    buckets, totals = extract_summary_rows([table])
+
+    assert set(buckets.keys()) == {Decimal("23"), Decimal("5")}
+    assert buckets[Decimal("5")]["net_total"].value == Decimal("200.00")
+    assert totals["invoice_gross_total"].value == Decimal("1440.00")
+
+
+def test_extract_summary_rows_tolerates_percent_suffix() -> None:
+    table = _make_table(
+        [
+            _summary_header_row(),
+            _summary_data_row("23%", "1000.00", "230.00", "1230.00"),
+        ]
+    )
+
+    buckets, _ = extract_summary_rows([table])
+
+    assert Decimal("23") in buckets
+    assert buckets[Decimal("23")]["vat_rate"].raw_text == "23%"
+
+
+def test_extract_summary_rows_returns_empty_without_matching_header() -> None:
+    unrelated = _make_table(
+        [
+            [_cell("Foo", 0.0), _cell("Bar", 20.0)],
+            [_cell("1", 0.0), _cell("2", 20.0)],
+        ]
+    )
+
+    assert extract_summary_rows([unrelated]) == ({}, {})
+    assert extract_summary_rows([]) == ({}, {})
+
+
+def test_extract_summary_rows_unparseable_totals_are_unresolved() -> None:
+    table = _make_table(
+        [
+            _summary_header_row(),
+            _summary_data_row("23", "nope", "230.00", "1230.00"),
+            _summary_data_row("Razem", "also-nope", "230.00", "1230.00"),
+        ]
+    )
+
+    buckets, totals = extract_summary_rows([table])
+
+    net = buckets[Decimal("23")]["net_total"]
+    assert net.value is None
+    assert net.source == "unresolved"
+    assert net.raw_text == "nope"
+    assert net.bbox == (20.0, 0.0, 30.0, 10.0)
+
+    assert totals["invoice_net_total"].value is None
+    assert totals["invoice_net_total"].source == "unresolved"
+    assert totals["invoice_net_total"].raw_text == "also-nope"
+
+
+def test_extract_summary_rows_skips_unparseable_bucket_rate() -> None:
+    table = _make_table(
+        [
+            _summary_header_row(),
+            _summary_data_row("???", "1000.00", "230.00", "1230.00"),
+            _summary_data_row("23", "1000.00", "230.00", "1230.00"),
+        ]
+    )
+
+    buckets, _ = extract_summary_rows([table])
+
+    assert set(buckets.keys()) == {Decimal("23")}
+
+
+def test_extract_summary_rows_picks_first_matching_table() -> None:
+    decoy = _make_table(
+        [[_cell("x", 0.0), _cell("y", 20.0)]],
+    )
+    target = _make_table(
+        [
+            _summary_header_row(),
+            _summary_data_row("23", "1000.00", "230.00", "1230.00"),
+        ]
+    )
+
+    buckets, _ = extract_summary_rows([decoy, target])
+
+    assert Decimal("23") in buckets
