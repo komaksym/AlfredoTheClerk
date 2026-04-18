@@ -4,8 +4,7 @@ This is the M2 renderer deliverable, extended in M4 slice 1: turn one
 canonical shell into a PDF that pdfplumber can extract cleanly. The
 template covers the invoice header (number, issue date, sale date,
 currency), the seller/buyer two-column block, and a bordered
-line-items table. Totals and adnotations are out of scope until
-later M4 slices.
+line-items table plus a bordered VAT-summary table.
 
 Determinism contract (per ROADMAP.md M2 acceptance):
 
@@ -30,14 +29,22 @@ On macOS install with ``brew install pango``; on Debian/Ubuntu CI use
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from html import escape
 from pathlib import Path
 
 from src.invoice_gen.domain_shell import (
+    BuyerShell,
     DomesticVatInvoiceShell,
     LineItemShell,
+    PartyShell,
 )
 from src.invoice_gen.domestic_vat_money import format_decimal
+from src.invoice_gen.domestic_vat_shell_summary import (
+    DomesticVatBucketSummary,
+    DomesticVatInvoiceSummary,
+    summarize_domestic_vat_shell,
+)
 from src.invoice_gen.template_visibility import (
     TemplateVisibilityManifest,
     VisibilityStatus,
@@ -71,6 +78,14 @@ SELLER_BUYER_VISIBLE_PATHS: frozenset[str] = frozenset(
         "shell.line_items[*].quantity",
         "shell.line_items[*].unit_price_net",
         "shell.line_items[*].vat_rate",
+        "summary.invoice_net_total",
+        "summary.invoice_vat_total",
+        "summary.invoice_gross_total",
+        "summary.bucket_summaries.count",
+        "summary.bucket_summaries[*].vat_rate",
+        "summary.bucket_summaries[*].net_total",
+        "summary.bucket_summaries[*].vat_total",
+        "summary.bucket_summaries[*].gross_total",
     }
 )
 
@@ -80,6 +95,7 @@ SELLER_BUYER_VISIBLE_PATHS: frozenset[str] = frozenset(
 _QUANTITY_MAX_FRACTION_DIGITS = 6
 _UNIT_PRICE_NET_MAX_FRACTION_DIGITS = 8
 _VAT_RATE_MAX_FRACTION_DIGITS = 0
+_MONEY_MAX_FRACTION_DIGITS = 2
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _TEMPLATE_PATH = _TEMPLATES_DIR / f"{SELLER_BUYER_TEMPLATE_ID}.html"
@@ -147,6 +163,99 @@ def _render_line_items_rows(line_items: list[LineItemShell]) -> str:
     return "\n".join(rows)
 
 
+def _render_bucket_rows(
+    bucket_summaries: dict[Decimal, DomesticVatBucketSummary],
+) -> str:
+    """Build ``<tr>`` rows for VAT buckets, sorted by rate ascending."""
+
+    rows: list[str] = []
+    for vat_rate, bucket in sorted(bucket_summaries.items()):
+        vat_rate_text = format_decimal(
+            vat_rate,
+            max_fraction_digits=_VAT_RATE_MAX_FRACTION_DIGITS,
+        )
+        net_total_text = format_decimal(
+            bucket.net_total,
+            max_fraction_digits=_MONEY_MAX_FRACTION_DIGITS,
+        )
+        vat_total_text = format_decimal(
+            bucket.vat_total,
+            max_fraction_digits=_MONEY_MAX_FRACTION_DIGITS,
+        )
+        gross_total_text = format_decimal(
+            bucket.gross_total,
+            max_fraction_digits=_MONEY_MAX_FRACTION_DIGITS,
+        )
+        rows.append(
+            "      <tr>"
+            f'<td class="num">{vat_rate_text}</td>'
+            f'<td class="num">{net_total_text}</td>'
+            f'<td class="num">{vat_total_text}</td>'
+            f'<td class="num">{gross_total_text}</td>'
+            "</tr>"
+        )
+    return "\n".join(rows)
+
+
+def _render_totals_row(summary: DomesticVatInvoiceSummary) -> str:
+    """Build the final ``Razem`` row with invoice grand totals."""
+
+    invoice_net_total = format_decimal(
+        summary.invoice_net_total,
+        max_fraction_digits=_MONEY_MAX_FRACTION_DIGITS,
+    )
+    invoice_vat_total = format_decimal(
+        summary.invoice_vat_total,
+        max_fraction_digits=_MONEY_MAX_FRACTION_DIGITS,
+    )
+    invoice_gross_total = format_decimal(
+        summary.invoice_gross_total,
+        max_fraction_digits=_MONEY_MAX_FRACTION_DIGITS,
+    )
+    return (
+        "      <tr>"
+        "<td>Razem</td>"
+        f'<td class="num">{invoice_net_total}</td>'
+        f'<td class="num">{invoice_vat_total}</td>'
+        f'<td class="num">{invoice_gross_total}</td>'
+        "</tr>"
+    )
+
+
+def _summarize_for_rendering(
+    shell: DomesticVatInvoiceShell,
+) -> DomesticVatInvoiceSummary:
+    """Summarize the rendered line items without requiring every shell field.
+
+    The VAT summary table is pure line-item math. Rendering should still
+    tolerate blank presentation fields (for example a missing buyer NIP in
+    tests), so the renderer feeds the shared summary helper a minimal valid
+    surrogate shell that reuses only the caller's line items.
+    """
+
+    summary_shell = DomesticVatInvoiceShell(
+        issue_date=date(2000, 1, 1),
+        sale_date=date(2000, 1, 1),
+        invoice_number="RENDER-SUMMARY",
+        issue_city="Warszawa",
+        payment_form=1,
+        seller=PartyShell(
+            nip="1234563218",
+            name="Seller",
+            address_line_1="ul. Render 1",
+            address_line_2="00-000 Warszawa",
+        ),
+        buyer=BuyerShell(
+            nip="5261040828",
+            name="Buyer",
+            address_line_1="ul. Render 2",
+            address_line_2="00-000 Warszawa",
+        ),
+        line_items=shell.line_items,
+    )
+    return summarize_domestic_vat_shell(summary_shell)
+
+
 def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
     """Render the first native template to a PDF byte string.
 
@@ -167,6 +276,7 @@ def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
 
     seller, buyer = shell.seller, shell.buyer
     html = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    summary = _summarize_for_rendering(shell)
     rendered = (
         html.replace("__INVOICE_NUMBER__", escape(shell.invoice_number or ""))
         .replace("__ISSUE_DATE__", escape(_format_iso_date(shell.issue_date)))
@@ -183,6 +293,10 @@ def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
         .replace(
             "__LINE_ITEMS_ROWS__", _render_line_items_rows(shell.line_items)
         )
+        .replace(
+            "__BUCKET_ROWS__", _render_bucket_rows(summary.bucket_summaries)
+        )
+        .replace("__TOTALS_ROW__", _render_totals_row(summary))
     )
     return HTML(string=rendered, base_url=str(_TEMPLATES_DIR)).write_pdf()
 
