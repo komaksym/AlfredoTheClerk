@@ -6,13 +6,14 @@ from pathlib import Path
 
 import pdfplumber
 
-from src.input_processing.extraction_comparison import (
-    compare_header_and_line_items_extraction,
-)
+from src.input_processing.extraction_comparison import compare_full_extraction
 from src.input_processing.parse import parse_data
 from src.invoice_gen.benchmark_case import (
     XsdValidationResult,
     build_benchmark_case,
+)
+from src.invoice_gen.domestic_vat_shell_summary import (
+    summarize_domestic_vat_shell,
 )
 from src.invoice_gen.pdf_rendering import (
     build_seller_buyer_visibility_manifest,
@@ -53,9 +54,7 @@ def test_compare_input_extraction_e2e_fixture_pdf() -> None:
     with pdfplumber.open(pdf_sample) as pdf:
         parsed_data = parse_data(pdf)
 
-    result = compare_header_and_line_items_extraction(
-        parsed_data, truth, policy, visibility
-    )
+    result = compare_full_extraction(parsed_data, truth, policy, visibility)
 
     assert result.comparison.is_match is True
     assert result.validation.is_valid is True
@@ -66,6 +65,15 @@ def test_compare_input_extraction_e2e_fixture_pdf() -> None:
         v.source == "spatial"
         for k, v in result.evidence.items()
         if k.startswith("line_items")
+    )
+    assert all(
+        v.source == "spatial"
+        for k, v in result.evidence.items()
+        if k.startswith("summary")
+    )
+    assert (
+        result.extracted_summary.invoice_net_total
+        == summarize_domestic_vat_shell(truth).invoice_net_total
     )
 
 
@@ -81,6 +89,7 @@ def test_compare_input_extraction_e2e_detects_truth_mismatch() -> None:
     truth = case.shell
     truth.seller.nip = "1111111111"
     truth.line_items[0].quantity = Decimal("133")
+    truth.line_items[0].unit_price_net = Decimal("345")
 
     policy = case.policy
     visibility = build_seller_buyer_visibility_manifest()
@@ -93,9 +102,7 @@ def test_compare_input_extraction_e2e_detects_truth_mismatch() -> None:
     with pdfplumber.open(pdf_sample) as pdf:
         parsed_data = parse_data(pdf)
 
-    result = compare_header_and_line_items_extraction(
-        parsed_data, truth, policy, visibility
-    )
+    result = compare_full_extraction(parsed_data, truth, policy, visibility)
 
     assert result.comparison.is_match is False
     assert any(
@@ -105,4 +112,15 @@ def test_compare_input_extraction_e2e_detects_truth_mismatch() -> None:
     assert any(
         mismatch.path == "shell.line_items[0].quantity"
         for mismatch in result.comparison.mismatches
+    )
+    assert any(
+        m.path == "shell.line_items[0].unit_price_net"
+        for m in result.comparison.mismatches
+    )
+    assert any(
+        (
+            m.path.startswith("summary.bucket_summaries[")
+            and m.path.endswith("].net_total")
+        )
+        for m in result.comparison.mismatches
     )
