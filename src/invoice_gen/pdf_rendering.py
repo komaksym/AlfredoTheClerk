@@ -64,6 +64,8 @@ SELLER_BUYER_VISIBLE_PATHS: frozenset[str] = frozenset(
         "shell.issue_date",
         "shell.sale_date",
         "shell.currency",
+        "shell.issue_city",
+        "shell.payment_form",
         "shell.seller.name",
         "shell.seller.nip",
         "shell.seller.address_line_1",
