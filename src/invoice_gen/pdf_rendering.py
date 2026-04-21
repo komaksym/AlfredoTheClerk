@@ -66,10 +66,12 @@ SELLER_BUYER_VISIBLE_PATHS: frozenset[str] = frozenset(
         "shell.currency",
         "shell.issue_city",
         "shell.payment_form",
+        "shell.payment_due_date",
         "shell.seller.name",
         "shell.seller.nip",
         "shell.seller.address_line_1",
         "shell.seller.address_line_2",
+        "shell.seller.bank_account",
         "shell.buyer.name",
         "shell.buyer.nip",
         "shell.buyer.address_line_1",
@@ -315,10 +317,15 @@ def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
         .replace(
             "__PAYMENT_FORM__", escape(_format_payment_form(shell.payment_form))
         )
+        .replace(
+            "__PAYMENT_DUE_DATE__",
+            escape(_format_iso_date(shell.payment_due_date)),
+        )
         .replace("__SELLER_NAME__", escape(seller.name or ""))
         .replace("__SELLER_NIP__", escape(seller.nip or ""))
         .replace("__SELLER_ADDR1__", escape(seller.address_line_1 or ""))
         .replace("__SELLER_ADDR2__", escape(seller.address_line_2 or ""))
+        .replace("__SELLER_BANK_ACCOUNT__", escape(seller.bank_account or ""))
         .replace("__BUYER_NAME__", escape(buyer.name or ""))
         .replace("__BUYER_NIP__", escape(buyer.nip or ""))
         .replace("__BUYER_ADDR1__", escape(buyer.address_line_1 or ""))

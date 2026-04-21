@@ -55,7 +55,13 @@ FIELD_ANCHORS = {
     # ``sale_date`` use the same shape (single-token ``wystawiono`` /
     # ``sprzedano``); these labels are just multi-word variants of it.
     "issue_city": ["wystawienia"],
-    "payment_form": ["zapłaty", "płatności"],
+    # Anchor ``zapłaty`` only, not ``płatności``: the latter is the last
+    # word of ``Termin płatności`` and would collide with
+    # ``payment_due_date`` below. Current template renders ``Sposób
+    # zapłaty``; alternate ``Forma płatności`` labelling is deferred to a
+    # future robustness slice.
+    "payment_form": ["zapłaty"],
+    "payment_due_date": ["płatności"],
 }
 
 # Reverse of pdf_rendering.PAYMENT_FORM_LABELS: Polish label (lowercased)
@@ -70,6 +76,11 @@ _PAYMENT_FORM_BY_LABEL: dict[str, int] = {
 _NIP_CANDIDATE = re.compile(r"\b\d{3}-?\d{3}-?\d{2}-?\d{2}\b")
 
 _NIP_WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
+
+# Polish IBAN: literal ``PL`` + 2 check digits + 24 BBAN digits (28 chars).
+# Mod-97 validation is applied separately — a structural match alone
+# confirms layout, not correctness.
+PL_IBAN_PATTERN = re.compile(r"^PL\d{26}$")
 
 
 EvidenceSource = Literal["regex", "fuzzy", "spatial", "llm", "unresolved"]
@@ -103,6 +114,18 @@ def _parse_payment_form(text: str) -> int:
         raise ValueError(f"unknown payment form label: {text!r}")
 
     return value
+
+
+def validate_pl_iban_checksum(iban: str) -> bool:
+    """Return True if ``iban`` passes the ISO 7064 mod-97 PL IBAN checksum."""
+
+    if not PL_IBAN_PATTERN.fullmatch(iban):
+        return False
+
+    # Rearranged form: BBAN || "PL" (2521) || check digits; should % 97 == 1.
+    rearranged = iban[4:] + "2521" + iban[2:4]
+
+    return int(rearranged) % 97 == 1
 
 
 def validate_nip_checksum(digits: str) -> bool:
@@ -195,6 +218,35 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
             confidence=confidence,
             bbox=bbox,
             raw_text=match.group(),
+        )
+
+    return FieldEvidence(
+        value=None, source="unresolved", confidence=0.0, bbox=None
+    )
+
+
+def extract_bank_account_from_subblock(sub_block: SubBlock) -> FieldEvidence:
+    """Scan a sub-block for the first structurally valid PL IBAN.
+
+    Mirrors :func:`extract_nip_from_subblock`: regex-scan the word text,
+    but IBANs render as a single unspaced token (28 chars) so no
+    multi-word span handling is needed. Confidence is 1.0 when the
+    mod-97 checksum passes, 0.5 when the layout matches but the checksum
+    fails.
+    """
+
+    for word in sub_block.words:
+        if not PL_IBAN_PATTERN.fullmatch(word.text):
+            continue
+
+        confidence = 1.0 if validate_pl_iban_checksum(word.text) else 0.5
+
+        return FieldEvidence(
+            value=word.text,
+            source="regex",
+            confidence=confidence,
+            bbox=bbox_of([word]),
+            raw_text=word.text,
         )
 
     return FieldEvidence(
@@ -320,6 +372,21 @@ def extract_party_name_from_subblock(sub_block: SubBlock) -> FieldEvidence:
     return _spatial_line_evidence(candidate_lines[0])
 
 
+def _line_is_bank_account_row(words: list[Word]) -> bool:
+    """Return True when a line renders either the IBAN or its ``Numer rachunku:`` label.
+
+    The seller column's IBAN can wrap onto its own visual line, so both
+    the label row and the value row must be filterable — checking one
+    without the other would still leak a non-address line into the
+    address extractor's candidate set.
+    """
+
+    if any(PL_IBAN_PATTERN.fullmatch(word.text) for word in words):
+        return True
+
+    return "rachunku" in _line_tokens(words)
+
+
 def extract_party_addresses_from_subblock(
     sub_block: SubBlock,
 ) -> tuple[FieldEvidence, FieldEvidence]:
@@ -331,7 +398,15 @@ def extract_party_addresses_from_subblock(
     if anchor_idx is None or nip_idx is None:
         return _unresolved_evidence(), _unresolved_evidence()
 
-    candidate_lines = lines[nip_idx + 1 :]
+    # IBAN rows render below the address lines (see seller_buyer_block_v1.html).
+    # They are their own labeled field, so exclude them before counting
+    # candidate address lines — otherwise a seller sub-block with a bank
+    # account would always trip the 3+-lines "ambiguous" branch.
+    candidate_lines = [
+        line
+        for line in lines[nip_idx + 1 :]
+        if not _line_is_bank_account_row(line)
+    ]
     if not candidate_lines:
         return _unresolved_evidence(), _unresolved_evidence()
 
@@ -812,6 +887,8 @@ def populate_shell(
                 "address_line_2",
             ):
                 evidence[f"{role}.{field_name}"] = _unresolved_evidence()
+            if role == "seller":
+                evidence["seller.bank_account"] = _unresolved_evidence()
             continue
 
         nip_ev = extract_nip_from_subblock(sub_block)
@@ -830,6 +907,11 @@ def populate_shell(
         party.address_line_1 = address_1_ev.value
         party.address_line_2 = address_2_ev.value
 
+        if role == "seller":
+            bank_account_ev = extract_bank_account_from_subblock(sub_block)
+            evidence["seller.bank_account"] = bank_account_ev
+            party.bank_account = bank_account_ev.value
+
     header = header_words(parsed_data, seller_sb, buyer_sb)
 
     invoice_ev = extract_labeled_field(
@@ -847,18 +929,23 @@ def populate_shell(
     payment_form_ev = extract_labeled_field(
         header, FIELD_ANCHORS["payment_form"], _parse_payment_form
     )
+    payment_due_date_ev = extract_labeled_field(
+        header, FIELD_ANCHORS["payment_due_date"], date.fromisoformat
+    )
 
     shell.invoice_number = invoice_ev.value
     shell.issue_date = issue_ev.value
     shell.sale_date = sale_ev.value
     shell.issue_city = issue_city_ev.value
     shell.payment_form = payment_form_ev.value
+    shell.payment_due_date = payment_due_date_ev.value
 
     evidence["invoice_number"] = invoice_ev
     evidence["issue_date"] = issue_ev
     evidence["sale_date"] = sale_ev
     evidence["issue_city"] = issue_city_ev
     evidence["payment_form"] = payment_form_ev
+    evidence["payment_due_date"] = payment_due_date_ev
 
     for row_index, row_ev in enumerate(
         extract_line_items_rows(parsed_document.tables)

@@ -31,6 +31,7 @@ def map_domestic_vat_seed_to_shell(
     shell.seller.krs = seed.seller.krs
     shell.seller.regon = seed.seller.regon
     shell.seller.bdo = seed.seller.bdo
+    shell.seller.bank_account = seed.seller.bank_account
 
     shell.buyer.nip = seed.buyer.nip
     shell.buyer.name = seed.buyer.name
@@ -41,6 +42,7 @@ def map_domestic_vat_seed_to_shell(
     shell.buyer.customer_ref = seed.buyer.customer_ref
 
     shell.payment_form = seed.payment_form
+    shell.payment_due_date = seed.payment_due_date
 
     shell.line_items = [
         LineItemShell(

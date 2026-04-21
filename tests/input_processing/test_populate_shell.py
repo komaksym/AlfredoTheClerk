@@ -17,6 +17,7 @@ from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
     FieldEvidence,
     _parse_payment_form,
+    extract_bank_account_from_subblock,
     extract_labeled_field,
     extract_line_items_rows,
     extract_nip_from_subblock,
@@ -33,7 +34,9 @@ from src.input_processing.populate_shell import (
     subblock_lines,
     threshold_for,
     validate_nip_checksum,
+    validate_pl_iban_checksum,
 )
+from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
 
 from tests.input_processing.test_parse import make_word
 
@@ -156,6 +159,108 @@ class TestExtractNipFromSubblock:
         ev = extract_nip_from_subblock(sb)
         assert ev.value is None
         assert ev.source == "unresolved"
+
+
+class TestValidatePlIbanChecksum:
+    """Mod-97 checksum validator must accept seed-generated IBANs and
+    reject both layout-invalid strings and single-digit corruptions."""
+
+    def _seed_iban(self) -> str:
+        iban = build_domestic_vat_seed(42).seller.bank_account
+        assert iban is not None
+        return iban
+
+    def test_seed_generated_iban_passes(self):
+        assert validate_pl_iban_checksum(self._seed_iban()) is True
+
+    def test_digit_flipped_iban_fails(self):
+        iban = self._seed_iban()
+        # Flip one digit in the BBAN portion so the checksum no longer holds.
+        flipped_digit = "0" if iban[-1] != "0" else "1"
+        corrupted = iban[:-1] + flipped_digit
+        assert validate_pl_iban_checksum(corrupted) is False
+
+    def test_non_pl_prefix_fails(self):
+        assert validate_pl_iban_checksum("DE89370400440532013000") is False
+
+    def test_wrong_length_fails(self):
+        assert validate_pl_iban_checksum("PL123") is False
+
+
+class TestExtractBankAccountFromSubblock:
+    def _seed_iban(self) -> str:
+        iban = build_domestic_vat_seed(42).seller.bank_account
+        assert iban is not None
+        return iban
+
+    def test_extracts_valid_iban_with_high_confidence(self):
+        iban = self._seed_iban()
+        sb = make_sub_block(
+            [
+                make_word("Numer", 0, 40, 0, 10),
+                make_word("rachunku:", 45, 110, 0, 10),
+                make_word(iban, 115, 300, 0, 10),
+            ]
+        )
+
+        ev = extract_bank_account_from_subblock(sb)
+
+        assert ev.value == iban
+        assert ev.source == "regex"
+        assert ev.confidence == 1.0
+        assert ev.bbox is not None
+        assert ev.raw_text == iban
+
+    def test_invalid_checksum_yields_low_confidence(self):
+        # Structurally valid layout (PL + 26 digits) with an arbitrary
+        # payload that fails mod-97.
+        sb = make_sub_block(
+            [make_word("PL" + "0" * 26, 0, 200, 0, 10)],
+        )
+
+        ev = extract_bank_account_from_subblock(sb)
+
+        assert ev.value == "PL" + "0" * 26
+        assert ev.source == "regex"
+        assert ev.confidence == 0.5
+
+    def test_missing_iban_is_unresolved(self):
+        sb = make_sub_block(
+            [
+                make_word("Numer", 0, 40, 0, 10),
+                make_word("rachunku:", 45, 110, 0, 10),
+            ]
+        )
+
+        ev = extract_bank_account_from_subblock(sb)
+
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.confidence == 0.0
+        assert ev.bbox is None
+
+
+def test_payment_form_anchor_does_not_collide_with_termin_platnosci():
+    """Guards the anchor-split fix: ``zapłaty`` lands on ``Sposób
+    zapłaty`` and ``płatności`` lands on ``Termin płatności`` — they
+    must not collide on each other's value row.
+    """
+
+    words = [
+        make_word("Sposób", 0, 40, 0, 10),
+        make_word("zapłaty:", 45, 110, 0, 10),
+        make_word("Przelew", 115, 200, 0, 10),
+        make_word("Termin", 0, 40, 20, 30),
+        make_word("płatności:", 45, 115, 20, 30),
+        make_word("2026-12-08", 120, 220, 20, 30),
+    ]
+
+    form_match = find_label(words, ["zapłaty"])
+    due_match = find_label(words, ["płatności"])
+
+    assert form_match is not None and due_match is not None
+    assert form_match[0].text == "zapłaty:"
+    assert due_match[0].text == "płatności:"
 
 
 @pytest.mark.parametrize(
@@ -558,8 +663,13 @@ def test_populate_shell_e2e():
     assert shell.sale_date == date(2026, 11, 23)
     assert shell.issue_city == "Warszawa"
     assert shell.payment_form == 2
+    assert shell.payment_due_date == date(2026, 12, 8)
+    assert shell.seller.bank_account is not None
+    assert shell.seller.bank_account.startswith("PL")
+    assert len(shell.seller.bank_account) == 28
+    assert validate_pl_iban_checksum(shell.seller.bank_account)
 
-    for key in ("seller.nip", "buyer.nip"):
+    for key in ("seller.nip", "buyer.nip", "seller.bank_account"):
         ev = evidence[key]
         assert ev.source == "regex"
         assert ev.confidence >= 0.5
@@ -584,6 +694,7 @@ def test_populate_shell_e2e():
         "sale_date",
         "issue_city",
         "payment_form",
+        "payment_due_date",
     ):
         ev = evidence[key]
         assert ev.source == "fuzzy"

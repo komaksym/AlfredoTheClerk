@@ -76,6 +76,7 @@ class DomesticVatPartySeed:
     krs: str | None = None
     regon: str | None = None
     bdo: str | None = None
+    bank_account: str | None = None
     customer_ref: str | None = None
 
 
@@ -102,6 +103,7 @@ class DomesticVatInvoiceSeed:
     seller: DomesticVatPartySeed
     buyer: DomesticVatPartySeed
     payment_form: int
+    payment_due_date: date
     line_items: list[DomesticVatLineItemSeed] = field(default_factory=list)
 
 
@@ -117,7 +119,7 @@ def build_domestic_vat_seed(seed: int | None = None) -> DomesticVatInvoiceSeed:
     issue_city, _postal_code = rng.choice(_CITIES)
     seller, buyer = _build_parties(rng)
 
-    return DomesticVatInvoiceSeed(
+    built = DomesticVatInvoiceSeed(
         currency="PLN",
         issue_date=issue_date,
         sale_date=sale_date,
@@ -126,8 +128,16 @@ def build_domestic_vat_seed(seed: int | None = None) -> DomesticVatInvoiceSeed:
         seller=seller,
         buyer=buyer,
         payment_form=rng.choice(_PAYMENT_FORMS),
+        payment_due_date=issue_date + timedelta(days=14),
         line_items=_build_line_items(rng),
     )
+
+    # IBAN generated last so adding this field does not shift earlier
+    # deterministic RNG consumers (payment_form, line_items, and the
+    # per-party email/phone/krs/regon/bdo chains).
+    built.seller.bank_account = _build_pl_iban(rng)
+
+    return built
 
 
 # --- Date and party builders ---------------------------------------------
@@ -281,6 +291,19 @@ def _build_customer_ref(rng: random.Random) -> str:
     """Generate a short buyer customer reference code."""
 
     return f"KL{rng.randint(100_000, 999_999)}"
+
+
+def _build_pl_iban(rng: random.Random) -> str:
+    """Generate a deterministic PL IBAN with a valid ISO 7064 mod-97 checksum."""
+
+    bban = "".join(str(rng.randint(0, 9)) for _ in range(24))
+
+    # Checksum: (BBAN || "2521" || check) % 97 == 1, where 2521 is "PL" with
+    # P=25, L=21. Solve for check given the 26-digit prefix.
+    partial = int(bban + "2521")
+    check = (1 - partial * 100) % 97
+
+    return f"PL{check:02d}{bban}"
 
 
 def _build_nip(rng: random.Random) -> str:

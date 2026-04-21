@@ -196,12 +196,21 @@ def _normalize_money(value: Any) -> str | None:
     return str(value).strip()
 
 
+def _normalize_iban(value: Any) -> str | None:
+    """Strip whitespace and uppercase so ``PL 12...`` matches ``pl12...``."""
+
+    if value is None:
+        return None
+    return "".join(str(value).split()).upper()
+
+
 _NORMALIZERS: Mapping[str, Callable[[Any], Any]] = {
     "text": _normalize_text,
     "nip": _normalize_nip,
     "phone": _normalize_phone,
     "invoice_number": _normalize_invoice_number,
     "money": _normalize_money,
+    "iban": _normalize_iban,
 }
 
 
@@ -235,6 +244,7 @@ def build_default_comparison_policy() -> ComparisonPolicy:
     _norm("shell.invoice_number", "invoice_number")
     _norm("shell.issue_city", "text")
     _exact("shell.payment_form")
+    _exact("shell.payment_due_date")
     # shell.system_info: not scored (metadata)
 
     # --- seller / buyer ---
@@ -245,6 +255,10 @@ def build_default_comparison_policy() -> ComparisonPolicy:
         _norm(f"shell.{party}.address_line_2", "text")
         _norm(f"shell.{party}.phone", "text")
         # email / krs / regon / bdo: not scored (no canonicalizer yet)
+
+    # Bank account is scored only for the seller: real invoices carry
+    # the seller's IBAN for payment, never the buyer's.
+    _norm("shell.seller.bank_account", "iban")
 
     # --- buyer-only structural fields ---
     _exact("shell.buyer.buyer_id_mode")
@@ -420,6 +434,7 @@ def _walk_shell(
         "issue_city",
         "system_info",
         "payment_form",
+        "payment_due_date",
     ):
         _check_field(
             f"shell.{attr}",
@@ -485,6 +500,7 @@ def _walk_party(
         "krs",
         "regon",
         "bdo",
+        "bank_account",
     ):
         _check_field(
             f"{base}.{attr}",

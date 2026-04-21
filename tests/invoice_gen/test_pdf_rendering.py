@@ -431,6 +431,30 @@ def test_re_rendering_same_shell_yields_identical_summary_table(
 # --- M4.5 slice 1: header wire-up + section titles ----------------------
 
 
+def test_payment_due_date_and_bank_account_are_extractable(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """Payment due date and seller IBAN must extract as separate tokens.
+
+    Mirrors the slice-1 extractability gate: the renderer must emit
+    each value as its own parser-visible token with its Polish label
+    words flanking it, so downstream label-anchored extractors can
+    anchor on ``Termin``/``płatności`` and ``Numer``/``rachunku``.
+    """
+
+    assert shell.payment_due_date is not None
+    assert shell.seller.bank_account is not None
+
+    words = _extract_page_words(rendered_pdf)
+    texts = [w["text"] for w in words]
+
+    assert shell.payment_due_date.isoformat() in texts
+    assert shell.seller.bank_account in texts
+    # Labels extract as their own tokens, not fused with their values.
+    label_stems = {t.strip(":") for t in texts}
+    assert {"Termin", "płatności", "Numer", "rachunku"}.issubset(label_stems)
+
+
 def test_issue_city_and_payment_form_are_extractable(
     shell: DomesticVatInvoiceShell, rendered_pdf: bytes
 ) -> None:
