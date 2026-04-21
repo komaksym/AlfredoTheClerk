@@ -16,6 +16,7 @@ from src.input_processing.parse import (
 from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
     FieldEvidence,
+    _parse_payment_form,
     extract_labeled_field,
     extract_line_items_rows,
     extract_nip_from_subblock,
@@ -264,6 +265,37 @@ class TestExtractLabeledField:
         assert ev.value is None
         assert ev.source == "unresolved"
         assert ev.bbox is None
+
+
+class TestParsePaymentForm:
+    """`_parse_payment_form` is the reverse of `_format_payment_form`.
+
+    It must tolerate the label shapes real extracted tokens take on
+    (trailing colons when glued to punctuation, surrounding whitespace,
+    casing variants), and must raise ``ValueError`` on an unknown label
+    so the surrounding ``extract_labeled_field`` call marks the field
+    as unresolved via its existing parser-error path.
+    """
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("Przelew", 6),
+            ("przelew", 6),
+            ("PRZELEW", 6),
+            ("Przelew:", 6),
+            ("  przelew ", 6),
+            ("Gotówka", 1),
+            ("gotówka:", 1),
+            ("Karta", 2),
+        ],
+    )
+    def test_valid_labels_map_to_enum_values(self, text, expected):
+        assert _parse_payment_form(text) == expected
+
+    def test_unknown_label_raises_value_error(self):
+        with pytest.raises(ValueError):
+            _parse_payment_form("Bitcoin")
 
 
 class TestSubblockLines:
@@ -524,6 +556,8 @@ def test_populate_shell_e2e():
     assert shell.invoice_number == "FV2026/11/390"
     assert shell.issue_date == date(2026, 11, 24)
     assert shell.sale_date == date(2026, 11, 23)
+    assert shell.issue_city == "Warszawa"
+    assert shell.payment_form == 2
 
     for key in ("seller.nip", "buyer.nip"):
         ev = evidence[key]
@@ -544,7 +578,13 @@ def test_populate_shell_e2e():
         assert ev.confidence == 1.0
         assert ev.bbox is not None
 
-    for key in ("invoice_number", "issue_date", "sale_date"):
+    for key in (
+        "invoice_number",
+        "issue_date",
+        "sale_date",
+        "issue_city",
+        "payment_form",
+    ):
         ev = evidence[key]
         assert ev.source == "fuzzy"
         assert ev.confidence >= 0.85
