@@ -24,11 +24,12 @@
   .row { display: flex; gap: 20mm; }
   .col { flex: 1; }
   h2 { font-size: 11pt; margin: 0 0 4mm 0; }
+  .section-title { font-size: 11pt; margin: 8mm 0 2mm 0; }
   .label { font-weight: bold; }
   p { margin: 0 0 1mm 0; }
   .items {
     width: 100%;
-    margin: 8mm 0 0 0;
+    margin: 2mm 0 0 0;
     border-collapse: collapse;
   }
   .items th, .items td {
@@ -50,6 +51,8 @@
     <p>Wystawiono: __ISSUE_DATE__</p>
     <p>Sprzedano: __SALE_DATE__</p>
     <p>Waluta: __CURRENCY__</p>
+    <p>Miasto wystawienia: __ISSUE_CITY__</p>
+    <p>Sposób zapłaty: __PAYMENT_FORM__</p>
   </div>
   <div class="row">
     <div class="col">
@@ -67,6 +70,7 @@
       <p>__BUYER_ADDR2__</p>
     </div>
   </div>
+  <h2 class="section-title">Pozycje faktury</h2>
   <table class="items">
     <thead>
       <tr>
@@ -82,6 +86,7 @@
 __LINE_ITEMS_ROWS__
     </tbody>
   </table>
+  <h2 class="section-title">Podsumowanie</h2>
   <table class="items totals">
     <thead>
       <tr>
