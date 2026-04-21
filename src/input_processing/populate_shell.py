@@ -26,6 +26,7 @@ from src.invoice_gen.domain_shell import (
     build_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_seed import NIP_PATTERN
+from src.invoice_gen.pdf_rendering import PAYMENT_FORM_LABELS
 
 from .parse import (
     ParsedDocument,
@@ -49,6 +50,19 @@ FIELD_ANCHORS = {
     "nip": ["nip"],
     "invoice_number": ["faktura nr", "numer", "nr faktury"],
     "currency": ["waluta"],
+    # Anchor on the label's last word so ``find_right_neighbor`` lands on
+    # the value rather than on a trailing label token. ``issue_date`` /
+    # ``sale_date`` use the same shape (single-token ``wystawiono`` /
+    # ``sprzedano``); these labels are just multi-word variants of it.
+    "issue_city": ["wystawienia"],
+    "payment_form": ["zapłaty", "płatności"],
+}
+
+# Reverse of pdf_rendering.PAYMENT_FORM_LABELS: Polish label (lowercased)
+# to KSeF TformaPlatnosci enum value. Built once at import time so the
+# parser below is a single dict lookup.
+_PAYMENT_FORM_BY_LABEL: dict[str, int] = {
+    label.lower(): value for value, label in PAYMENT_FORM_LABELS.items()
 }
 
 # Candidate NIP substring: 10 digits, optional hyphens in the 3-3-2-2 layout.
@@ -65,11 +79,30 @@ EvidenceSource = Literal["regex", "fuzzy", "spatial", "llm", "unresolved"]
 class FieldEvidence:
     """Provenance for a single populated shell field."""
 
-    value: str | date | Decimal | None
+    value: str | int | date | Decimal | None
     source: EvidenceSource
     confidence: float
     bbox: tuple[float, float, float, float] | None
     raw_text: str | None = None
+
+
+def _parse_payment_form(text: str) -> int:
+    """Reverse-look up a Polish payment-form label to its KSeF enum value.
+
+    Robust to trailing colons, casing, and surrounding whitespace so
+    that extracted label words like ``"Przelew"``, ``"przelew:"``, or
+    ``"PRZELEW "`` all map identically. Raises ``ValueError`` on an
+    unknown label so ``extract_labeled_field`` marks the field as
+    ``unresolved`` via its existing parser-error path.
+    """
+
+    key = text.strip().rstrip(":").lower()
+    value = _PAYMENT_FORM_BY_LABEL.get(key)
+
+    if value is None:
+        raise ValueError(f"unknown payment form label: {text!r}")
+
+    return value
 
 
 def validate_nip_checksum(digits: str) -> bool:
@@ -808,14 +841,24 @@ def populate_shell(
     sale_ev = extract_labeled_field(
         header, FIELD_ANCHORS["sale_date"], date.fromisoformat
     )
+    issue_city_ev = extract_labeled_field(
+        header, FIELD_ANCHORS["issue_city"], str.strip
+    )
+    payment_form_ev = extract_labeled_field(
+        header, FIELD_ANCHORS["payment_form"], _parse_payment_form
+    )
 
     shell.invoice_number = invoice_ev.value
     shell.issue_date = issue_ev.value
     shell.sale_date = sale_ev.value
+    shell.issue_city = issue_city_ev.value
+    shell.payment_form = payment_form_ev.value
 
     evidence["invoice_number"] = invoice_ev
     evidence["issue_date"] = issue_ev
     evidence["sale_date"] = sale_ev
+    evidence["issue_city"] = issue_city_ev
+    evidence["payment_form"] = payment_form_ev
 
     for row_index, row_ev in enumerate(
         extract_line_items_rows(parsed_document.tables)
