@@ -234,8 +234,8 @@ def build_default_comparison_policy() -> ComparisonPolicy:
     _exact("shell.sale_date")
     _norm("shell.invoice_number", "invoice_number")
     _norm("shell.issue_city", "text")
+    _exact("shell.payment_form")
     # shell.system_info: not scored (metadata)
-    # shell.payment_form: not scored until template visibility (M2+)
 
     # --- seller / buyer ---
     for party in ("seller", "buyer"):
