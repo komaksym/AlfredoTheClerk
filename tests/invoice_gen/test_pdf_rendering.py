@@ -30,6 +30,7 @@ from src.invoice_gen.domestic_vat_shell_summary import (
     summarize_domestic_vat_shell,
 )
 from src.invoice_gen.pdf_rendering import (
+    PAYMENT_FORM_LABELS,
     SELLER_BUYER_TEMPLATE_ID,
     SELLER_BUYER_VISIBLE_PATHS,
     build_seller_buyer_visibility_manifest,
@@ -425,3 +426,55 @@ def test_re_rendering_same_shell_yields_identical_summary_table(
     second = render_seller_buyer_block(shell)
 
     assert _extract_second_table(rendered_pdf) == _extract_second_table(second)
+
+
+# --- M4.5 slice 1: header wire-up + section titles ----------------------
+
+
+def test_issue_city_and_payment_form_are_extractable(
+    shell: DomesticVatInvoiceShell, rendered_pdf: bytes
+) -> None:
+    """Issue city and payment-form label must extract as separate tokens.
+
+    The payment-form label is looked up dynamically from the public
+    ``PAYMENT_FORM_LABELS`` mapping, which mirrors the KSeF XSL
+    stylesheet — this pins the renderer to the authoritative labels
+    without duplicating the table into the test.
+    """
+
+    assert shell.issue_city is not None
+    assert shell.payment_form is not None
+    expected_payment_label = PAYMENT_FORM_LABELS[shell.payment_form]
+
+    words = _extract_page_words(rendered_pdf)
+    texts = [w["text"] for w in words]
+
+    assert shell.issue_city in texts
+    assert expected_payment_label in texts
+    label_stems = {t.strip(":") for t in texts}
+    assert {"Miasto", "wystawienia", "Sposób", "zapłaty"}.issubset(label_stems)
+
+
+def test_section_titles_sit_above_their_tables(rendered_pdf: bytes) -> None:
+    """``Pozycje faktury`` and ``Podsumowanie`` must precede their tables.
+
+    Guards two things at once: the titles themselves must extract as
+    separate words (so downstream layout checks can anchor on them),
+    and they must not be captured as a third table — ``find_tables``
+    should still return exactly the two bordered tables.
+    """
+
+    with pdfplumber.open(io.BytesIO(rendered_pdf)) as pdf:
+        page = pdf.pages[0]
+        words = page.extract_words()
+        tables = page.find_tables(table_settings=_TABLE_LINE_SETTINGS)
+
+        assert len(tables) == 2
+
+        pozycje = next(w for w in words if w["text"] == "Pozycje")
+        podsumowanie = next(w for w in words if w["text"] == "Podsumowanie")
+        first_table_top = float(tables[0].bbox[1])
+        second_table_top = float(tables[1].bbox[1])
+
+        assert float(pozycje["top"]) < first_table_top
+        assert first_table_top < float(podsumowanie["top"]) < second_table_top
