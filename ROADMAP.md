@@ -2,7 +2,12 @@
 
 ## 0. Current State
 
-Today the repo is a deterministic synthetic domestic-VAT pipeline:
+Today the repo has a deterministic synthetic domestic-VAT pipeline plus
+one native-PDF render/extract loop:
+
+`seed -> shell -> shell validation -> summary -> PDF render -> PDF parse/extract -> comparison`
+
+and
 
 `seed -> shell -> shell validation -> summary -> FA(3) mapping -> XML -> local XSD validation`
 
@@ -13,6 +18,9 @@ What already exists:
 - seed -> shell mapping
 - shell validation
 - shell summary / totals
+- native PDF rendering for the current template
+- deterministic PDF parsing / extraction for the current template
+- field-level evidence and extraction diagnostics
 - shell + summary -> `ksef_schema.schemat.Faktura` mapping
 - FA(3) XML rendering
 - CLI generation path
@@ -22,14 +30,11 @@ What does not exist yet:
 
 - benchmark case artifacts
 - persisted comparison policies or manifests
-- PDF rendering
-- PDF parsing / extraction
-- evidence / diagnostics objects
-- partial-shell extraction validation
 - KSeF API client
 
 The roadmap should be read from that reality. This repo is not yet a benchmark
-or extraction system. It is the foundation for one.
+system. It already has an extraction baseline, but it is not yet a
+reviewable benchmark system.
 
 ## 1. Near-Term Goal
 
@@ -39,8 +44,10 @@ closed-loop, self-rendered native-PDF setting.
 The order of work is:
 
 1. Freeze canonical benchmark artifacts on disk.
-2. Add one renderer only after extraction stability is proven.
-3. Add one deterministic extractor only after the renderer passes.
+2. Freeze the current renderer/extractor assumptions into reviewable benchmark
+   artifacts and manifests.
+3. Expand from the current deterministic baseline into hard cases and template
+   diversity.
 4. Add agentic repair only after deterministic extraction has a clear baseline.
 
 ## 2. Hard Constraints
@@ -56,15 +63,16 @@ The order of work is:
 - `generated_at` must be fixed inside benchmark cases so target XML is stable.
 - Row identity for line items is position-based until an explicit replacement
   policy is introduced.
-- Partial-shell milestones must use scoped validation, not the full-shell
-  validator with expected missing-field noise.
+- Scoped milestones must use validation that matches the extraction
+  surface being scored, not a broader validator that turns expected
+  omissions into noise.
 - `payment_form` is scored only when it is both:
   - present in canonical truth
   - visible in the template
 
 ## 3. Benchmark Contract to Freeze First
 
-Before any PDF work, freeze the benchmark contract.
+Before expanding PDF benchmark coverage, freeze the benchmark contract.
 
 Each benchmark case should own:
 
@@ -181,11 +189,12 @@ Acceptance:
 - re-rendering the same case yields identical extracted text and bounding boxes
 - only parser-visible stability is required, not byte-identical PDFs
 
-### M3. Header-Only Deterministic Extraction
+### M3. Deterministic Extraction Baseline
 
 Goal:
 
-- ship a narrow extractor that works on header fields before attempting tables
+- ship the first deterministic extractor that reconstructs the current
+  rendered invoice surface, not just header fields
 
 Scored fields in M3:
 
@@ -195,40 +204,41 @@ Scored fields in M3:
 - issue date
 - sale date
 - `payment_form`, only when present in truth and visible in the template
+- rendered line items
+- rendered invoice totals
 
 Critical correction:
 
-- M3 must introduce a scoped validation model for header-only drafts
-- do not reuse the full-shell validator as the main signal, because empty
-  `line_items` are expected at this stage
+- M3 must validate only the extraction surface that is actually rendered
+  and scored by the current template
+- do not treat non-rendered or not-yet-scored fields as extraction
+  failures
 
 Deliver:
 
 - PDF extraction interface
 - one `pdfplumber` backend
-- header-only draft shell result
+- draft shell result for the current rendered invoice surface
 - field-level evidence objects
 - extraction diagnostics
-- normalization for NIP, whitespace, invoice number, and dates
+- normalization for NIP, whitespace, invoice number, dates, and money
 - scoped comparison against the benchmark contract
 
 Acceptance:
 
-- header fields round-trip from template PDF back to canonical values
+- rendered fields round-trip from template PDF back to canonical values
 - evidence exists for every scored field
 - diagnostics distinguish missing, ambiguous, and normalized values
-- no line-item extraction is attempted yet
 
-### M4. Line-Item Extraction and Hard-Case Corpus
+### M4. Hard-Case Corpus and Robustness
 
 Goal:
 
-- extend extraction from header fields to full invoice content
+- harden deterministic extraction against harder layouts and ambiguous
+  cases now that line-item extraction exists
 
 Deliver:
 
-- line-items table extraction
-- full draft shell reconstruction
 - hard-case corpus covering:
   - wrapped descriptions
   - seller / buyer confusion
@@ -344,7 +354,7 @@ Milestone gates:
 
 - M1: deterministic benchmark-case creation, load/save stability, local XSD
 - M2: renderer spike passes parser-visible stability checks
-- M3: scoped header equivalence plus evidence and diagnostics
+- M3: scoped rendered-surface equivalence plus evidence and diagnostics
 - M4+: full scored-shell equivalence plus reconstructed XSD-valid XML
 - KSeF track: remote non-production acceptance is stronger than local XSD, but
   it is a separate gate
