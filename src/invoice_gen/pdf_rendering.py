@@ -64,10 +64,14 @@ SELLER_BUYER_VISIBLE_PATHS: frozenset[str] = frozenset(
         "shell.issue_date",
         "shell.sale_date",
         "shell.currency",
+        "shell.issue_city",
+        "shell.payment_form",
+        "shell.payment_due_date",
         "shell.seller.name",
         "shell.seller.nip",
         "shell.seller.address_line_1",
         "shell.seller.address_line_2",
+        "shell.seller.bank_account",
         "shell.buyer.name",
         "shell.buyer.nip",
         "shell.buyer.address_line_1",
@@ -97,6 +101,20 @@ _UNIT_PRICE_NET_MAX_FRACTION_DIGITS = 8
 _VAT_RATE_MAX_FRACTION_DIGITS = 0
 _MONEY_MAX_FRACTION_DIGITS = 2
 
+# KSeF FA(3) payment-form labels, verbatim from the authoritative XSL
+# stylesheet shipped with the schema (``data/schemas/styl.xsl``). Kept
+# public so the future extractor can reuse the same mapping as a
+# single source of truth for the reverse ``label → enum`` lookup.
+PAYMENT_FORM_LABELS: dict[int, str] = {
+    1: "Gotówka",
+    2: "Karta",
+    3: "Bon",
+    4: "Czek",
+    5: "Kredyt",
+    6: "Przelew",
+    7: "Mobilna",
+}
+
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _TEMPLATE_PATH = _TEMPLATES_DIR / f"{SELLER_BUYER_TEMPLATE_ID}.html"
 
@@ -110,6 +128,19 @@ def _format_iso_date(value: date | None) -> str:
     """
 
     return value.isoformat() if value is not None else ""
+
+
+def _format_payment_form(value: int | None) -> str:
+    """Map a KSeF payment-form enum value to its Polish label.
+
+    Returns an empty string for ``None`` or values outside the
+    authoritative 1..7 range so the template still renders the
+    surrounding row (keeping layout stable for extraction).
+    """
+
+    if value is None:
+        return ""
+    return PAYMENT_FORM_LABELS.get(value, "")
 
 
 def _render_line_items_rows(line_items: list[LineItemShell]) -> str:
@@ -282,10 +313,19 @@ def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
         .replace("__ISSUE_DATE__", escape(_format_iso_date(shell.issue_date)))
         .replace("__SALE_DATE__", escape(_format_iso_date(shell.sale_date)))
         .replace("__CURRENCY__", escape(shell.currency or ""))
+        .replace("__ISSUE_CITY__", escape(shell.issue_city or ""))
+        .replace(
+            "__PAYMENT_FORM__", escape(_format_payment_form(shell.payment_form))
+        )
+        .replace(
+            "__PAYMENT_DUE_DATE__",
+            escape(_format_iso_date(shell.payment_due_date)),
+        )
         .replace("__SELLER_NAME__", escape(seller.name or ""))
         .replace("__SELLER_NIP__", escape(seller.nip or ""))
         .replace("__SELLER_ADDR1__", escape(seller.address_line_1 or ""))
         .replace("__SELLER_ADDR2__", escape(seller.address_line_2 or ""))
+        .replace("__SELLER_BANK_ACCOUNT__", escape(seller.bank_account or ""))
         .replace("__BUYER_NAME__", escape(buyer.name or ""))
         .replace("__BUYER_NIP__", escape(buyer.nip or ""))
         .replace("__BUYER_ADDR1__", escape(buyer.address_line_1 or ""))

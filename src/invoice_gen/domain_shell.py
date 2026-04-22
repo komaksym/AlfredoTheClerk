@@ -47,6 +47,7 @@ class PartyShell:
     krs: str | None = None
     regon: str | None = None
     bdo: str | None = None
+    bank_account: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -82,6 +83,7 @@ class DomesticVatInvoiceShell:
     issue_city: str | None = None
     system_info: str | None = None
     payment_form: int | None = None
+    payment_due_date: date | None = None
     seller: PartyShell = field(default_factory=PartyShell)
     buyer: BuyerShell = field(default_factory=BuyerShell)
     line_items: list[LineItemShell] = field(default_factory=list)

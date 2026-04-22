@@ -135,6 +135,7 @@ def _build_reference_seed() -> DomesticVatInvoiceSeed:
         invoice_number="FV2026/04/001",
         issue_city="Warszawa",
         payment_form=6,
+        payment_due_date=date(2026, 4, 17),
         seller=DomesticVatPartySeed(
             nip="1234563218",
             name="ABC AGD sp. z o.o.",

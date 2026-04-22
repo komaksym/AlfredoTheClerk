@@ -69,6 +69,7 @@ _SHELL_KEYS = frozenset(
         "issue_city",
         "system_info",
         "payment_form",
+        "payment_due_date",
         "seller",
         "buyer",
         "line_items",
@@ -96,6 +97,7 @@ _PARTY_KEYS = frozenset(
         "krs",
         "regon",
         "bdo",
+        "bank_account",
     }
 )
 _BUYER_KEYS = _PARTY_KEYS | frozenset(
@@ -181,6 +183,8 @@ def shell_to_dict(shell: DomesticVatInvoiceShell) -> dict[str, Any]:
         data["system_info"] = shell.system_info
     if shell.payment_form is not None:
         data["payment_form"] = shell.payment_form
+    if shell.payment_due_date is not None:
+        data["payment_due_date"] = shell.payment_due_date.isoformat()
     return data
 
 
@@ -234,6 +238,9 @@ def shell_from_dict(data: Any) -> DomesticVatInvoiceShell:
         ),
         payment_form=_decode_optional_int(
             data.get("payment_form"), "shell.payment_form"
+        ),
+        payment_due_date=_decode_date(
+            data.get("payment_due_date"), "shell.payment_due_date"
         ),
         seller=_party_from_dict(data["seller"], path="shell.seller"),
         buyer=_buyer_from_dict(data["buyer"], path="shell.buyer"),
@@ -387,6 +394,7 @@ def _party_to_dict(party: PartyShell) -> dict[str, Any]:
     _set_if_present(data, "krs", party.krs)
     _set_if_present(data, "regon", party.regon)
     _set_if_present(data, "bdo", party.bdo)
+    _set_if_present(data, "bank_account", party.bank_account)
     return data
 
 
@@ -517,6 +525,9 @@ def _party_from_dict(data: Any, *, path: str) -> PartyShell:
         krs=_decode_optional_str(data.get("krs"), f"{path}.krs"),
         regon=_decode_optional_str(data.get("regon"), f"{path}.regon"),
         bdo=_decode_optional_str(data.get("bdo"), f"{path}.bdo"),
+        bank_account=_decode_optional_str(
+            data.get("bank_account"), f"{path}.bank_account"
+        ),
     )
 
 
@@ -555,6 +566,9 @@ def _buyer_from_dict(data: Any, *, path: str) -> BuyerShell:
         krs=_decode_optional_str(data.get("krs"), f"{path}.krs"),
         regon=_decode_optional_str(data.get("regon"), f"{path}.regon"),
         bdo=_decode_optional_str(data.get("bdo"), f"{path}.bdo"),
+        bank_account=_decode_optional_str(
+            data.get("bank_account"), f"{path}.bank_account"
+        ),
         buyer_id_mode=buyer_id_mode,
         jst=jst,
         gv=gv,
