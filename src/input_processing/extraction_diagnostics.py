@@ -79,6 +79,14 @@ def _classify_field(path: str, ev: FieldEvidence) -> FieldDiagnostic:
     """Determine the diagnostic status for one evidence entry."""
 
     if ev.source == "unresolved" and ev.value is None:
+        if ev.confidence >= 1.0:
+            return FieldDiagnostic(
+                path=path,
+                status=FieldStatus.PRESENT,
+                raw_text=ev.raw_text,
+                message=None,
+            )
+
         if ev.bbox is not None:
             return FieldDiagnostic(
                 path=path,
