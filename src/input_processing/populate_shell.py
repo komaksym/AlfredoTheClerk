@@ -3,8 +3,8 @@
 Current scope covers:
 - seller/buyer NIP via regex inside party sub-blocks
 - seller/buyer name and address lines via spatial row positions
-- invoice number and issue/sale dates via fuzzy header labels
-- line-items table rows when a parsed bordered table is supplied
+- header / summary-area labels from the rendered native-PDF template
+- line-items and VAT-summary bordered tables when supplied
 """
 
 from __future__ import annotations
@@ -44,17 +44,12 @@ REPO_ROOT_PATH = Path(__file__).resolve().parents[2]
 
 FIELD_ANCHORS = {
     "issue_date": ["wystawiono", "data wystawienia"],
-    "sale_date": ["sprzedano", "data sprzedaży"],
+    "sale_date": ["sprzedano", "sprzedaży", "data sprzedaży"],
     "seller": ["sprzedawca", "sprzedający"],
     "buyer": ["nabywca", "kupujący"],
     "nip": ["nip"],
-    "invoice_number": ["faktura nr", "numer", "nr faktury"],
+    "invoice_number": ["faktura nr", "numer", "nr faktury", "nr"],
     "currency": ["waluta"],
-    # Anchor on the label's last word so ``find_right_neighbor`` lands on
-    # the value rather than on a trailing label token. ``issue_date`` /
-    # ``sale_date`` use the same shape (single-token ``wystawiono`` /
-    # ``sprzedano``); these labels are just multi-word variants of it.
-    "issue_city": ["wystawienia"],
     # Anchor ``zapłaty`` only, not ``płatności``: the latter is the last
     # word of ``Termin płatności`` and would collide with
     # ``payment_due_date`` below. Current template renders ``Sposób
@@ -62,6 +57,7 @@ FIELD_ANCHORS = {
     # future robustness slice.
     "payment_form": ["zapłaty"],
     "payment_due_date": ["płatności"],
+    "bank_account": ["bankowe"],
 }
 
 # Reverse of pdf_rendering.PAYMENT_FORM_LABELS: Polish label (lowercased)
@@ -166,7 +162,9 @@ def find_seller_buyer_subblocks(
 
     for block in parsed_data:
         for sub_block in block:
-            tokens = {normalize_text(w.text) for w in sub_block.words}
+            tokens = {
+                normalize_text(w.text).rstrip(":") for w in sub_block.words
+            }
 
             if seller is None and tokens & seller_anchors:
                 seller = sub_block
@@ -225,32 +223,43 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
     )
 
 
-def extract_bank_account_from_subblock(sub_block: SubBlock) -> FieldEvidence:
-    """Scan a sub-block for the first structurally valid PL IBAN.
+def extract_bank_account_from_words(words: list[Word]) -> FieldEvidence:
+    """Extract a PL IBAN from a summary-area ``Konto bankowe`` row."""
 
-    Mirrors :func:`extract_nip_from_subblock`: regex-scan the word text,
-    but IBANs render as a single unspaced token (28 chars) so no
-    multi-word span handling is needed. Confidence is 1.0 when the
-    mod-97 checksum passes, 0.5 when the layout matches but the checksum
-    fails.
-    """
-
-    for word in sub_block.words:
-        if not PL_IBAN_PATTERN.fullmatch(word.text):
-            continue
-
-        confidence = 1.0 if validate_pl_iban_checksum(word.text) else 0.5
-
+    match = find_label(words, FIELD_ANCHORS["bank_account"])
+    if match is None:
         return FieldEvidence(
-            value=word.text,
-            source="regex",
-            confidence=confidence,
-            bbox=bbox_of([word]),
-            raw_text=word.text,
+            value=None, source="unresolved", confidence=0.0, bbox=None
         )
 
+    label_word, _ = match
+    value_word = find_value_word(label_word, words)
+    if value_word is None:
+        return FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox_of([label_word]),
+        )
+
+    raw_text = value_word.text.strip()
+    bbox = bbox_of([label_word, value_word])
+    if not PL_IBAN_PATTERN.fullmatch(raw_text):
+        return FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox,
+            raw_text=raw_text,
+        )
+
+    confidence = 1.0 if validate_pl_iban_checksum(raw_text) else 0.5
     return FieldEvidence(
-        value=None, source="unresolved", confidence=0.0, bbox=None
+        value=raw_text,
+        source="regex",
+        confidence=confidence,
+        bbox=bbox,
+        raw_text=raw_text,
     )
 
 
@@ -297,10 +306,10 @@ def _spatial_line_evidence(words: list[Word]) -> FieldEvidence:
     )
 
 
-def subblock_lines(sub_block: SubBlock) -> list[list[Word]]:
-    """Group sub-block words into non-empty visual lines."""
+def _words_to_lines(words: list[Word]) -> list[list[Word]]:
+    """Group words into non-empty visual lines."""
 
-    words = sorted(sub_block.words, key=lambda word: (word.top, word.x0))
+    words = sorted(words, key=lambda word: (word.top, word.x0))
     lines: list[list[Word]] = []
     i = 0
 
@@ -318,6 +327,113 @@ def subblock_lines(sub_block: SubBlock) -> list[list[Word]]:
         i = j
 
     return lines
+
+
+def subblock_lines(sub_block: SubBlock) -> list[list[Word]]:
+    """Group one sub-block's words into non-empty visual lines."""
+
+    return _words_to_lines(sub_block.words)
+
+
+def _line_for_word(words: list[Word], target: Word) -> list[Word] | None:
+    """Return the visual line from ``words`` that contains ``target``."""
+
+    for line in _words_to_lines(words):
+        if target in line:
+            return line
+    return None
+
+
+def extract_issue_date_and_city(
+    header: list[Word],
+) -> tuple[FieldEvidence, FieldEvidence]:
+    """Parse ``Wystawiono dnia: YYYY-MM-DD, Miasto`` from the header."""
+
+    match = find_label(header, FIELD_ANCHORS["issue_date"])
+    if match is None:
+        return _unresolved_evidence(), _unresolved_evidence()
+
+    label_word, score = match
+    line = _line_for_word(header, label_word)
+    if not line:
+        return _unresolved_evidence(), _unresolved_evidence()
+
+    text = _line_text(line)
+    bbox = bbox_of(line)
+    confidence = score / 100
+
+    date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", text)
+    if date_match is None:
+        unresolved = FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox,
+            raw_text=text,
+        )
+        return unresolved, unresolved
+
+    raw_date = date_match.group()
+    remainder = text[date_match.end() :].strip()
+    city_text = remainder.lstrip(",").strip()
+
+    try:
+        parsed_date = date.fromisoformat(raw_date)
+    except ValueError:
+        date_ev = FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox,
+            raw_text=raw_date,
+        )
+    else:
+        date_ev = FieldEvidence(
+            value=parsed_date,
+            source="fuzzy",
+            confidence=confidence,
+            bbox=bbox,
+            raw_text=raw_date,
+        )
+
+    if city_text:
+        city_ev = FieldEvidence(
+            value=city_text,
+            source="fuzzy",
+            confidence=confidence,
+            bbox=bbox,
+            raw_text=city_text,
+        )
+    else:
+        city_ev = FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox,
+            raw_text=text,
+        )
+
+    return date_ev, city_ev
+
+
+def summary_footer_words(
+    parsed_data: list[list[SubBlock]],
+    parsed_tables: list[ParsedTable],
+) -> list[Word]:
+    """Return words rendered below the last bordered table."""
+
+    if not parsed_tables:
+        return [w for block in parsed_data for sb in block for w in sb.words]
+
+    footer_top = max(table.bbox[3] for table in parsed_tables)
+    words: list[Word] = []
+    for block in parsed_data:
+        for sub_block in block:
+            words.extend(
+                word for word in sub_block.words if word.top >= footer_top
+            )
+
+    return words
 
 
 def _find_party_anchor_and_nip_lines(
@@ -372,21 +488,6 @@ def extract_party_name_from_subblock(sub_block: SubBlock) -> FieldEvidence:
     return _spatial_line_evidence(candidate_lines[0])
 
 
-def _line_is_bank_account_row(words: list[Word]) -> bool:
-    """Return True when a line renders either the IBAN or its ``Numer rachunku:`` label.
-
-    The seller column's IBAN can wrap onto its own visual line, so both
-    the label row and the value row must be filterable — checking one
-    without the other would still leak a non-address line into the
-    address extractor's candidate set.
-    """
-
-    if any(PL_IBAN_PATTERN.fullmatch(word.text) for word in words):
-        return True
-
-    return "rachunku" in _line_tokens(words)
-
-
 def extract_party_addresses_from_subblock(
     sub_block: SubBlock,
 ) -> tuple[FieldEvidence, FieldEvidence]:
@@ -398,15 +499,7 @@ def extract_party_addresses_from_subblock(
     if anchor_idx is None or nip_idx is None:
         return _unresolved_evidence(), _unresolved_evidence()
 
-    # IBAN rows render below the address lines (see seller_buyer_block_v1.html).
-    # They are their own labeled field, so exclude them before counting
-    # candidate address lines — otherwise a seller sub-block with a bank
-    # account would always trip the 3+-lines "ambiguous" branch.
-    candidate_lines = [
-        line
-        for line in lines[nip_idx + 1 :]
-        if not _line_is_bank_account_row(line)
-    ]
+    candidate_lines = lines[nip_idx + 1 :]
     if not candidate_lines:
         return _unresolved_evidence(), _unresolved_evidence()
 
@@ -486,13 +579,21 @@ def find_label(
 
         if len(anchor_tokens) == 1:
             for word in words:
-                score = fuzz.ratio(normalize_text(word.text), anchor)
+                score = fuzz.ratio(
+                    normalize_text(word.text).rstrip(":"),
+                    anchor,
+                )
                 if score >= floor and (best is None or score > best[1]):
                     best = (word, score)
             continue
 
         for i in range(len(words) - 1):
-            joined = normalize_text(f"{words[i].text} {words[i + 1].text}")
+            joined = " ".join(
+                (
+                    normalize_text(words[i].text).rstrip(":"),
+                    normalize_text(words[i + 1].text).rstrip(":"),
+                )
+            )
             score = fuzz.ratio(joined, anchor)
             if score >= floor and (best is None or score > best[1]):
                 best = (words[i], score)
@@ -594,6 +695,7 @@ _LINE_ITEM_HEADER_ANCHORS = (
     "j.m.",
     "ilość",
     "cena netto",
+    "rabat",
     "stawka vat",
 )
 _LINE_ITEM_HEADER_THRESHOLD = 80
@@ -602,6 +704,7 @@ _LINE_ITEM_FIELD_NAMES = (
     "unit",
     "quantity",
     "unit_price_net",
+    "discount",
     "vat_rate",
 )
 
@@ -680,16 +783,35 @@ def _decimal_cell_evidence(
     )
 
 
+def _optional_decimal_cell_evidence(
+    cell_text: str | None,
+    bbox: tuple[float, float, float, float],
+) -> FieldEvidence:
+    """FieldEvidence for an optional Decimal-valued cell."""
+
+    if cell_text is None or not cell_text.strip():
+        return FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=1.0,
+            bbox=bbox,
+            raw_text=cell_text,
+        )
+
+    return _decimal_cell_evidence(cell_text, bbox)
+
+
 def extract_line_items_rows(
     parsed_tables: list[ParsedTable],
 ) -> list[dict[str, FieldEvidence]]:
     """Return per-row evidence dicts for the first detected line-items table.
 
     Picks the first table whose header row fuzzy-matches the expected
-    six column labels. Each data row becomes a dict keyed by shell
+    seven column labels. Each data row becomes a dict keyed by shell
     field name (``description``, ``unit``, ``quantity``,
-    ``unit_price_net``, ``vat_rate``). Returns ``[]`` when no table
-    matches — the caller treats that as "no line items extracted".
+    ``unit_price_net``, ``discount``, ``vat_rate``). Returns ``[]``
+    when no table matches — the caller treats that as
+    "no line items extracted".
     """
 
     target: ParsedTable | None = None
@@ -709,10 +831,16 @@ def extract_line_items_rows(
             continue
 
         # Column order matches the rendered template:
-        # Lp., Nazwa, J.m., Ilość, Cena netto, Stawka VAT.
-        _, description_cell, unit_cell, quantity_cell, price_cell, vat_cell = (
-            row
-        )
+        # Lp., Nazwa, J.m., Ilość, Cena netto, Rabat, Stawka VAT.
+        (
+            _,
+            description_cell,
+            unit_cell,
+            quantity_cell,
+            price_cell,
+            discount_cell,
+            vat_cell,
+        ) = row
 
         rows.append(
             {
@@ -725,6 +853,9 @@ def extract_line_items_rows(
                 ),
                 "unit_price_net": _decimal_cell_evidence(
                     price_cell.text, price_cell.bbox
+                ),
+                "discount": _optional_decimal_cell_evidence(
+                    discount_cell.text, discount_cell.bbox
                 ),
                 "vat_rate": _decimal_cell_evidence(
                     vat_cell.text, vat_cell.bbox
@@ -860,7 +991,7 @@ def extract_summary_rows(
 def populate_shell(
     parsed_document: ParsedDocument,
 ) -> tuple[DomesticVatInvoiceShell, dict[str, FieldEvidence]]:
-    """Populate header + party fields plus line items from one ParsedDocument.
+    """Populate rendered shell fields plus table evidence from one PDF.
 
     Line items are populated from ``parsed_document.tables`` — an empty
     list (no bordered tables on the page) simply yields no line items
@@ -887,8 +1018,6 @@ def populate_shell(
                 "address_line_2",
             ):
                 evidence[f"{role}.{field_name}"] = _unresolved_evidence()
-            if role == "seller":
-                evidence["seller.bank_account"] = _unresolved_evidence()
             continue
 
         nip_ev = extract_nip_from_subblock(sub_block)
@@ -907,24 +1036,14 @@ def populate_shell(
         party.address_line_1 = address_1_ev.value
         party.address_line_2 = address_2_ev.value
 
-        if role == "seller":
-            bank_account_ev = extract_bank_account_from_subblock(sub_block)
-            evidence["seller.bank_account"] = bank_account_ev
-            party.bank_account = bank_account_ev.value
-
     header = header_words(parsed_data, seller_sb, buyer_sb)
 
     invoice_ev = extract_labeled_field(
         header, FIELD_ANCHORS["invoice_number"], str.strip
     )
-    issue_ev = extract_labeled_field(
-        header, FIELD_ANCHORS["issue_date"], date.fromisoformat
-    )
+    issue_ev, issue_city_ev = extract_issue_date_and_city(header)
     sale_ev = extract_labeled_field(
         header, FIELD_ANCHORS["sale_date"], date.fromisoformat
-    )
-    issue_city_ev = extract_labeled_field(
-        header, FIELD_ANCHORS["issue_city"], str.strip
     )
     payment_form_ev = extract_labeled_field(
         header, FIELD_ANCHORS["payment_form"], _parse_payment_form
@@ -947,6 +1066,12 @@ def populate_shell(
     evidence["payment_form"] = payment_form_ev
     evidence["payment_due_date"] = payment_due_date_ev
 
+    bank_account_ev = extract_bank_account_from_words(
+        summary_footer_words(parsed_data, parsed_document.tables)
+    )
+    evidence["seller.bank_account"] = bank_account_ev
+    shell.seller.bank_account = _as_str(bank_account_ev.value)
+
     for row_index, row_ev in enumerate(
         extract_line_items_rows(parsed_document.tables)
     ):
@@ -960,6 +1085,7 @@ def populate_shell(
                 unit=_as_str(row_ev["unit"].value),
                 quantity=_as_decimal(row_ev["quantity"].value),
                 unit_price_net=_as_decimal(row_ev["unit_price_net"].value),
+                discount=_as_decimal(row_ev["discount"].value),
                 vat_rate=_as_decimal(row_ev["vat_rate"].value),
             )
         )

@@ -2,9 +2,10 @@
 
 This is the M2 renderer deliverable, extended in M4 slice 1: turn one
 canonical shell into a PDF that pdfplumber can extract cleanly. The
-template covers the invoice header (number, issue date, sale date,
-currency), the seller/buyer two-column block, and a bordered
-line-items table plus a bordered VAT-summary table.
+template now follows the checked-in FakturaXL-style reference more
+closely: a top issue line, a top-right invoice metadata block, the
+seller/buyer two-column block, a bordered line-items table, a bordered
+VAT-summary table, and a summary-area bank-account row.
 
 Determinism contract (per ROADMAP.md M2 acceptance):
 
@@ -81,6 +82,7 @@ SELLER_BUYER_VISIBLE_PATHS: frozenset[str] = frozenset(
         "shell.line_items[*].unit",
         "shell.line_items[*].quantity",
         "shell.line_items[*].unit_price_net",
+        "shell.line_items[*].discount",
         "shell.line_items[*].vat_rate",
         "summary.invoice_net_total",
         "summary.invoice_vat_total",
@@ -143,6 +145,18 @@ def _format_payment_form(value: int | None) -> str:
     return PAYMENT_FORM_LABELS.get(value, "")
 
 
+def _format_issue_date_city(
+    issue_date: date | None, issue_city: str | None
+) -> str:
+    """Render ``issue_date`` and ``issue_city`` as one header line payload."""
+
+    date_text = _format_iso_date(issue_date)
+    city_text = issue_city or ""
+    if date_text and city_text:
+        return f"{date_text}, {city_text}"
+    return date_text or city_text
+
+
 def _render_line_items_rows(line_items: list[LineItemShell]) -> str:
     """Build the ``<tbody>`` inner HTML for the line-items table.
 
@@ -173,6 +187,14 @@ def _render_line_items_rows(line_items: list[LineItemShell]) -> str:
             if item.unit_price_net is not None
             else ""
         )
+        discount = (
+            format_decimal(
+                item.discount,
+                max_fraction_digits=_MONEY_MAX_FRACTION_DIGITS,
+            )
+            if item.discount is not None
+            else ""
+        )
         vat_rate = (
             format_decimal(
                 item.vat_rate,
@@ -188,6 +210,7 @@ def _render_line_items_rows(line_items: list[LineItemShell]) -> str:
             f"<td>{unit}</td>"
             f'<td class="num">{quantity}</td>'
             f'<td class="num">{unit_price_net}</td>'
+            f'<td class="num">{discount}</td>'
             f'<td class="num">{vat_rate}</td>'
             "</tr>"
         )
@@ -290,11 +313,11 @@ def _summarize_for_rendering(
 def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
     """Render the first native template to a PDF byte string.
 
-    The template carries an invoice header (number, issue date, sale
-    date, currency) above a two-column seller/buyer block. Empty
-    optional fields render as empty strings, not the literal "None";
-    the resulting PDF still emits the field's row so layout stays
-    stable for downstream extraction. Dates are pinned to ISO
+    The template carries a reference-aligned invoice top bar above the
+    seller/buyer block, keeps the existing bordered line-items and
+    VAT-summary tables, and renders the seller bank account in the
+    summary area as ``Konto bankowe``. Empty optional fields render as
+    empty strings, not the literal ``None``. Dates are pinned to ISO
     ``YYYY-MM-DD`` so re-rendering the same shell on a different host
     locale yields identical extracted text.
     """
@@ -310,10 +333,12 @@ def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
     summary = _summarize_for_rendering(shell)
     rendered = (
         html.replace("__INVOICE_NUMBER__", escape(shell.invoice_number or ""))
-        .replace("__ISSUE_DATE__", escape(_format_iso_date(shell.issue_date)))
+        .replace(
+            "__ISSUE_DATE_CITY__",
+            escape(_format_issue_date_city(shell.issue_date, shell.issue_city)),
+        )
         .replace("__SALE_DATE__", escape(_format_iso_date(shell.sale_date)))
         .replace("__CURRENCY__", escape(shell.currency or ""))
-        .replace("__ISSUE_CITY__", escape(shell.issue_city or ""))
         .replace(
             "__PAYMENT_FORM__", escape(_format_payment_form(shell.payment_form))
         )

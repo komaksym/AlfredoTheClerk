@@ -61,6 +61,9 @@ _LINE_ITEM_TEMPLATES = (
 )
 _REFERENCE_START_DATE = date(2026, 1, 1)
 _REFERENCE_DAY_COUNT = 365
+_DISCOUNT_PROBABILITY = 0.3
+_DISCOUNT_MIN_PCT = Decimal("0.05")
+_DISCOUNT_MAX_PCT = Decimal("0.20")
 
 
 @dataclass(kw_only=True)
@@ -89,6 +92,7 @@ class DomesticVatLineItemSeed:
     quantity: Decimal
     unit_price_net: Decimal
     vat_rate: Decimal
+    discount: Decimal | None = None
 
 
 @dataclass(kw_only=True)
@@ -136,6 +140,10 @@ def build_domestic_vat_seed(seed: int | None = None) -> DomesticVatInvoiceSeed:
     # deterministic RNG consumers (payment_form, line_items, and the
     # per-party email/phone/krs/regon/bdo chains).
     built.seller.bank_account = _build_pl_iban(rng)
+    for item in built.line_items:
+        item.discount = _maybe_build_discount(
+            rng, item.quantity, item.unit_price_net
+        )
 
     return built
 
@@ -243,6 +251,22 @@ def _build_unit_price_net(rng: random.Random) -> Decimal:
 
     grosze = rng.randint(500, 250_000)
     return (Decimal(grosze) / Decimal("100")).quantize(Decimal("0.01"))
+
+
+def _maybe_build_discount(
+    rng: random.Random,
+    quantity: Decimal,
+    unit_price_net: Decimal,
+) -> Decimal | None:
+    """Return an optional line discount as a money amount."""
+
+    if rng.random() >= _DISCOUNT_PROBABILITY:
+        return None
+
+    pct = Decimal(
+        str(rng.uniform(float(_DISCOUNT_MIN_PCT), float(_DISCOUNT_MAX_PCT)))
+    )
+    return (quantity * unit_price_net * pct).quantize(Decimal("0.01"))
 
 
 def _build_invoice_number(rng: random.Random, issue_date: date) -> str:

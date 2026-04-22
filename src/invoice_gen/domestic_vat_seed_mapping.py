@@ -51,6 +51,7 @@ def map_domestic_vat_seed_to_shell(
             quantity=line_item.quantity,
             unit_price_net=line_item.unit_price_net,
             vat_rate=line_item.vat_rate,
+            discount=line_item.discount,
         )
         for line_item in seed.line_items
     ]

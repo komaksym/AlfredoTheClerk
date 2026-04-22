@@ -277,6 +277,11 @@ def _map_line_item(
         p_8_a=shell_line.unit,
         p_8_b=format_decimal(shell_line.quantity, max_fraction_digits=6),
         p_9_a=format_decimal(shell_line.unit_price_net, max_fraction_digits=8),
+        p_10=(
+            format_money(shell_line.discount)
+            if shell_line.discount is not None
+            else None
+        ),
         p_11=format_money(summary_line.line_net_total),
         p_12=_VAT_ENUMS[summary_line.vat_rate],
     )
@@ -400,6 +405,11 @@ def _validate_summary_line(
             message=f"summary unit price mismatch at row {index}",
         )
 
+    if summary_line.discount != shell_line.discount:
+        raise FakturaMappingError(
+            message=f"summary discount mismatch at row {index}",
+        )
+
     if summary_line.vat_rate != shell_line.vat_rate:
         raise FakturaMappingError(
             message=f"summary VAT rate mismatch at row {index}",
@@ -407,6 +417,7 @@ def _validate_summary_line(
 
     expected_line_net_total = round_money(
         shell_line.quantity * shell_line.unit_price_net
+        - (shell_line.discount or Decimal("0"))
     )
     expected_line_vat_total = round_money(
         expected_line_net_total * shell_line.vat_rate / _HUNDRED

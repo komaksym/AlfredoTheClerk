@@ -32,6 +32,7 @@ class DomesticVatLineComputation:
     quantity: Decimal
     unit_price_net: Decimal
     vat_rate: Decimal
+    discount: Decimal | None
     line_net_total: Decimal
     line_vat_total: Decimal
     line_gross_total: Decimal
@@ -132,7 +133,13 @@ def _compute_line(
     assert line_item.unit_price_net is not None
     assert line_item.vat_rate is not None
 
-    line_net_total = round_money(line_item.quantity * line_item.unit_price_net)
+    gross_net = line_item.quantity * line_item.unit_price_net
+    discount_amount = (
+        line_item.discount
+        if isinstance(line_item.discount, Decimal)
+        else Decimal("0")
+    )
+    line_net_total = round_money(gross_net - discount_amount)
     line_vat_total = round_money(line_net_total * line_item.vat_rate / _HUNDRED)
     line_gross_total = round_money(line_net_total + line_vat_total)
 
@@ -142,6 +149,7 @@ def _compute_line(
         quantity=line_item.quantity,
         unit_price_net=line_item.unit_price_net,
         vat_rate=line_item.vat_rate,
+        discount=line_item.discount,
         line_net_total=line_net_total,
         line_vat_total=line_vat_total,
         line_gross_total=line_gross_total,

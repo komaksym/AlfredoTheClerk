@@ -69,6 +69,7 @@ class LineItemShell:
     quantity: Decimal | None = None
     unit_price_net: Decimal | None = None
     vat_rate: Decimal | None = None
+    discount: Decimal | None = None
 
 
 @dataclass(kw_only=True)

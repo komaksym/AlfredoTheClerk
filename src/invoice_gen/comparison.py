@@ -272,6 +272,7 @@ def build_default_comparison_policy() -> ComparisonPolicy:
     _norm("shell.line_items[*].unit", "text")
     _exact("shell.line_items[*].quantity")
     _exact("shell.line_items[*].unit_price_net")
+    _exact("shell.line_items[*].discount")
     _exact("shell.line_items[*].vat_rate")
 
     # --- adnotations (fixed flag block) ---
@@ -297,6 +298,7 @@ def build_default_comparison_policy() -> ComparisonPolicy:
     _norm("summary.line_computations[*].description", "text")
     _exact("summary.line_computations[*].quantity")
     _exact("summary.line_computations[*].unit_price_net")
+    _exact("summary.line_computations[*].discount")
     _exact("summary.line_computations[*].vat_rate")
     _norm("summary.line_computations[*].line_net_total", "money")
     _norm("summary.line_computations[*].line_vat_total", "money")
@@ -574,6 +576,7 @@ def _walk_line_items(
             "unit",
             "quantity",
             "unit_price_net",
+            "discount",
             "vat_rate",
         ):
             _check_field(
@@ -694,6 +697,7 @@ def _walk_line_computations(
             "description",
             "quantity",
             "unit_price_net",
+            "discount",
             "vat_rate",
             "line_net_total",
             "line_vat_total",

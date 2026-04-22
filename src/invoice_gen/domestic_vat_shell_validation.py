@@ -376,6 +376,13 @@ def _validate_line_items(
             f"{prefix}.vat_rate",
             errors,
         )
+        _validate_optional_discount(
+            line_item.discount,
+            line_item.quantity,
+            line_item.unit_price_net,
+            f"{prefix}.discount",
+            errors,
+        )
 
 
 def _validate_adnotations(
@@ -545,6 +552,50 @@ def _validate_positive_decimal(
             path=path,
             code="invalid_value",
             message=f"{path} must be greater than zero",
+        )
+
+
+def _validate_optional_discount(
+    discount: Decimal | None,
+    quantity: Decimal | None,
+    unit_price_net: Decimal | None,
+    path: str,
+    errors: list[ShellValidationError],
+) -> None:
+    """Validate the optional per-line discount amount."""
+
+    if discount is None:
+        return
+
+    if not isinstance(discount, Decimal):
+        _add_error(
+            errors,
+            path=path,
+            code="invalid_value",
+            message=f"{path} must be a Decimal",
+        )
+        return
+
+    if discount <= 0:
+        _add_error(
+            errors,
+            path=path,
+            code="invalid_value",
+            message=f"{path} must be greater than zero",
+        )
+        return
+
+    if not isinstance(quantity, Decimal) or not isinstance(
+        unit_price_net, Decimal
+    ):
+        return
+
+    if discount > quantity * unit_price_net:
+        _add_error(
+            errors,
+            path=path,
+            code="invalid_relation",
+            message=f"{path} must not exceed quantity * unit_price_net",
         )
 
 

@@ -105,7 +105,14 @@ _BUYER_KEYS = _PARTY_KEYS | frozenset(
 )
 _BUYER_REQUIRED_KEYS = frozenset({"buyer_id_mode", "jst", "gv"})
 _LINE_ITEM_KEYS = frozenset(
-    {"description", "unit", "quantity", "unit_price_net", "vat_rate"}
+    {
+        "description",
+        "unit",
+        "quantity",
+        "unit_price_net",
+        "discount",
+        "vat_rate",
+    }
 )
 _ADNOTATION_KEYS = frozenset(
     {
@@ -139,6 +146,19 @@ _SUMMARY_REQUIRED_KEYS = frozenset(
     }
 )
 _LINE_COMPUTATION_KEYS = frozenset(
+    {
+        "line_index",
+        "description",
+        "quantity",
+        "unit_price_net",
+        "discount",
+        "vat_rate",
+        "line_net_total",
+        "line_vat_total",
+        "line_gross_total",
+    }
+)
+_LINE_COMPUTATION_REQUIRED_KEYS = frozenset(
     {
         "line_index",
         "description",
@@ -428,6 +448,8 @@ def _line_item_to_dict(item: LineItemShell, *, index: int) -> dict[str, Any]:
             max_fraction_digits=_UNIT_PRICE_NET_MAX_FRACTION_DIGITS,
             field_path=f"{path}.unit_price_net",
         )
+    if item.discount is not None:
+        data["discount"] = _encode_money(item.discount, f"{path}.discount")
     if item.vat_rate is not None:
         data["vat_rate"] = _encode_decimal(
             item.vat_rate,
@@ -461,7 +483,7 @@ def _line_computation_to_dict(
     """Encode one computed line into the frozen dict form."""
 
     path = f"summary.line_computations[{lc.line_index}]"
-    return {
+    data = {
         "line_index": lc.line_index,
         "description": lc.description,
         "quantity": _encode_decimal(
@@ -474,11 +496,6 @@ def _line_computation_to_dict(
             max_fraction_digits=_UNIT_PRICE_NET_MAX_FRACTION_DIGITS,
             field_path=f"{path}.unit_price_net",
         ),
-        "vat_rate": _encode_decimal(
-            lc.vat_rate,
-            max_fraction_digits=_VAT_RATE_MAX_FRACTION_DIGITS,
-            field_path=f"{path}.vat_rate",
-        ),
         "line_net_total": _encode_money(
             lc.line_net_total, f"{path}.line_net_total"
         ),
@@ -489,6 +506,17 @@ def _line_computation_to_dict(
             lc.line_gross_total, f"{path}.line_gross_total"
         ),
     }
+    _set_if_present(
+        data,
+        "discount",
+        _encode_optional_money(lc.discount, f"{path}.discount"),
+    )
+    data["vat_rate"] = _encode_decimal(
+        lc.vat_rate,
+        max_fraction_digits=_VAT_RATE_MAX_FRACTION_DIGITS,
+        field_path=f"{path}.vat_rate",
+    )
+    return data
 
 
 def _bucket_summary_to_dict(
@@ -598,6 +626,9 @@ def _line_item_from_dict(data: Any, *, path: str) -> LineItemShell:
             f"{path}.unit_price_net",
             max_fraction_digits=_UNIT_PRICE_NET_MAX_FRACTION_DIGITS,
         ),
+        discount=_decode_optional_money(
+            data.get("discount"), f"{path}.discount"
+        ),
         vat_rate=_decode_decimal(
             data.get("vat_rate"),
             f"{path}.vat_rate",
@@ -653,7 +684,7 @@ def _line_computation_from_dict(
 
     _require_object(data, path)
     _reject_unknown_keys(data, _LINE_COMPUTATION_KEYS, path)
-    _require_keys(data, _LINE_COMPUTATION_KEYS, path)
+    _require_keys(data, _LINE_COMPUTATION_REQUIRED_KEYS, path)
 
     line_index = data["line_index"]
     if not isinstance(line_index, int) or isinstance(line_index, bool):
@@ -684,6 +715,9 @@ def _line_computation_from_dict(
         description=description,
         quantity=quantity,
         unit_price_net=unit_price_net,
+        discount=_decode_optional_money(
+            data.get("discount"), f"{path}.discount"
+        ),
         vat_rate=vat_rate,
         line_net_total=_decode_money(
             data["line_net_total"], f"{path}.line_net_total"
@@ -800,6 +834,16 @@ def _encode_money(value: Decimal, field_path: str) -> str:
         raise DomesticVatJsonError(f"{field_path}: {exc}") from exc
 
 
+def _encode_optional_money(
+    value: Decimal | None, field_path: str
+) -> str | None:
+    """Format one optional Decimal money value when present."""
+
+    if value is None:
+        return None
+    return _encode_money(value, field_path)
+
+
 def _decode_optional_str(value: Any, path: str) -> str | None:
     """Decode one optional string, rejecting non-string non-``None`` input."""
 
@@ -818,6 +862,14 @@ def _decode_optional_int(value: Any, path: str) -> int | None:
     if not isinstance(value, int) or isinstance(value, bool):
         raise DomesticVatJsonError(f"{path} must be an integer")
     return value
+
+
+def _decode_optional_money(value: Any, path: str) -> Decimal | None:
+    """Decode one optional money string in canonical form."""
+
+    if value is None:
+        return None
+    return _decode_money(value, path)
 
 
 def _decode_date(value: Any, path: str) -> date | None:
