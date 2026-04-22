@@ -276,7 +276,8 @@ def parse_sub_blocks(block: Block) -> list[SubBlock]:
     """Split a block into sub-blocks by x-gutters.
 
     N gutters produce N+1 sub-blocks (columns). Words are assigned
-    to columns by their x-center position.
+    to the column they overlap most; words that fall entirely inside a
+    gutter are assigned to the nearest column instead of being dropped.
     """
 
     in_block_gaps = calculate_inblock_gaps(block)
@@ -305,8 +306,29 @@ def parse_sub_blocks(block: Block) -> list[SubBlock]:
         col_words: list[Word] = []
         for line in block.lines:
             for word in line.words:
-                word_center = (word.x0 + word.x1) / 2
-                if col_left <= word_center <= col_right:
+                overlaps = [
+                    max(
+                        0.0,
+                        min(word.x1, boundary_right)
+                        - max(word.x0, boundary_left),
+                    )
+                    for boundary_left, boundary_right in boundaries
+                ]
+                if any(overlaps):
+                    target_index = max(
+                        range(len(boundaries)),
+                        key=lambda index: overlaps[index],
+                    )
+                else:
+                    word_center = (word.x0 + word.x1) / 2
+                    target_index = min(
+                        range(len(boundaries)),
+                        key=lambda index: min(
+                            abs(word_center - boundaries[index][0]),
+                            abs(word_center - boundaries[index][1]),
+                        ),
+                    )
+                if boundaries[target_index] == (col_left, col_right):
                     col_words.append(word)
         if col_words:
             sub_blocks.append(
