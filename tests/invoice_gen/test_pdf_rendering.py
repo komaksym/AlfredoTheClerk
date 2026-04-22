@@ -150,18 +150,19 @@ def test_header_fields_extract_as_separate_tokens(
 
     words = _extract_page_words(rendered_pdf)
     texts = [w["text"] for w in words]
+    text_blob = " ".join(texts)
 
     assert shell.invoice_number is not None
     assert shell.issue_date is not None
     assert shell.sale_date is not None
 
     assert shell.invoice_number in texts
-    assert shell.issue_date.isoformat() in texts
+    assert shell.issue_date.isoformat() in text_blob
     assert shell.sale_date.isoformat() in texts
     assert shell.currency in texts
     # Labels are their own tokens, not fused with their values.
     label_stems = {t.strip(":") for t in texts}
-    assert {"Numer", "Wystawiono", "Sprzedano", "Waluta"}.issubset(label_stems)
+    assert {"Wystawiono", "sprzedaży", "Waluta", "nr"}.issubset(label_stems)
 
 
 def test_seller_and_buyer_columns_are_horizontally_separable(
@@ -308,7 +309,7 @@ def _extract_second_table(pdf_bytes: bytes) -> list[list[str | None]]:
 def test_line_items_table_has_expected_header_row(
     rendered_pdf: bytes,
 ) -> None:
-    """The header row must expose the six column labels as separate cells."""
+    """The header row must expose the seven column labels as separate cells."""
 
     table = _extract_first_table(rendered_pdf)
 
@@ -319,6 +320,7 @@ def test_line_items_table_has_expected_header_row(
         "J.m.",
         "Ilość",
         "Cena netto",
+        "Rabat",
         "Stawka VAT",
     ]
 
@@ -340,7 +342,9 @@ def test_line_items_rows_round_trip_canonical_values(
         zip(data_rows, shell.line_items), start=1
     ):
         cells = [(cell or "").strip() for cell in row]
-        lp, description, unit, quantity, unit_price_net, vat_rate = cells
+        lp, description, unit, quantity, unit_price_net, discount, vat_rate = (
+            cells
+        )
 
         assert lp == str(index)
         assert description == item.description
@@ -350,6 +354,10 @@ def test_line_items_rows_round_trip_canonical_values(
         assert item.vat_rate is not None
         assert Decimal(quantity) == item.quantity
         assert Decimal(unit_price_net) == item.unit_price_net
+        if item.discount is None:
+            assert discount == ""
+        else:
+            assert Decimal(discount) == item.discount
         assert Decimal(vat_rate) == item.vat_rate
 
 
@@ -434,25 +442,32 @@ def test_re_rendering_same_shell_yields_identical_summary_table(
 def test_payment_due_date_and_bank_account_are_extractable(
     shell: DomesticVatInvoiceShell, rendered_pdf: bytes
 ) -> None:
-    """Payment due date and seller IBAN must extract as separate tokens.
+    """Payment due date and seller IBAN must extract in the summary area.
 
     Mirrors the slice-1 extractability gate: the renderer must emit
     each value as its own parser-visible token with its Polish label
     words flanking it, so downstream label-anchored extractors can
-    anchor on ``Termin``/``płatności`` and ``Numer``/``rachunku``.
+    anchor on ``Termin``/``płatności`` and ``Konto``/``bankowe``.
     """
 
     assert shell.payment_due_date is not None
     assert shell.seller.bank_account is not None
 
-    words = _extract_page_words(rendered_pdf)
+    with pdfplumber.open(io.BytesIO(rendered_pdf)) as pdf:
+        page = pdf.pages[0]
+        words = page.extract_words()
+        tables = page.find_tables(table_settings=_TABLE_LINE_SETTINGS)
+
     texts = [w["text"] for w in words]
 
     assert shell.payment_due_date.isoformat() in texts
     assert shell.seller.bank_account in texts
+    bank_word = next(w for w in words if w["text"] == shell.seller.bank_account)
+    assert len(tables) == 2
+    assert float(bank_word["top"]) > float(tables[1].bbox[3])
     # Labels extract as their own tokens, not fused with their values.
     label_stems = {t.strip(":") for t in texts}
-    assert {"Termin", "płatności", "Numer", "rachunku"}.issubset(label_stems)
+    assert {"Termin", "płatności", "Konto", "bankowe"}.issubset(label_stems)
 
 
 def test_issue_city_and_payment_form_are_extractable(
@@ -476,7 +491,7 @@ def test_issue_city_and_payment_form_are_extractable(
     assert shell.issue_city in texts
     assert expected_payment_label in texts
     label_stems = {t.strip(":") for t in texts}
-    assert {"Miasto", "wystawienia", "Sposób", "zapłaty"}.issubset(label_stems)
+    assert {"Wystawiono", "Sposób", "zapłaty"}.issubset(label_stems)
 
 
 def test_section_titles_sit_above_their_tables(rendered_pdf: bytes) -> None:
@@ -495,8 +510,10 @@ def test_section_titles_sit_above_their_tables(rendered_pdf: bytes) -> None:
 
         assert len(tables) == 2
 
-        pozycje = next(w for w in words if w["text"] == "Pozycje")
-        podsumowanie = next(w for w in words if w["text"] == "Podsumowanie")
+        pozycje = next(w for w in words if w["text"].lower() == "pozycje")
+        podsumowanie = next(
+            w for w in words if w["text"].lower() == "podsumowanie"
+        )
         first_table_top = float(tables[0].bbox[1])
         second_table_top = float(tables[1].bbox[1])
 

@@ -263,6 +263,23 @@ def test_compare_shells_detects_date_mismatch() -> None:
     assert date_mismatch.actual == "2027-01-01"
 
 
+def test_compare_shells_detects_discount_mismatch() -> None:
+    """Discount is an exact-scored shell line-item field."""
+
+    truth = _populated_shell()
+    truth.line_items[0].discount = Decimal("5.00")
+    candidate = deepcopy(truth)
+    candidate.line_items[0].discount = Decimal("7.00")
+    policy = build_default_comparison_policy()
+
+    report = compare_shells(truth, candidate, policy)
+
+    assert any(
+        mismatch.path == "shell.line_items[0].discount"
+        for mismatch in report.mismatches
+    )
+
+
 # --- compare_shells: normalized matches and mismatches ------------------
 
 

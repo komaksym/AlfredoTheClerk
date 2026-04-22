@@ -331,6 +331,46 @@ class TestParseSubBlocks:
         assert subs[1].words[0].text == "B"
         assert subs[2].words[0].text == "C"
 
+    def test_words_inside_detected_gutter_are_assigned_not_dropped(self):
+        """Gap-straddling words must land in the nearest column.
+
+        The native PDF header can place a short token like ``nr`` close
+        to the gutter between a left issue line and a right-aligned
+        metadata block. The parser must keep that token instead of
+        dropping it when its center falls inside the gutter.
+        """
+
+        lines = [
+            make_line(
+                [
+                    make_word("Wystawiono", 50, 140, 100, 112),
+                    make_word("Data", 300, 340, 100, 112),
+                ]
+            ),
+            make_line(
+                [
+                    make_word("2026-11-24", 50, 120, 116, 128),
+                    make_word("2026-11-23", 300, 380, 116, 128),
+                ]
+            ),
+            make_line(
+                [
+                    make_word("nr", 220, 240, 132, 144),
+                    make_word("FV2026/11/390", 242, 360, 132, 144),
+                ]
+            ),
+        ]
+
+        block = make_block(lines)
+        subs = parse_sub_blocks(block)
+
+        all_texts = [w.text for sb in subs for w in sb.words]
+        assert "nr" in all_texts
+        assert "FV2026/11/390" in all_texts
+        right_texts = [w.text for w in subs[-1].words]
+        assert "nr" in right_texts
+        assert "FV2026/11/390" in right_texts
+
 
 class TestParseData:
     """End-to-end pipeline against the real synthetic invoice."""
@@ -353,23 +393,26 @@ class TestParseData:
             for sb in block_subs
             for w in sb.words
         ]
-        assert "Sprzedawca" in all_texts
-        assert "Nabywca" in all_texts
+        normalized_texts = {text.rstrip(":") for text in all_texts}
+        assert "Sprzedawca" in normalized_texts
+        assert "Nabywca" in normalized_texts
 
         # The seller/buyer block should split into 2 sub-blocks (left/right columns)
         seller_buyer_block = next(
             block_subs
             for block_subs in sub_blocks
             if any(
-                w.text == "Sprzedawca" for sb in block_subs for w in sb.words
+                w.text.rstrip(":") == "Sprzedawca"
+                for sb in block_subs
+                for w in sb.words
             )
         )
         assert len(seller_buyer_block) == 2
 
         left_texts = [w.text for w in seller_buyer_block[0].words]
         right_texts = [w.text for w in seller_buyer_block[1].words]
-        assert "Sprzedawca" in left_texts
-        assert "Nabywca" in right_texts
+        assert "Sprzedawca" in {text.rstrip(":") for text in left_texts}
+        assert "Nabywca" in {text.rstrip(":") for text in right_texts}
 
         # The line-items table is now part of the same parse call.
         assert len(document.tables) >= 1

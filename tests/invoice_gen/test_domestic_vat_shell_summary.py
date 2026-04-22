@@ -48,6 +48,7 @@ def test_summarize_domestic_vat_shell_computes_expected_totals() -> None:
                 unit="szt.",
                 quantity=Decimal("2"),
                 unit_price_net=Decimal("10.00"),
+                discount=Decimal("1.50"),
                 vat_rate=Decimal("23"),
             ),
             LineItemShell(
@@ -64,25 +65,26 @@ def test_summarize_domestic_vat_shell_computes_expected_totals() -> None:
     bucket_23 = summary.bucket_summaries[Decimal("23")]
     bucket_5 = summary.bucket_summaries[Decimal("5")]
 
-    assert summary.line_computations[0].line_net_total == Decimal("20.00")
-    assert summary.line_computations[0].line_vat_total == Decimal("4.60")
-    assert summary.line_computations[0].line_gross_total == Decimal("24.60")
+    assert summary.line_computations[0].discount == Decimal("1.50")
+    assert summary.line_computations[0].line_net_total == Decimal("18.50")
+    assert summary.line_computations[0].line_vat_total == Decimal("4.26")
+    assert summary.line_computations[0].line_gross_total == Decimal("22.76")
 
     assert summary.line_computations[1].line_net_total == Decimal("15.00")
     assert summary.line_computations[1].line_vat_total == Decimal("0.75")
     assert summary.line_computations[1].line_gross_total == Decimal("15.75")
 
-    assert bucket_23.net_total == Decimal("20.00")
-    assert bucket_23.vat_total == Decimal("4.60")
-    assert bucket_23.gross_total == Decimal("24.60")
+    assert bucket_23.net_total == Decimal("18.50")
+    assert bucket_23.vat_total == Decimal("4.26")
+    assert bucket_23.gross_total == Decimal("22.76")
 
     assert bucket_5.net_total == Decimal("15.00")
     assert bucket_5.vat_total == Decimal("0.75")
     assert bucket_5.gross_total == Decimal("15.75")
 
-    assert summary.invoice_net_total == Decimal("35.00")
-    assert summary.invoice_vat_total == Decimal("5.35")
-    assert summary.invoice_gross_total == Decimal("40.35")
+    assert summary.invoice_net_total == Decimal("33.50")
+    assert summary.invoice_vat_total == Decimal("5.01")
+    assert summary.invoice_gross_total == Decimal("38.51")
 
 
 def test_summarize_domestic_vat_shell_rounds_per_line_before_bucket_summing() -> (
@@ -123,6 +125,30 @@ def test_summarize_domestic_vat_shell_rounds_per_line_before_bucket_summing() ->
     assert bucket_5.net_total == Decimal("0.68")
     assert bucket_5.vat_total == Decimal("0.04")
     assert bucket_5.gross_total == Decimal("0.72")
+
+
+def test_none_discount_preserves_existing_line_math() -> None:
+    """A missing discount must behave exactly like zero discount."""
+
+    shell = _build_valid_shell_with_lines(
+        [
+            LineItemShell(
+                description="linia",
+                unit="szt.",
+                quantity=Decimal("2"),
+                unit_price_net=Decimal("10.00"),
+                discount=None,
+                vat_rate=Decimal("23"),
+            ),
+        ]
+    )
+
+    summary = summarize_domestic_vat_shell(shell)
+
+    assert summary.line_computations[0].discount is None
+    assert summary.line_computations[0].line_net_total == Decimal("20.00")
+    assert summary.line_computations[0].line_vat_total == Decimal("4.60")
+    assert summary.line_computations[0].line_gross_total == Decimal("24.60")
 
 
 def test_summarize_domestic_vat_shell_raises_on_invalid_shell() -> None:

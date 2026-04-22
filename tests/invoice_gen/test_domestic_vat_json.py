@@ -81,6 +81,7 @@ def _minimal_shell() -> DomesticVatInvoiceShell:
                 unit="szt.",
                 quantity=Decimal("2"),
                 unit_price_net=Decimal("999.99"),
+                discount=Decimal("12.34"),
                 vat_rate=Decimal("23"),
             ),
         ],
@@ -270,6 +271,31 @@ def test_missing_optional_keys_load_as_none() -> None:
     assert restored == shell
 
 
+def test_discount_serializes_as_canonical_money_and_round_trips() -> None:
+    """Optional line-item discounts should use canonical money encoding."""
+
+    shell = _minimal_shell()
+
+    dump = shell_to_dict(shell)
+
+    assert dump["line_items"][0]["discount"] == "12.34"
+
+    restored = shell_from_dict(dump)
+    assert restored.line_items[0].discount == Decimal("12.34")
+
+
+def test_missing_discount_key_loads_as_none() -> None:
+    """Older shell payloads without discount must remain backward-compatible."""
+
+    shell = _minimal_shell()
+    dump = shell_to_dict(shell)
+    dump["line_items"][0].pop("discount")
+
+    restored = shell_from_dict(dump)
+
+    assert restored.line_items[0].discount is None
+
+
 # --- 7. Full pipeline round-trip ------------------------------------------
 
 
@@ -283,6 +309,27 @@ def test_seed_pipeline_round_trip_is_lossless(seed: int) -> None:
     restored = shell_from_json(text)
 
     assert restored == shell
+
+
+def test_summary_line_discount_round_trips_and_missing_key_loads_as_none() -> (
+    None
+):
+    """Summary line discounts must round-trip and stay backward-compatible."""
+
+    shell = _minimal_shell()
+    shell.seller.nip = "1234563218"
+    shell.buyer.nip = "5261040828"
+    summary = summarize_domestic_vat_shell(shell)
+
+    dump = summary_to_dict(summary)
+    assert dump["line_computations"][0]["discount"] == "12.34"
+
+    restored = summary_from_dict(dump)
+    assert restored.line_computations[0].discount == Decimal("12.34")
+
+    dump["line_computations"][0].pop("discount")
+    restored_without_discount = summary_from_dict(dump)
+    assert restored_without_discount.line_computations[0].discount is None
 
 
 # --- 8. Determinism -------------------------------------------------------

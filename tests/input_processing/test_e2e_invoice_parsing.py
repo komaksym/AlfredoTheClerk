@@ -63,6 +63,12 @@ def test_compare_input_extraction_e2e_fixture_pdf() -> None:
     assert len(result.shell.line_items) == 2
     assert all(
         v.source == "spatial"
+        or (
+            k.endswith(".discount")
+            and v.source == "unresolved"
+            and v.value is None
+            and v.confidence == 1.0
+        )
         for k, v in result.evidence.items()
         if k.startswith("line_items")
     )

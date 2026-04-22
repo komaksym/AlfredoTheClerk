@@ -85,6 +85,7 @@ def test_map_domestic_vat_seed_to_shell_preserves_line_item_order_and_values() -
         assert shell_line.unit == seed_line.unit
         assert shell_line.quantity == seed_line.quantity
         assert shell_line.unit_price_net == seed_line.unit_price_net
+        assert shell_line.discount == seed_line.discount
         assert shell_line.vat_rate == seed_line.vat_rate
 
 
@@ -162,6 +163,7 @@ def _build_reference_seed() -> DomesticVatInvoiceSeed:
                 unit="szt.",
                 quantity=Decimal("1"),
                 unit_price_net=Decimal("1626.01"),
+                discount=Decimal("24.50"),
                 vat_rate=Decimal("23"),
             ),
             DomesticVatLineItemSeed(

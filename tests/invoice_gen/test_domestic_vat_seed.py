@@ -89,6 +89,25 @@ def test_build_domestic_vat_seed_generates_positive_line_values_with_allowed_vat
         assert str(line_item.vat_rate) in allowed_vat_rates
 
 
+def test_build_domestic_vat_seed_generates_optional_discounts_as_valid_money() -> (
+    None
+):
+    """Discounts should be optional positive money amounts within line gross net."""
+
+    for seed in range(50):
+        invoice_seed = build_domestic_vat_seed(seed=seed)
+
+        for line_item in invoice_seed.line_items:
+            if line_item.discount is None:
+                continue
+
+            assert line_item.discount > 0
+            assert line_item.discount.as_tuple().exponent >= -2
+            assert line_item.discount <= (
+                line_item.quantity * line_item.unit_price_net
+            )
+
+
 def test_build_domestic_vat_seed_is_reproducible_for_the_same_seed() -> None:
     """The same input seed should yield the same generated invoice seed."""
 

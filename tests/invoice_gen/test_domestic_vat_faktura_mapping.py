@@ -40,6 +40,7 @@ def test_map_domestic_vat_shell_to_faktura_maps_header_and_parties() -> None:
                 unit="szt.",
                 quantity=Decimal("2.500000"),
                 unit_price_net=Decimal("10.12000000"),
+                discount=Decimal("0.30"),
                 vat_rate=Decimal("23"),
             ),
             LineItemShell(
@@ -96,6 +97,7 @@ def test_map_domestic_vat_shell_to_faktura_maps_fa_buckets_rows_and_flags() -> (
                 unit="szt.",
                 quantity=Decimal("2.500000"),
                 unit_price_net=Decimal("10.12000000"),
+                discount=Decimal("0.30"),
                 vat_rate=Decimal("23"),
             ),
             LineItemShell(
@@ -118,11 +120,11 @@ def test_map_domestic_vat_shell_to_faktura_maps_fa_buckets_rows_and_flags() -> (
     assert faktura.fa.p_6 == "2026-04-02"
     assert faktura.fa.rodzaj_faktury is TrodzajFaktury.VAT
 
-    assert faktura.fa.p_13_1 == "25.30"
-    assert faktura.fa.p_14_1 == "5.82"
+    assert faktura.fa.p_13_1 == "25.00"
+    assert faktura.fa.p_14_1 == "5.75"
     assert faktura.fa.p_13_3 == "5.00"
     assert faktura.fa.p_14_3 == "0.25"
-    assert faktura.fa.p_15 == "36.37"
+    assert faktura.fa.p_15 == "36.00"
 
     assert faktura.fa.adnotacje.p_16 is Twybor12.VALUE_2
     assert faktura.fa.adnotacje.p_17 is Twybor12.VALUE_2
@@ -142,7 +144,8 @@ def test_map_domestic_vat_shell_to_faktura_maps_fa_buckets_rows_and_flags() -> (
     assert first_row.p_8_a == "szt."
     assert first_row.p_8_b == "2.5"
     assert first_row.p_9_a == "10.12"
-    assert first_row.p_11 == "25.30"
+    assert first_row.p_10 == "0.30"
+    assert first_row.p_11 == "25.00"
     assert first_row.p_12 is TstawkaPodatku.VALUE_23
 
     assert second_row.nr_wiersza_fa == 2
@@ -151,6 +154,7 @@ def test_map_domestic_vat_shell_to_faktura_maps_fa_buckets_rows_and_flags() -> (
     assert second_row.p_8_a == "h"
     assert second_row.p_8_b == "1"
     assert second_row.p_9_a == "5"
+    assert second_row.p_10 is None
     assert second_row.p_11 == "5.00"
     assert second_row.p_12 is TstawkaPodatku.VALUE_5
 
@@ -266,6 +270,31 @@ def test_map_domestic_vat_shell_to_faktura_raises_on_inconsistent_summary() -> (
     with pytest.raises(
         FakturaMappingError, match="summary description mismatch"
     ):
+        map_domestic_vat_shell_to_faktura(shell, inconsistent_summary)
+
+
+def test_map_domestic_vat_shell_to_faktura_rejects_discount_mismatch_in_summary() -> (
+    None
+):
+    """Discounted rows must stay consistent between shell and summary."""
+
+    shell = _build_valid_shell_with_lines(
+        [
+            LineItemShell(
+                description="produkt 23",
+                unit="szt.",
+                quantity=Decimal("2"),
+                unit_price_net=Decimal("10.00"),
+                discount=Decimal("1.50"),
+                vat_rate=Decimal("23"),
+            ),
+        ]
+    )
+    summary = summarize_domestic_vat_shell(shell)
+    bad_line = replace(summary.line_computations[0], discount=Decimal("1.00"))
+    inconsistent_summary = replace(summary, line_computations=[bad_line])
+
+    with pytest.raises(FakturaMappingError, match="summary discount mismatch"):
         map_domestic_vat_shell_to_faktura(shell, inconsistent_summary)
 
 

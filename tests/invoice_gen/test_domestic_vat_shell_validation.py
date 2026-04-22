@@ -105,6 +105,7 @@ def test_validate_domestic_vat_shell_reports_line_item_value_errors() -> None:
     first_line.unit = None
     first_line.quantity = Decimal("0")
     first_line.unit_price_net = Decimal("-1.00")
+    first_line.discount = Decimal("0")
     first_line.vat_rate = Decimal("8")
 
     result = validate_domestic_vat_shell(shell)
@@ -113,7 +114,23 @@ def test_validate_domestic_vat_shell_reports_line_item_value_errors() -> None:
     _assert_has_error(result, "line_items[0].unit", "required")
     _assert_has_error(result, "line_items[0].quantity", "invalid_value")
     _assert_has_error(result, "line_items[0].unit_price_net", "invalid_value")
+    _assert_has_error(result, "line_items[0].discount", "invalid_value")
     _assert_has_error(result, "line_items[0].vat_rate", "unsupported_value")
+
+
+def test_validate_domestic_vat_shell_rejects_discount_greater_than_line_gross_net() -> (
+    None
+):
+    """Discount cannot exceed ``quantity * unit_price_net``."""
+
+    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(seed=29))
+    shell.line_items[0].quantity = Decimal("2")
+    shell.line_items[0].unit_price_net = Decimal("10.00")
+    shell.line_items[0].discount = Decimal("25.00")
+
+    result = validate_domestic_vat_shell(shell)
+
+    _assert_has_error(result, "line_items[0].discount", "invalid_relation")
 
 
 def test_validate_domestic_vat_shell_reports_unsupported_payment_form() -> None:
@@ -280,12 +297,14 @@ def test_validate_header_and_line_items_shell_rejects_bad_line_item_values() -> 
     shell = _make_valid_header_and_line_items_shell()
     shell.line_items[0].quantity = Decimal("-1")
     shell.line_items[0].unit_price_net = Decimal("0")
+    shell.line_items[0].discount = Decimal("5000")
     shell.line_items[0].vat_rate = Decimal("99")
 
     result = validate_header_and_line_items_shell(shell)
 
     _assert_has_error(result, "line_items[0].quantity", "invalid_value")
     _assert_has_error(result, "line_items[0].unit_price_net", "invalid_value")
+    _assert_has_error(result, "line_items[0].discount", "invalid_relation")
     _assert_has_error(result, "line_items[0].vat_rate", "unsupported_value")
 
 
@@ -318,6 +337,7 @@ def _make_valid_header_and_line_items_shell():
             unit="szt.",
             quantity=Decimal("2"),
             unit_price_net=Decimal("975.40"),
+            discount=Decimal("25.40"),
             vat_rate=Decimal("23"),
         ),
         LineItemShell(

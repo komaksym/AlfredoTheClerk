@@ -17,7 +17,7 @@ from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
     FieldEvidence,
     _parse_payment_form,
-    extract_bank_account_from_subblock,
+    extract_bank_account_from_words,
     extract_labeled_field,
     extract_line_items_rows,
     extract_nip_from_subblock,
@@ -187,7 +187,7 @@ class TestValidatePlIbanChecksum:
         assert validate_pl_iban_checksum("PL123") is False
 
 
-class TestExtractBankAccountFromSubblock:
+class TestExtractBankAccountFromWords:
     def _seed_iban(self) -> str:
         iban = build_domestic_vat_seed(42).seller.bank_account
         assert iban is not None
@@ -195,15 +195,13 @@ class TestExtractBankAccountFromSubblock:
 
     def test_extracts_valid_iban_with_high_confidence(self):
         iban = self._seed_iban()
-        sb = make_sub_block(
-            [
-                make_word("Numer", 0, 40, 0, 10),
-                make_word("rachunku:", 45, 110, 0, 10),
-                make_word(iban, 115, 300, 0, 10),
-            ]
-        )
+        words = [
+            make_word("Konto", 0, 40, 0, 10),
+            make_word("bankowe:", 45, 110, 0, 10),
+            make_word(iban, 115, 300, 0, 10),
+        ]
 
-        ev = extract_bank_account_from_subblock(sb)
+        ev = extract_bank_account_from_words(words)
 
         assert ev.value == iban
         assert ev.source == "regex"
@@ -214,30 +212,30 @@ class TestExtractBankAccountFromSubblock:
     def test_invalid_checksum_yields_low_confidence(self):
         # Structurally valid layout (PL + 26 digits) with an arbitrary
         # payload that fails mod-97.
-        sb = make_sub_block(
-            [make_word("PL" + "0" * 26, 0, 200, 0, 10)],
-        )
+        words = [
+            make_word("Konto", 0, 40, 0, 10),
+            make_word("bankowe:", 45, 110, 0, 10),
+            make_word("PL" + "0" * 26, 115, 300, 0, 10),
+        ]
 
-        ev = extract_bank_account_from_subblock(sb)
+        ev = extract_bank_account_from_words(words)
 
         assert ev.value == "PL" + "0" * 26
         assert ev.source == "regex"
         assert ev.confidence == 0.5
 
     def test_missing_iban_is_unresolved(self):
-        sb = make_sub_block(
-            [
-                make_word("Numer", 0, 40, 0, 10),
-                make_word("rachunku:", 45, 110, 0, 10),
-            ]
-        )
+        words = [
+            make_word("Konto", 0, 40, 0, 10),
+            make_word("bankowe:", 45, 110, 0, 10),
+        ]
 
-        ev = extract_bank_account_from_subblock(sb)
+        ev = extract_bank_account_from_words(words)
 
         assert ev.value is None
         assert ev.source == "unresolved"
         assert ev.confidence == 0.0
-        assert ev.bbox is None
+        assert ev.bbox is not None
 
 
 def test_payment_form_anchor_does_not_collide_with_termin_platnosci():
@@ -711,6 +709,7 @@ _LINE_ITEM_HEADER_TEXTS = (
     "J.m.",
     "Ilość",
     "Cena netto",
+    "Rabat",
     "Stawka VAT",
 )
 
@@ -733,6 +732,7 @@ def _data_row(
     unit: str | None,
     quantity: str | None,
     unit_price_net: str | None,
+    discount: str | None,
     vat_rate: str | None,
 ) -> list[TableCell]:
     return [
@@ -741,20 +741,23 @@ def _data_row(
         _cell(unit, 40.0),
         _cell(quantity, 60.0),
         _cell(unit_price_net, 80.0),
-        _cell(vat_rate, 100.0),
+        _cell(discount, 100.0),
+        _cell(vat_rate, 120.0),
     ]
 
 
 def _make_table(rows: list[list[TableCell]]) -> ParsedTable:
-    return ParsedTable(bbox=(0.0, 0.0, 120.0, 100.0), rows=rows)
+    return ParsedTable(bbox=(0.0, 0.0, 140.0, 100.0), rows=rows)
 
 
 def test_extract_line_items_rows_populates_all_fields() -> None:
     table = _make_table(
         [
             _header_row(),
-            _data_row("1", "Krzesło biurowe", "szt.", "2", "975.40", "23"),
-            _data_row("2", "Lampka LED", "szt.", "5", "49.99", "5"),
+            _data_row(
+                "1", "Krzesło biurowe", "szt.", "2", "975.40", "12.34", "23"
+            ),
+            _data_row("2", "Lampka LED", "szt.", "5", "49.99", None, "5"),
         ]
     )
 
@@ -777,12 +780,15 @@ def test_extract_line_items_rows_populates_all_fields() -> None:
     assert first["quantity"].confidence == 1.0
 
     assert first["unit_price_net"].value == Decimal("975.40")
+    assert first["discount"].value == Decimal("12.34")
     assert first["vat_rate"].value == Decimal("23")
 
     second = rows[1]
     assert second["description"].value == "Lampka LED"
     assert second["quantity"].value == Decimal("5")
     assert second["unit_price_net"].value == Decimal("49.99")
+    assert second["discount"].value is None
+    assert second["discount"].confidence == 1.0
     assert second["vat_rate"].value == Decimal("5")
 
 
@@ -790,7 +796,9 @@ def test_extract_line_items_rows_strips_surrounding_whitespace() -> None:
     table = _make_table(
         [
             _header_row(),
-            _data_row("1", "  Krzesło  ", " szt. ", " 2 ", " 10.00 ", " 23 "),
+            _data_row(
+                "1", "  Krzesło  ", " szt. ", " 2 ", " 10.00 ", " 1.20 ", " 23 "
+            ),
         ]
     )
 
@@ -800,13 +808,14 @@ def test_extract_line_items_rows_strips_surrounding_whitespace() -> None:
     assert rows[0]["unit"].value == "szt."
     assert rows[0]["quantity"].value == Decimal("2")
     assert rows[0]["unit_price_net"].value == Decimal("10.00")
+    assert rows[0]["discount"].value == Decimal("1.20")
     assert rows[0]["vat_rate"].value == Decimal("23")
 
 
 def test_extract_line_items_rows_returns_empty_without_matching_header() -> (
     None
 ):
-    """A table without the six expected labels must not be treated as line items."""
+    """A table without the seven expected labels must not be treated as line items."""
 
     unrelated = _make_table(
         [
@@ -825,7 +834,9 @@ def test_extract_line_items_rows_unparseable_decimal_is_unresolved() -> None:
     table = _make_table(
         [
             _header_row(),
-            _data_row("1", "Krzesło", "szt.", "not-a-number", "975.40", "23"),
+            _data_row(
+                "1", "Krzesło", "szt.", "not-a-number", "975.40", "12.34", "23"
+            ),
         ]
     )
 
@@ -845,7 +856,7 @@ def test_extract_line_items_rows_empty_text_cells_are_unresolved() -> None:
     table = _make_table(
         [
             _header_row(),
-            _data_row("1", None, "   ", "2", "10.00", "23"),
+            _data_row("1", None, "   ", "2", "10.00", None, "23"),
         ]
     )
 
@@ -862,6 +873,11 @@ def test_extract_line_items_rows_empty_text_cells_are_unresolved() -> None:
     assert unit.source == "unresolved"
     assert unit.raw_text == "   "
 
+    discount = rows[0]["discount"]
+    assert discount.value is None
+    assert discount.source == "unresolved"
+    assert discount.confidence == 1.0
+
 
 def test_extract_line_items_rows_picks_first_matching_table() -> None:
     """Earlier non-matching tables are skipped; the first matching table wins."""
@@ -872,7 +888,7 @@ def test_extract_line_items_rows_picks_first_matching_table() -> None:
     target = _make_table(
         [
             _header_row(),
-            _data_row("1", "Krzesło", "szt.", "2", "10.00", "23"),
+            _data_row("1", "Krzesło", "szt.", "2", "10.00", "1.00", "23"),
         ]
     )
 

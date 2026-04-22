@@ -69,6 +69,26 @@ def test_ambiguous_field_from_unresolved_evidence_with_bbox():
     assert diag.message is not None
 
 
+def test_blank_optional_field_is_present_not_ambiguous():
+    """High-confidence blank optional cells should not be treated as ambiguous."""
+
+    evidence = {
+        "line_items[0].discount": FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=1.0,
+            bbox=(10, 20, 30, 30),
+            raw_text="",
+        ),
+    }
+
+    result = build_extraction_diagnostics(evidence)
+
+    diag = result.fields["line_items[0].discount"]
+    assert diag.status is FieldStatus.PRESENT
+    assert diag.message is None
+
+
 def test_normalized_nip_with_hyphens():
     """NIP with hyphens in raw_text but digits-only value is NORMALIZED."""
 
