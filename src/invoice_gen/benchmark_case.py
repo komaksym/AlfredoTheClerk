@@ -158,6 +158,33 @@ def build_benchmark_case(
 
     invoice_seed = build_domestic_vat_seed(seed)
     shell = map_domestic_vat_seed_to_shell(invoice_seed)
+    return build_benchmark_case_from_shell(
+        case_id=case_id,
+        shell=shell,
+        generated_at=generated_at,
+        xsd_validator=xsd_validator,
+        policy=policy,
+    )
+
+
+def build_benchmark_case_from_shell(
+    *,
+    case_id: str,
+    shell: DomesticVatInvoiceShell,
+    generated_at: datetime,
+    xsd_validator: XsdValidator,
+    policy: ComparisonPolicy | None = None,
+    manifests: Mapping[str, TemplateVisibilityManifest] | None = None,
+) -> BenchmarkCase:
+    """Build one deterministic benchmark case from explicit shell truth.
+
+    This is the curated-case entrypoint for M4: callers provide the
+    canonical shell directly, and the case builder derives the summary,
+    target FA(3) XML, persisted XSD result, and default manifests.
+    """
+
+    _require_aware_datetime(generated_at, "generated_at")
+
     summary = summarize_domestic_vat_shell(shell)
     faktura = map_domestic_vat_shell_to_faktura(
         shell, summary, generated_at=generated_at
@@ -167,12 +194,16 @@ def build_benchmark_case(
     resolved_policy = (
         policy if policy is not None else build_default_comparison_policy()
     )
-    manifests = {
-        NO_PDF_TEMPLATE_ID: build_no_pdf_visibility_manifest(
-            resolved_policy.fields.keys()
-        ),
-        SELLER_BUYER_TEMPLATE_ID: build_seller_buyer_visibility_manifest(),
-    }
+    resolved_manifests = (
+        dict(manifests)
+        if manifests is not None
+        else {
+            NO_PDF_TEMPLATE_ID: build_no_pdf_visibility_manifest(
+                resolved_policy.fields.keys()
+            ),
+            SELLER_BUYER_TEMPLATE_ID: build_seller_buyer_visibility_manifest(),
+        }
+    )
 
     return BenchmarkCase(
         case_id=case_id,
@@ -182,7 +213,7 @@ def build_benchmark_case(
         target_xml=target_xml,
         xsd_validation=xsd_validation,
         policy=resolved_policy,
-        manifests=manifests,
+        manifests=resolved_manifests,
     )
 
 
