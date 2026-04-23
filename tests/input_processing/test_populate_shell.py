@@ -18,6 +18,7 @@ from src.input_processing.populate_shell import (
     FieldEvidence,
     _parse_payment_form,
     extract_bank_account_from_words,
+    extract_issue_date_and_city,
     extract_labeled_field,
     extract_line_items_rows,
     extract_nip_from_subblock,
@@ -127,6 +128,31 @@ class TestFindSellerBuyerSubblocks:
         assert seller is not None and buyer is not None
         assert any(w.text == "Sprzedawca" for w in seller.words)
         assert any(w.text == "Nabywca" for w in buyer.words)
+
+    def test_keeps_columns_distinct_when_party_text_is_similar(self):
+        seller_sb = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Alfa", "Instalacje", "Serwis", "Sp.", "z", "o.o."],
+                ["NIP:", "8637940261"],
+            ]
+        )
+        buyer_sb = make_sub_block(
+            [
+                *make_text_line(["Nabywca"], 0, start_x=200),
+                *make_text_line(
+                    ["Alfa", "Instalacje", "Serwis", "Bis", "Sp.", "z", "o.o."],
+                    20,
+                    start_x=200,
+                ),
+                *make_text_line(["NIP:", "5423511615"], 40, start_x=200),
+            ]
+        )
+
+        seller, buyer = find_seller_buyer_subblocks([[buyer_sb, seller_sb]])
+
+        assert seller is seller_sb
+        assert buyer is buyer_sb
 
 
 class TestExtractNipFromSubblock:
@@ -369,6 +395,58 @@ class TestExtractLabeledField:
         assert ev.source == "unresolved"
         assert ev.bbox is None
 
+    def test_preserves_punctuation_in_invoice_numbers(self):
+        header = [
+            make_word("Numer:", 0, 30, 0, 10),
+            make_word("FV/2026-04.A/17", 35, 130, 0, 10),
+        ]
+
+        ev = extract_labeled_field(header, ["numer"], str.strip)
+
+        assert ev.value == "FV/2026-04.A/17"
+
+    def test_joins_split_invoice_number_tokens_without_spaces(self):
+        header = [
+            make_word("Numer:", 0, 30, 0, 10),
+            make_word("FV/LONG/", 35, 90, 0, 10),
+            make_word("2026/002", 95, 155, 0, 10),
+        ]
+
+        ev = extract_labeled_field(
+            header, ["numer"], lambda text: "".join(text.split())
+        )
+
+        assert ev.value == "FV/LONG/2026/002"
+        assert ev.raw_text == "FV/LONG/ 2026/002"
+
+
+def test_issue_and_other_nearby_dates_do_not_collide():
+    words = [
+        make_word("Wystawiono", 0, 60, 0, 10),
+        make_word("dnia:", 65, 95, 0, 10),
+        make_word("2026-05-18,", 100, 170, 0, 10),
+        make_word("Poznan", 175, 220, 0, 10),
+        make_word("Data", 260, 290, 20, 30),
+        make_word("sprzedaży:", 295, 365, 20, 30),
+        make_word("2026-05-19", 370, 440, 20, 30),
+        make_word("Termin", 260, 310, 40, 50),
+        make_word("płatności:", 315, 385, 40, 50),
+        make_word("2026-05-20", 390, 460, 40, 50),
+    ]
+
+    issue_date_ev, issue_city_ev = extract_issue_date_and_city(words)
+    sale_date_ev = extract_labeled_field(
+        words, ["sprzedaży"], date.fromisoformat
+    )
+    due_date_ev = extract_labeled_field(
+        words, ["płatności"], date.fromisoformat
+    )
+
+    assert issue_date_ev.value == date(2026, 5, 18)
+    assert issue_city_ev.value == "Poznan"
+    assert sale_date_ev.value == date(2026, 5, 19)
+    assert due_date_ev.value == date(2026, 5, 20)
+
 
 class TestParsePaymentForm:
     """`_parse_payment_form` is the reverse of `_format_payment_form`.
@@ -464,7 +542,7 @@ class TestExtractPartyNameFromSubblock:
         assert ev.source == "unresolved"
         assert ev.bbox is None
 
-    def test_unresolved_when_multiple_lines_exist_between_anchor_and_nip(self):
+    def test_collapses_wrapped_lines_between_anchor_and_nip(self):
         sub_block = make_party_sub_block(
             [
                 ["Sprzedawca"],
@@ -476,8 +554,8 @@ class TestExtractPartyNameFromSubblock:
 
         ev = extract_party_name_from_subblock(sub_block)
 
-        assert ev.value is None
-        assert ev.source == "unresolved"
+        assert ev.value == "Sklep Domowy"
+        assert ev.source == "spatial"
         assert ev.bbox is not None
 
 
@@ -543,15 +621,16 @@ class TestExtractPartyAddressesFromSubblock:
         assert address_1_ev.bbox is not None
         assert address_2_ev.bbox is not None
 
-    def test_unresolved_when_more_than_two_lines_exist_below_nip(self):
+    def test_collapses_wrapped_addresses_using_postal_code_boundary(self):
         sub_block = make_party_sub_block(
             [
                 ["Sprzedawca"],
                 ["Sklep"],
                 ["NIP:", "8637940261"],
-                ["ul.", "Polna", "29"],
+                ["ul.", "Bardzo", "Dluga", "29A"],
+                ["lok.", "45"],
                 ["90-001", "Lodz"],
-                ["Polska"],
+                ["woj.", "lodzkie"],
             ]
         )
 
@@ -559,10 +638,10 @@ class TestExtractPartyAddressesFromSubblock:
             sub_block
         )
 
-        assert address_1_ev.value is None
-        assert address_2_ev.value is None
-        assert address_1_ev.source == "unresolved"
-        assert address_2_ev.source == "unresolved"
+        assert address_1_ev.value == "ul. Bardzo Dluga 29A lok. 45"
+        assert address_2_ev.value == "90-001 Lodz woj. lodzkie"
+        assert address_1_ev.source == "spatial"
+        assert address_2_ev.source == "spatial"
         assert address_1_ev.bbox is not None
         assert address_2_ev.bbox is not None
 
@@ -812,6 +891,29 @@ def test_extract_line_items_rows_strips_surrounding_whitespace() -> None:
     assert rows[0]["vat_rate"].value == Decimal("23")
 
 
+def test_extract_line_items_rows_collapses_internal_newlines() -> None:
+    table = _make_table(
+        [
+            _header_row(),
+            _data_row(
+                "1",
+                "Pakiet serwisowy\nrozszerzony premium",
+                "usl.",
+                "1",
+                "250.00",
+                None,
+                "23",
+            ),
+        ]
+    )
+
+    rows = extract_line_items_rows([table])
+
+    assert (
+        rows[0]["description"].value == "Pakiet serwisowy rozszerzony premium"
+    )
+
+
 def test_extract_line_items_rows_returns_empty_without_matching_header() -> (
     None
 ):
@@ -969,6 +1071,21 @@ def test_extract_summary_rows_multiple_buckets() -> None:
     assert set(buckets.keys()) == {Decimal("23"), Decimal("5")}
     assert buckets[Decimal("5")]["net_total"].value == Decimal("200.00")
     assert totals["invoice_gross_total"].value == Decimal("1440.00")
+
+
+def test_extract_summary_rows_stays_bound_to_summary_table_values() -> None:
+    table = _make_table(
+        [
+            _summary_header_row(),
+            _summary_data_row("23", "199.99", "46.00", "245.99"),
+            _summary_data_row("Razem", "200.00", "46.00", "246.00"),
+        ]
+    )
+
+    buckets, totals = extract_summary_rows([table])
+
+    assert buckets[Decimal("23")]["net_total"].value == Decimal("199.99")
+    assert totals["invoice_net_total"].value == Decimal("200.00")
 
 
 def test_extract_summary_rows_tolerates_percent_suffix() -> None:
