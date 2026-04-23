@@ -1,0 +1,25 @@
+{
+  "bucket_summaries": {
+    "23": {
+      "gross_total": "1229.98",
+      "net_total": "999.98",
+      "vat_total": "230.00"
+    }
+  },
+  "invoice_gross_total": "1229.98",
+  "invoice_net_total": "999.98",
+  "invoice_vat_total": "230.00",
+  "line_computations": [
+    {
+      "description": "Pakiet serwisowy premium",
+      "line_gross_total": "1229.98",
+      "line_index": 0,
+      "line_net_total": "999.98",
+      "line_vat_total": "230.00",
+      "quantity": "2",
+      "unit_price_net": "499.99",
+      "vat_rate": "23"
+    }
+  ],
+  "schema_version": 1
+}

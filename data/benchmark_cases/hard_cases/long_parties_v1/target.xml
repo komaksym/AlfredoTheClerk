@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
+  <Naglowek>
+    <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
+    <WariantFormularza>3</WariantFormularza>
+    <DataWytworzeniaFa>2026-04-23T12:00:00Z</DataWytworzeniaFa>
+  </Naglowek>
+  <Podmiot1>
+    <DaneIdentyfikacyjne>
+      <NIP>8637940261</NIP>
+      <Nazwa>Przedsiebiorstwo Instalacyjno Serwisowe Alfa Beta Gamma Delta Sp. z o.o.</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. Bardzo Dluga Ulica Serwisowa i Magazynowa 123 lokal 45A</AdresL1>
+      <AdresL2>00-123 Warszawa Mokotow woj. mazowieckie</AdresL2>
+    </Adres>
+  </Podmiot1>
+  <Podmiot2>
+    <DaneIdentyfikacyjne>
+      <NIP>5423511615</NIP>
+      <Nazwa>Przedsiebiorstwo Instalacyjno Serwisowe Alfa Beta Gamma Delta Bis Sp. z o.o.</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>al. Wyjatkowo Rozbudowana Aleja Handlowa 987 budynek C</AdresL1>
+      <AdresL2>31-234 Krakow Nowa Huta woj. malopolskie</AdresL2>
+    </Adres>
+    <JST>2</JST>
+    <GV>2</GV>
+  </Podmiot2>
+  <Fa>
+    <KodWaluty>PLN</KodWaluty>
+    <P_1>2026-04-23</P_1>
+    <P_1M>Warszawa</P_1M>
+    <P_2>FVL/26/002</P_2>
+    <P_6>2026-04-22</P_6>
+    <P_13_1>999.98</P_13_1>
+    <P_14_1>230.00</P_14_1>
+    <P_15>1229.98</P_15>
+    <Adnotacje>
+      <P_16>2</P_16>
+      <P_17>2</P_17>
+      <P_18>2</P_18>
+      <P_18A>2</P_18A>
+      <Zwolnienie>
+        <P_19N>1</P_19N>
+      </Zwolnienie>
+      <NoweSrodkiTransportu>
+        <P_22N>1</P_22N>
+      </NoweSrodkiTransportu>
+      <P_23>2</P_23>
+      <PMarzy>
+        <P_PMarzyN>1</P_PMarzyN>
+      </PMarzy>
+    </Adnotacje>
+    <RodzajFaktury>VAT</RodzajFaktury>
+    <FaWiersz>
+      <NrWierszaFa>1</NrWierszaFa>
+      <UU_ID>line-0001</UU_ID>
+      <P_7>Pakiet serwisowy premium</P_7>
+      <P_8A>kpl.</P_8A>
+      <P_8B>2</P_8B>
+      <P_9A>499.99</P_9A>
+      <P_11>999.98</P_11>
+      <P_12>23</P_12>
+    </FaWiersz>
+    <Platnosc>
+      <FormaPlatnosci>6</FormaPlatnosci>
+    </Platnosc>
+  </Fa>
+</Faktura>

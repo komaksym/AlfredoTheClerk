@@ -1,0 +1,25 @@
+{
+  "bucket_summaries": {
+    "23": {
+      "gross_total": "394.83",
+      "net_total": "321.00",
+      "vat_total": "73.83"
+    }
+  },
+  "invoice_gross_total": "394.83",
+  "invoice_net_total": "321.00",
+  "invoice_vat_total": "73.83",
+  "line_computations": [
+    {
+      "description": "Przeglad A/B-C, etap 1.",
+      "line_gross_total": "394.83",
+      "line_index": 0,
+      "line_net_total": "321.00",
+      "line_vat_total": "73.83",
+      "quantity": "1",
+      "unit_price_net": "321",
+      "vat_rate": "23"
+    }
+  ],
+  "schema_version": 1
+}

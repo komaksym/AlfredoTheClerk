@@ -1,0 +1,53 @@
+{
+  "adnotations": {
+    "cash_method_flag": 2,
+    "exemption_mode": "none",
+    "margin_mode": "none",
+    "new_transport_mode": "none",
+    "reverse_charge_flag": 2,
+    "self_billing_flag": 2,
+    "special_procedure_flag": 2,
+    "split_payment_flag": 2
+  },
+  "buyer": {
+    "address_line_1": "ul. Ogrodowa 70 m. 3",
+    "address_line_2": "00-001 Warszawa",
+    "buyer_id_mode": "domestic_nip",
+    "gv": 2,
+    "jst": 2,
+    "name": "Beta Handel i Wyposazenie Sp. z o.o.",
+    "nip": "5423511615"
+  },
+  "currency": "PLN",
+  "invoice_number": "FVT/26/005",
+  "issue_city": "Warszawa",
+  "issue_date": "2026-04-23",
+  "line_items": [
+    {
+      "description": "Diagnostyka systemu",
+      "quantity": "1",
+      "unit": "usl.",
+      "unit_price_net": "99.99",
+      "vat_rate": "23"
+    },
+    {
+      "description": "Kalibracja ukladu",
+      "quantity": "1",
+      "unit": "usl.",
+      "unit_price_net": "100.01",
+      "vat_rate": "23"
+    }
+  ],
+  "payment_due_date": "2026-05-07",
+  "payment_form": 6,
+  "profile": "domestic_vat",
+  "sale_date": "2026-04-22",
+  "schema_version": 1,
+  "seller": {
+    "address_line_1": "ul. Polna 29",
+    "address_line_2": "90-001 Lodz",
+    "bank_account": "PL61419283276483503056413953",
+    "name": "Alfa Instalacje i Serwis Sp. z o.o.",
+    "nip": "8637940261"
+  }
+}

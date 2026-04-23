@@ -1,0 +1,46 @@
+{
+  "adnotations": {
+    "cash_method_flag": 2,
+    "exemption_mode": "none",
+    "margin_mode": "none",
+    "new_transport_mode": "none",
+    "reverse_charge_flag": 2,
+    "self_billing_flag": 2,
+    "special_procedure_flag": 2,
+    "split_payment_flag": 2
+  },
+  "buyer": {
+    "address_line_1": "ul. 3 Maja 4/5, lok. 8",
+    "address_line_2": "40-096 Katowice",
+    "buyer_id_mode": "domestic_nip",
+    "gv": 2,
+    "jst": 2,
+    "name": "M.D.K.-Trade Sp. z o.o.",
+    "nip": "5423511615"
+  },
+  "currency": "PLN",
+  "invoice_number": "FV/26-A.17",
+  "issue_city": "Warszawa",
+  "issue_date": "2026-04-23",
+  "line_items": [
+    {
+      "description": "Przeglad A/B-C, etap 1.",
+      "quantity": "1",
+      "unit": "usl.",
+      "unit_price_net": "321",
+      "vat_rate": "23"
+    }
+  ],
+  "payment_due_date": "2026-05-07",
+  "payment_form": 6,
+  "profile": "domestic_vat",
+  "sale_date": "2026-04-22",
+  "schema_version": 1,
+  "seller": {
+    "address_line_1": "al. Jana Pawla II 10/7, kl. B",
+    "address_line_2": "01-234 Warszawa",
+    "bank_account": "PL61419283276483503056413953",
+    "name": "A.B.C. Serwis Sp. z o.o.",
+    "nip": "8637940261"
+  }
+}

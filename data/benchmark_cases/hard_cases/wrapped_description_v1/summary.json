@@ -1,0 +1,26 @@
+{
+  "bucket_summaries": {
+    "23": {
+      "gross_total": "1503.33",
+      "net_total": "1222.22",
+      "vat_total": "281.11"
+    }
+  },
+  "invoice_gross_total": "1503.33",
+  "invoice_net_total": "1222.22",
+  "invoice_vat_total": "281.11",
+  "line_computations": [
+    {
+      "description": "Kompleksowa usluga serwisowa obejmujaca przeglad okresowy, dojazd technika, wymiane materialow eksploatacyjnych oraz sporzadzenie rozszerzonego protokolu odbioru prac",
+      "discount": "12.34",
+      "line_gross_total": "1503.33",
+      "line_index": 0,
+      "line_net_total": "1222.22",
+      "line_vat_total": "281.11",
+      "quantity": "1",
+      "unit_price_net": "1234.56",
+      "vat_rate": "23"
+    }
+  ],
+  "schema_version": 1
+}

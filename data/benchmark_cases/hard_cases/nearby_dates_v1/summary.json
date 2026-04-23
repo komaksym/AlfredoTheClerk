@@ -1,0 +1,25 @@
+{
+  "bucket_summaries": {
+    "23": {
+      "gross_total": "307.50",
+      "net_total": "250.00",
+      "vat_total": "57.50"
+    }
+  },
+  "invoice_gross_total": "307.50",
+  "invoice_net_total": "250.00",
+  "invoice_vat_total": "57.50",
+  "line_computations": [
+    {
+      "description": "Abonament serwisowy maj 2026",
+      "line_gross_total": "307.50",
+      "line_index": 0,
+      "line_net_total": "250.00",
+      "line_vat_total": "57.50",
+      "quantity": "1",
+      "unit_price_net": "250",
+      "vat_rate": "23"
+    }
+  ],
+  "schema_version": 1
+}

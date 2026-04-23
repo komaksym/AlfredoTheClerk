@@ -1,0 +1,210 @@
+{
+  "fields": {
+    "shell.adnotations.cash_method_flag": {
+      "mode": "exact"
+    },
+    "shell.adnotations.exemption_mode": {
+      "mode": "exact"
+    },
+    "shell.adnotations.margin_mode": {
+      "mode": "exact"
+    },
+    "shell.adnotations.new_transport_mode": {
+      "mode": "exact"
+    },
+    "shell.adnotations.reverse_charge_flag": {
+      "mode": "exact"
+    },
+    "shell.adnotations.self_billing_flag": {
+      "mode": "exact"
+    },
+    "shell.adnotations.special_procedure_flag": {
+      "mode": "exact"
+    },
+    "shell.adnotations.split_payment_flag": {
+      "mode": "exact"
+    },
+    "shell.buyer.address_line_1": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.buyer.address_line_2": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.buyer.buyer_id_mode": {
+      "mode": "exact"
+    },
+    "shell.buyer.gv": {
+      "mode": "exact"
+    },
+    "shell.buyer.jst": {
+      "mode": "exact"
+    },
+    "shell.buyer.name": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.buyer.nip": {
+      "mode": "normalized",
+      "normalizer": "nip"
+    },
+    "shell.buyer.phone": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.currency": {
+      "mode": "exact"
+    },
+    "shell.invoice_number": {
+      "mode": "normalized",
+      "normalizer": "invoice_number"
+    },
+    "shell.issue_city": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.issue_date": {
+      "mode": "exact"
+    },
+    "shell.line_items.count": {
+      "mode": "exact"
+    },
+    "shell.line_items[*].description": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.line_items[*].discount": {
+      "mode": "exact"
+    },
+    "shell.line_items[*].quantity": {
+      "mode": "exact"
+    },
+    "shell.line_items[*].unit": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.line_items[*].unit_price_net": {
+      "mode": "exact"
+    },
+    "shell.line_items[*].vat_rate": {
+      "mode": "exact"
+    },
+    "shell.payment_due_date": {
+      "mode": "exact"
+    },
+    "shell.payment_form": {
+      "mode": "exact"
+    },
+    "shell.profile": {
+      "mode": "exact"
+    },
+    "shell.sale_date": {
+      "mode": "exact"
+    },
+    "shell.seller.address_line_1": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.seller.address_line_2": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.seller.bank_account": {
+      "mode": "normalized",
+      "normalizer": "iban"
+    },
+    "shell.seller.name": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "shell.seller.nip": {
+      "mode": "normalized",
+      "normalizer": "nip"
+    },
+    "shell.seller.phone": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "summary.bucket_summaries.count": {
+      "mode": "exact"
+    },
+    "summary.bucket_summaries[*].gross_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.bucket_summaries[*].net_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.bucket_summaries[*].vat_rate": {
+      "mode": "exact"
+    },
+    "summary.bucket_summaries[*].vat_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.invoice_gross_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.invoice_net_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.invoice_vat_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.line_computations.count": {
+      "mode": "exact"
+    },
+    "summary.line_computations[*].description": {
+      "mode": "normalized",
+      "normalizer": "text"
+    },
+    "summary.line_computations[*].discount": {
+      "mode": "exact"
+    },
+    "summary.line_computations[*].line_gross_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.line_computations[*].line_index": {
+      "mode": "exact"
+    },
+    "summary.line_computations[*].line_net_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.line_computations[*].line_vat_total": {
+      "mode": "normalized",
+      "normalizer": "money"
+    },
+    "summary.line_computations[*].quantity": {
+      "mode": "exact"
+    },
+    "summary.line_computations[*].unit_price_net": {
+      "mode": "exact"
+    },
+    "summary.line_computations[*].vat_rate": {
+      "mode": "exact"
+    }
+  },
+  "required_paths": [
+    "shell.buyer.name",
+    "shell.buyer.nip",
+    "shell.currency",
+    "shell.invoice_number",
+    "shell.issue_date",
+    "shell.line_items.count",
+    "shell.line_items[*].description",
+    "shell.line_items[*].quantity",
+    "shell.line_items[*].unit_price_net",
+    "shell.line_items[*].vat_rate",
+    "shell.sale_date",
+    "shell.seller.name",
+    "shell.seller.nip"
+  ],
+  "schema_version": 2
+}

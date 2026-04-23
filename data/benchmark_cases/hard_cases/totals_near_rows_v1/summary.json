@@ -1,0 +1,35 @@
+{
+  "bucket_summaries": {
+    "23": {
+      "gross_total": "246.00",
+      "net_total": "200.00",
+      "vat_total": "46.00"
+    }
+  },
+  "invoice_gross_total": "246.00",
+  "invoice_net_total": "200.00",
+  "invoice_vat_total": "46.00",
+  "line_computations": [
+    {
+      "description": "Diagnostyka systemu",
+      "line_gross_total": "122.99",
+      "line_index": 0,
+      "line_net_total": "99.99",
+      "line_vat_total": "23.00",
+      "quantity": "1",
+      "unit_price_net": "99.99",
+      "vat_rate": "23"
+    },
+    {
+      "description": "Kalibracja ukladu",
+      "line_gross_total": "123.01",
+      "line_index": 1,
+      "line_net_total": "100.01",
+      "line_vat_total": "23.00",
+      "quantity": "1",
+      "unit_price_net": "100.01",
+      "vat_rate": "23"
+    }
+  ],
+  "schema_version": 1
+}

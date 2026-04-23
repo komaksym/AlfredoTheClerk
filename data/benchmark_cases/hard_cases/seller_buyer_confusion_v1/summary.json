@@ -1,0 +1,25 @@
+{
+  "bucket_summaries": {
+    "23": {
+      "gross_total": "984.00",
+      "net_total": "800.00",
+      "vat_total": "184.00"
+    }
+  },
+  "invoice_gross_total": "984.00",
+  "invoice_net_total": "800.00",
+  "invoice_vat_total": "184.00",
+  "line_computations": [
+    {
+      "description": "Kontrola instalacji",
+      "line_gross_total": "984.00",
+      "line_index": 0,
+      "line_net_total": "800.00",
+      "line_vat_total": "184.00",
+      "quantity": "1",
+      "unit_price_net": "800",
+      "vat_rate": "23"
+    }
+  ],
+  "schema_version": 1
+}
