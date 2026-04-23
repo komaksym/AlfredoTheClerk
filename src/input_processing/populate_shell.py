@@ -72,6 +72,7 @@ _PAYMENT_FORM_BY_LABEL: dict[str, int] = {
 _NIP_CANDIDATE = re.compile(r"\b\d{3}-?\d{3}-?\d{2}-?\d{2}\b")
 
 _NIP_WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
+_POSTAL_CODE_PATTERN = re.compile(r"\b\d{2}-\d{3}\b")
 
 # Polish IBAN: literal ``PL`` + 2 check digits + 24 BBAN digits (28 chars).
 # Mod-97 validation is applied separately — a structural match alone
@@ -110,6 +111,12 @@ def _parse_payment_form(text: str) -> int:
         raise ValueError(f"unknown payment form label: {text!r}")
 
     return value
+
+
+def _parse_invoice_number(text: str) -> str:
+    """Normalize invoice numbers by stripping all internal whitespace."""
+
+    return "".join(text.split())
 
 
 def validate_pl_iban_checksum(iban: str) -> bool:
@@ -280,6 +287,12 @@ def _line_text(words: list[Word]) -> str:
     return " ".join(word.text for word in words)
 
 
+def _collapse_whitespace(text: str) -> str:
+    """Collapse internal whitespace so wrapped visual text stays canonical."""
+
+    return " ".join(text.split())
+
+
 def _line_tokens(words: list[Word]) -> set[str]:
     """Return the normalized, colon-stripped token set for a line."""
 
@@ -303,6 +316,22 @@ def _spatial_line_evidence(words: list[Word]) -> FieldEvidence:
         confidence=1.0,
         bbox=bbox_of(words),
         raw_text=text,
+    )
+
+
+def _spatial_lines_evidence(lines: list[list[Word]]) -> FieldEvidence:
+    """Build one spatial FieldEvidence from one or more visual lines."""
+
+    words = _line_words(lines)
+    raw_text = " ".join(_line_text(line) for line in lines)
+    value = _collapse_whitespace(raw_text)
+
+    return FieldEvidence(
+        value=value,
+        source="spatial",
+        confidence=1.0,
+        bbox=bbox_of(words),
+        raw_text=raw_text,
     )
 
 
@@ -473,7 +502,7 @@ def _find_party_anchor_and_nip_lines(
 
 
 def extract_party_name_from_subblock(sub_block: SubBlock) -> FieldEvidence:
-    """Extract the single name line between the party anchor and NIP line."""
+    """Extract the party name rendered between the anchor and NIP line."""
 
     lines = subblock_lines(sub_block)
     anchor_idx, nip_idx = _find_party_anchor_and_nip_lines(lines)
@@ -482,10 +511,10 @@ def extract_party_name_from_subblock(sub_block: SubBlock) -> FieldEvidence:
         return _unresolved_evidence()
 
     candidate_lines = lines[anchor_idx + 1 : nip_idx]
-    if len(candidate_lines) != 1:
+    if not candidate_lines:
         return _unresolved_evidence(_line_words(candidate_lines))
 
-    return _spatial_line_evidence(candidate_lines[0])
+    return _spatial_lines_evidence(candidate_lines)
 
 
 def extract_party_addresses_from_subblock(
@@ -502,6 +531,23 @@ def extract_party_addresses_from_subblock(
     candidate_lines = lines[nip_idx + 1 :]
     if not candidate_lines:
         return _unresolved_evidence(), _unresolved_evidence()
+
+    address2_idx = next(
+        (
+            idx
+            for idx, line in enumerate(candidate_lines)
+            if _POSTAL_CODE_PATTERN.search(_line_text(line))
+        ),
+        None,
+    )
+    if address2_idx is not None:
+        address1_lines = candidate_lines[:address2_idx]
+        address2_lines = candidate_lines[address2_idx:]
+        if address1_lines and address2_lines:
+            return (
+                _spatial_lines_evidence(address1_lines),
+                _spatial_lines_evidence(address2_lines),
+            )
 
     if len(candidate_lines) == 1:
         return _spatial_line_evidence(
@@ -616,6 +662,18 @@ def find_right_neighbor(label: Word, words: list[Word]) -> Word | None:
     return min(candidates, key=lambda w: w.x0 - label.x1)
 
 
+def find_right_neighbors(label: Word, words: list[Word]) -> list[Word]:
+    """Return every same-line word to the right of ``label``, ordered left-to-right."""
+
+    candidates = [
+        w
+        for w in words
+        if w is not label and w.x0 > label.x1 and check_same_line(label, w)
+    ]
+
+    return sorted(candidates, key=lambda w: w.x0)
+
+
 def find_below_neighbor(label: Word, words: list[Word]) -> Word | None:
     """Pick the closest word below `label` with x-overlap."""
 
@@ -637,9 +695,22 @@ def find_below_neighbor(label: Word, words: list[Word]) -> Word | None:
 def find_value_word(label: Word, words: list[Word]) -> Word | None:
     """Right-of-label first, below-label fallback."""
 
-    return find_right_neighbor(label, words) or find_below_neighbor(
-        label, words
-    )
+    value_words = find_value_words(label, words)
+    return value_words[0] if value_words else None
+
+
+def find_value_words(label: Word, words: list[Word]) -> list[Word] | None:
+    """Return the full same-line value span, or one below-label fallback word."""
+
+    right_words = find_right_neighbors(label, words)
+    if right_words:
+        return right_words
+
+    below_word = find_below_neighbor(label, words)
+    if below_word is None:
+        return None
+
+    return [below_word]
 
 
 def extract_labeled_field(
@@ -656,8 +727,8 @@ def extract_labeled_field(
         )
 
     label_word, score = match
-    value_word = find_value_word(label_word, header)
-    if value_word is None:
+    value_words = find_value_words(label_word, header)
+    if value_words is None:
         return FieldEvidence(
             value=None,
             source="unresolved",
@@ -665,9 +736,9 @@ def extract_labeled_field(
             bbox=bbox_of([label_word]),
         )
 
-    bbox = bbox_of([label_word, value_word])
+    bbox = bbox_of([label_word, *value_words])
 
-    raw_text = value_word.text
+    raw_text = " ".join(word.text for word in value_words)
 
     try:
         value = parser(raw_text)
@@ -750,7 +821,7 @@ def _string_cell_evidence(
     if cell_text is None or not cell_text.strip():
         return _unresolved_cell_evidence(cell_text, bbox)
 
-    stripped = cell_text.strip()
+    stripped = _collapse_whitespace(cell_text)
     return FieldEvidence(
         value=stripped,
         source="spatial",
@@ -1039,7 +1110,7 @@ def populate_shell(
     header = header_words(parsed_data, seller_sb, buyer_sb)
 
     invoice_ev = extract_labeled_field(
-        header, FIELD_ANCHORS["invoice_number"], str.strip
+        header, FIELD_ANCHORS["invoice_number"], _parse_invoice_number
     )
     issue_ev, issue_city_ev = extract_issue_date_and_city(header)
     sale_ev = extract_labeled_field(
