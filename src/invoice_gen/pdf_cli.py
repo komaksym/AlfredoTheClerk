@@ -12,10 +12,8 @@ from src.invoice_gen.domestic_vat_seed_mapping import (
 from src.invoice_gen.macos_dyld import (
     relaunch_module_with_homebrew_dyld_if_needed,
 )
-from src.invoice_gen.pdf_rendering import (
-    SELLER_BUYER_TEMPLATE_ID,
-    render_seller_buyer_block,
-)
+from src.invoice_gen.pdf_rendering import SELLER_BUYER_TEMPLATE_ID
+from src.invoice_gen.template_registry import get_template
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -33,7 +31,7 @@ def generate_invoice_pdf(
 
     invoice_seed = build_domestic_vat_seed(seed)
     shell = map_domestic_vat_seed_to_shell(invoice_seed)
-    pdf_bytes = render_seller_buyer_block(shell)
+    pdf_bytes = get_template(SELLER_BUYER_TEMPLATE_ID).renderer(shell)
 
     assert shell.invoice_number is not None
     filename = (

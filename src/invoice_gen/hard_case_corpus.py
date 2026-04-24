@@ -23,10 +23,8 @@ from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
 from src.invoice_gen.macos_dyld import (
     relaunch_module_with_homebrew_dyld_if_needed,
 )
-from src.invoice_gen.pdf_rendering import (
-    SELLER_BUYER_TEMPLATE_ID,
-    render_seller_buyer_block,
-)
+from src.invoice_gen.pdf_rendering import SELLER_BUYER_TEMPLATE_ID
+from src.invoice_gen.template_registry import get_template
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -137,7 +135,7 @@ def regenerate_hard_case_corpus(
             generated_at=generated_at,
             xsd_validator=xsd_validator,
         )
-        pdf_bytes = render_seller_buyer_block(shell)
+        pdf_bytes = get_template(HARD_CASE_TEMPLATE_ID).renderer(shell)
         directory = root / case_id
         save_hard_case_fixture(case, pdf_bytes, directory)
 
