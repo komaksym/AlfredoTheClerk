@@ -53,6 +53,7 @@ from src.invoice_gen.template_visibility import (
 
 
 SELLER_BUYER_TEMPLATE_ID = "seller_buyer_block_v1"
+SELLER_BUYER_V2_TEMPLATE_ID = "seller_buyer_block_v2"
 
 # Field paths the seller/buyer block template actually renders. The
 # renderer module is the natural owner of this list because the only
@@ -119,6 +120,7 @@ PAYMENT_FORM_LABELS: dict[int, str] = {
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _TEMPLATE_PATH = _TEMPLATES_DIR / f"{SELLER_BUYER_TEMPLATE_ID}.html"
+_TEMPLATE_V2_PATH = _TEMPLATES_DIR / f"{SELLER_BUYER_V2_TEMPLATE_ID}.html"
 
 
 def _format_iso_date(value: date | None) -> str:
@@ -310,27 +312,26 @@ def _summarize_for_rendering(
     return summarize_domestic_vat_shell(summary_shell)
 
 
-def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
-    """Render the first native template to a PDF byte string.
+def _render_invoice_template(
+    template_path: Path, shell: DomesticVatInvoiceShell
+) -> bytes:
+    """Apply shell values to one HTML template and render it as a PDF.
 
-    The template carries a reference-aligned invoice top bar above the
-    seller/buyer block, keeps the existing bordered line-items and
-    VAT-summary tables, and renders the seller bank account in the
-    summary area as ``Konto bankowe``. Empty optional fields render as
-    empty strings, not the literal ``None``. Dates are pinned to ISO
-    ``YYYY-MM-DD`` so re-rendering the same shell on a different host
-    locale yields identical extracted text.
+    The substitution tokens (``__INVOICE_NUMBER__`` etc.) are shared by
+    every native template in this module, so adding a new template is
+    an HTML file plus a thin renderer wrapper that points here.
     """
 
     # WeasyPrint pulls in heavy native libraries (pango/cairo). Import
-    # it lazily so the visibility-manifest builder in this module stays
+    # it lazily so the visibility-manifest builders in this module stay
     # cheap to import from benchmark_case, which is wired into the
     # default pytest path.
     from weasyprint import HTML
 
     seller, buyer = shell.seller, shell.buyer
-    html = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    html = template_path.read_text(encoding="utf-8")
     summary = _summarize_for_rendering(shell)
+
     rendered = (
         html.replace("__INVOICE_NUMBER__", escape(shell.invoice_number or ""))
         .replace(
@@ -363,11 +364,53 @@ def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
         )
         .replace("__TOTALS_ROW__", _render_totals_row(summary))
     )
+
     return HTML(string=rendered, base_url=str(_TEMPLATES_DIR)).write_pdf()
 
 
+def render_seller_buyer_block(shell: DomesticVatInvoiceShell) -> bytes:
+    """Render the v1 template (``seller_buyer_block_v1``) to PDF bytes.
+
+    The template carries a reference-aligned invoice top bar above the
+    seller/buyer block, keeps the existing bordered line-items and
+    VAT-summary tables, and renders the seller bank account in the
+    summary area as ``Konto bankowe``. Empty optional fields render as
+    empty strings, not the literal ``None``. Dates are pinned to ISO
+    ``YYYY-MM-DD`` so re-rendering the same shell on a different host
+    locale yields identical extracted text.
+    """
+
+    return _render_invoice_template(_TEMPLATE_PATH, shell)
+
+
+def render_seller_buyer_block_v2(shell: DomesticVatInvoiceShell) -> bytes:
+    """Render the v2 template (``seller_buyer_block_v2``) to PDF bytes.
+
+    v2 shares v1's rendered-field surface but uses Polish label
+    variants (``Wystawca`` / ``Odbiorca`` / ``Dokument nr``), a
+    reordered header-meta block, and slightly roomier two-column
+    spacing. The line-items and VAT-summary tables keep the same
+    column structure so the extractor's table-header anchors stay
+    template-agnostic.
+    """
+
+    return _render_invoice_template(_TEMPLATE_V2_PATH, shell)
+
+
+def _build_visibility_manifest(template_id: str) -> TemplateVisibilityManifest:
+    """Mark every path in :data:`SELLER_BUYER_VISIBLE_PATHS` as visible."""
+
+    return TemplateVisibilityManifest(
+        template_id=template_id,
+        fields={
+            path: VisibilityStatus.VISIBLE
+            for path in SELLER_BUYER_VISIBLE_PATHS
+        },
+    )
+
+
 def build_seller_buyer_visibility_manifest() -> TemplateVisibilityManifest:
-    """Return the visibility manifest for the seller/buyer block template.
+    """Return the visibility manifest for the v1 seller/buyer block template.
 
     Every path in :data:`SELLER_BUYER_VISIBLE_PATHS` is marked
     ``VISIBLE``; the comparator treats every other policy field as
@@ -377,10 +420,15 @@ def build_seller_buyer_visibility_manifest() -> TemplateVisibilityManifest:
     set on a given comparison policy.
     """
 
-    return TemplateVisibilityManifest(
-        template_id=SELLER_BUYER_TEMPLATE_ID,
-        fields={
-            path: VisibilityStatus.VISIBLE
-            for path in SELLER_BUYER_VISIBLE_PATHS
-        },
-    )
+    return _build_visibility_manifest(SELLER_BUYER_TEMPLATE_ID)
+
+
+def build_seller_buyer_v2_visibility_manifest() -> TemplateVisibilityManifest:
+    """Return the visibility manifest for the v2 seller/buyer block template.
+
+    v2 renders exactly the same field surface as v1 — only label
+    wording, header ordering, and minor spacing differ — so the
+    visible-paths set is shared.
+    """
+
+    return _build_visibility_manifest(SELLER_BUYER_V2_TEMPLATE_ID)

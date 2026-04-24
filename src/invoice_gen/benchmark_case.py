@@ -59,8 +59,7 @@ from src.invoice_gen.domestic_vat_shell_summary import (
     summarize_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
-from src.invoice_gen.pdf_rendering import SELLER_BUYER_TEMPLATE_ID
-from src.invoice_gen.template_registry import get_template
+from src.invoice_gen.template_registry import TEMPLATE_REGISTRY
 from src.invoice_gen.template_visibility import (
     NO_PDF_TEMPLATE_ID,
     TemplateVisibilityError,
@@ -192,18 +191,16 @@ def build_benchmark_case_from_shell(
     resolved_policy = (
         policy if policy is not None else build_default_comparison_policy()
     )
-    resolved_manifests = (
-        dict(manifests)
-        if manifests is not None
-        else {
+    if manifests is not None:
+        resolved_manifests = dict(manifests)
+    else:
+        resolved_manifests = {
             NO_PDF_TEMPLATE_ID: build_no_pdf_visibility_manifest(
                 resolved_policy.fields.keys()
             ),
-            SELLER_BUYER_TEMPLATE_ID: get_template(
-                SELLER_BUYER_TEMPLATE_ID
-            ).visibility_builder(),
         }
-    )
+        for template_id, spec in TEMPLATE_REGISTRY.items():
+            resolved_manifests[template_id] = spec.visibility_builder()
 
     return BenchmarkCase(
         case_id=case_id,

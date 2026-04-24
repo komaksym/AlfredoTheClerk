@@ -24,11 +24,15 @@ from src.invoice_gen.macos_dyld import (
     relaunch_module_with_homebrew_dyld_if_needed,
 )
 from src.invoice_gen.pdf_rendering import SELLER_BUYER_TEMPLATE_ID
-from src.invoice_gen.template_registry import get_template
+from src.invoice_gen.template_registry import TEMPLATE_REGISTRY
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 HARD_CASES_ROOT = ROOT_DIR / "data" / "benchmark_cases" / "hard_cases"
+
+# v1 stays the canonical "default" hard-case template for callers that
+# haven't migrated to per-template iteration. ``pdf_paths`` on the
+# fixture below carries one entry per registered template.
 HARD_CASE_TEMPLATE_ID = SELLER_BUYER_TEMPLATE_ID
 HARD_CASE_PDF_FILENAME = f"{HARD_CASE_TEMPLATE_ID}.pdf"
 
@@ -68,11 +72,17 @@ class HardCaseCorpusError(Exception):
 
 @dataclass(frozen=True, kw_only=True)
 class HardCaseFixture:
-    """One persisted hard case plus its pinned rendered PDF artifact."""
+    """One persisted hard case plus its pinned rendered PDF artifacts.
+
+    ``pdf_paths`` maps each registered ``template_id`` to its pinned
+    PDF on disk. ``pdf_path`` is a convenience shortcut pointing at
+    the v1 template's PDF so existing callers keep working.
+    """
 
     case_id: str
     directory: Path
     pdf_path: Path
+    pdf_paths: dict[str, Path]
     case: BenchmarkCase
 
 
@@ -83,16 +93,21 @@ def load_hard_case_fixture(
 
     directory = root / case_id
     case = load_benchmark_case(directory)
-    pdf_path = directory / HARD_CASE_PDF_FILENAME
-    if not pdf_path.is_file():
-        raise HardCaseCorpusError(
-            f"missing {HARD_CASE_PDF_FILENAME} in hard case {directory}"
-        )
+
+    pdf_paths: dict[str, Path] = {}
+    for template_id in TEMPLATE_REGISTRY:
+        pdf_path = directory / f"{template_id}.pdf"
+        if not pdf_path.is_file():
+            raise HardCaseCorpusError(
+                f"missing {template_id}.pdf in hard case {directory}"
+            )
+        pdf_paths[template_id] = pdf_path
 
     return HardCaseFixture(
         case_id=case_id,
         directory=directory,
-        pdf_path=pdf_path,
+        pdf_path=pdf_paths[HARD_CASE_TEMPLATE_ID],
+        pdf_paths=pdf_paths,
         case=case,
     )
 
@@ -112,12 +127,20 @@ def iter_hard_case_fixtures(
 
 
 def save_hard_case_fixture(
-    case: BenchmarkCase, pdf_bytes: bytes, directory: Path
+    case: BenchmarkCase,
+    pdfs: dict[str, bytes],
+    directory: Path,
 ) -> None:
-    """Persist one hard case's benchmark bundle plus its pinned PDF."""
+    """Persist one hard case's benchmark bundle plus pinned PDFs.
+
+    ``pdfs`` maps each registered ``template_id`` to its rendered
+    bytes. The file on disk is named ``<template_id>.pdf`` so
+    per-template artifacts stay side by side inside the case directory.
+    """
 
     save_benchmark_case(case, directory)
-    (directory / HARD_CASE_PDF_FILENAME).write_bytes(pdf_bytes)
+    for template_id, pdf_bytes in pdfs.items():
+        (directory / f"{template_id}.pdf").write_bytes(pdf_bytes)
 
 
 def regenerate_hard_case_corpus(
@@ -135,9 +158,12 @@ def regenerate_hard_case_corpus(
             generated_at=generated_at,
             xsd_validator=xsd_validator,
         )
-        pdf_bytes = get_template(HARD_CASE_TEMPLATE_ID).renderer(shell)
+        pdfs = {
+            template_id: spec.renderer(shell)
+            for template_id, spec in TEMPLATE_REGISTRY.items()
+        }
         directory = root / case_id
-        save_hard_case_fixture(case, pdf_bytes, directory)
+        save_hard_case_fixture(case, pdfs, directory)
 
     return iter_hard_case_fixtures(root=root)
 

@@ -42,7 +42,12 @@ from .parse import (
 
 REPO_ROOT_PATH = Path(__file__).resolve().parents[2]
 
-FIELD_ANCHORS = {
+# Type alias for the label-synonym dict that each native template owns.
+# Keys are field names the extractor knows how to populate; values are
+# Polish label variants the template may render for that field.
+LabelAnchorSet = dict[str, list[str]]
+
+TEMPLATE_V1_ANCHORS: LabelAnchorSet = {
     "issue_date": ["wystawiono", "data wystawienia"],
     "sale_date": ["sprzedano", "sprzedaży", "data sprzedaży"],
     "seller": ["sprzedawca", "sprzedający"],
@@ -55,6 +60,23 @@ FIELD_ANCHORS = {
     # ``payment_due_date`` below. Current template renders ``Sposób
     # zapłaty``; alternate ``Forma płatności`` labelling is deferred to a
     # future robustness slice.
+    "payment_form": ["zapłaty"],
+    "payment_due_date": ["płatności"],
+    "bank_account": ["bankowe"],
+}
+
+# Anchors for the second native template (``seller_buyer_block_v2``).
+# Same keys as v1 — only the synonym lists differ — so the extractor
+# contract stays unchanged when callers swap ``anchors=`` at the
+# ``populate_shell`` boundary.
+TEMPLATE_V2_ANCHORS: LabelAnchorSet = {
+    "issue_date": ["wystawiono", "data wystawienia"],
+    "sale_date": ["sprzedano", "sprzedaży", "data sprzedaży"],
+    "seller": ["wystawca"],
+    "buyer": ["odbiorca"],
+    "nip": ["nip"],
+    "invoice_number": ["numer dokumentu", "dokument nr"],
+    "currency": ["waluta"],
     "payment_form": ["zapłaty"],
     "payment_due_date": ["płatności"],
     "bank_account": ["bankowe"],
@@ -153,16 +175,19 @@ def _subblock_text(sub_block: SubBlock) -> str:
 
 def find_seller_buyer_subblocks(
     parsed_data: list[list[SubBlock]],
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> tuple[SubBlock | None, SubBlock | None]:
-    """Locate sub-blocks labeled by `sprzedawca` / `nabywca` anchors.
+    """Locate sub-blocks labeled by the seller / buyer anchors.
 
-    Returns (seller_subblock, buyer_subblock). The M2 template always
-    produces a single block whose two sub-blocks carry these anchors,
-    so exact normalized-token match is sufficient for slice 1.
+    Returns (seller_subblock, buyer_subblock). Exact normalized-token
+    match against ``anchors["seller"]`` / ``anchors["buyer"]`` is
+    sufficient for the current native templates; pass a different
+    ``anchors`` dict to match synonyms used by other templates.
     """
 
-    seller_anchors = set(FIELD_ANCHORS["seller"])
-    buyer_anchors = set(FIELD_ANCHORS["buyer"])
+    seller_anchors = set(anchors["seller"])
+    buyer_anchors = set(anchors["buyer"])
 
     seller: SubBlock | None = None
     buyer: SubBlock | None = None
@@ -230,10 +255,14 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
     )
 
 
-def extract_bank_account_from_words(words: list[Word]) -> FieldEvidence:
+def extract_bank_account_from_words(
+    words: list[Word],
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
+) -> FieldEvidence:
     """Extract a PL IBAN from a summary-area ``Konto bankowe`` row."""
 
-    match = find_label(words, FIELD_ANCHORS["bank_account"])
+    match = find_label(words, anchors["bank_account"])
     if match is None:
         return FieldEvidence(
             value=None, source="unresolved", confidence=0.0, bbox=None
@@ -375,10 +404,12 @@ def _line_for_word(words: list[Word], target: Word) -> list[Word] | None:
 
 def extract_issue_date_and_city(
     header: list[Word],
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> tuple[FieldEvidence, FieldEvidence]:
     """Parse ``Wystawiono dnia: YYYY-MM-DD, Miasto`` from the header."""
 
-    match = find_label(header, FIELD_ANCHORS["issue_date"])
+    match = find_label(header, anchors["issue_date"])
     if match is None:
         return _unresolved_evidence(), _unresolved_evidence()
 
@@ -467,6 +498,8 @@ def summary_footer_words(
 
 def _find_party_anchor_and_nip_lines(
     lines: list[list[Word]],
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> tuple[int | None, int | None]:
     """Locate the indices of the party-anchor line and the NIP line below it.
 
@@ -474,8 +507,8 @@ def _find_party_anchor_and_nip_lines(
     line is absent. The NIP line is searched strictly after the anchor.
     """
 
-    party_anchors = set(FIELD_ANCHORS["seller"]) | set(FIELD_ANCHORS["buyer"])
-    nip_anchors = set(FIELD_ANCHORS["nip"])
+    party_anchors = set(anchors["seller"]) | set(anchors["buyer"])
+    nip_anchors = set(anchors["nip"])
 
     anchor_idx = next(
         (
@@ -501,11 +534,17 @@ def _find_party_anchor_and_nip_lines(
     return anchor_idx, nip_idx
 
 
-def extract_party_name_from_subblock(sub_block: SubBlock) -> FieldEvidence:
+def extract_party_name_from_subblock(
+    sub_block: SubBlock,
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
+) -> FieldEvidence:
     """Extract the party name rendered between the anchor and NIP line."""
 
     lines = subblock_lines(sub_block)
-    anchor_idx, nip_idx = _find_party_anchor_and_nip_lines(lines)
+    anchor_idx, nip_idx = _find_party_anchor_and_nip_lines(
+        lines, anchors=anchors
+    )
 
     if anchor_idx is None or nip_idx is None:
         return _unresolved_evidence()
@@ -519,11 +558,15 @@ def extract_party_name_from_subblock(sub_block: SubBlock) -> FieldEvidence:
 
 def extract_party_addresses_from_subblock(
     sub_block: SubBlock,
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> tuple[FieldEvidence, FieldEvidence]:
     """Extract up to two address lines below the NIP line."""
 
     lines = subblock_lines(sub_block)
-    anchor_idx, nip_idx = _find_party_anchor_and_nip_lines(lines)
+    anchor_idx, nip_idx = _find_party_anchor_and_nip_lines(
+        lines, anchors=anchors
+    )
 
     if anchor_idx is None or nip_idx is None:
         return _unresolved_evidence(), _unresolved_evidence()
@@ -1061,19 +1104,28 @@ def extract_summary_rows(
 
 def populate_shell(
     parsed_document: ParsedDocument,
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> tuple[DomesticVatInvoiceShell, dict[str, FieldEvidence]]:
     """Populate rendered shell fields plus table evidence from one PDF.
 
     Line items are populated from ``parsed_document.tables`` — an empty
     list (no bordered tables on the page) simply yields no line items
     and no ``line_items[*]`` evidence keys.
+
+    Label lookups use ``anchors`` — defaulting to the v1 template
+    anchor set so existing callers keep working. Pass a template's
+    own anchors (e.g. from the template registry) to extract invoices
+    rendered with different label wording.
     """
 
     shell = build_domestic_vat_shell()
     evidence: dict[str, FieldEvidence] = {}
 
     parsed_data = parsed_document.sub_blocks
-    seller_sb, buyer_sb = find_seller_buyer_subblocks(parsed_data)
+    seller_sb, buyer_sb = find_seller_buyer_subblocks(
+        parsed_data, anchors=anchors
+    )
 
     party_subblocks = (
         ("seller", shell.seller, seller_sb),
@@ -1092,9 +1144,9 @@ def populate_shell(
             continue
 
         nip_ev = extract_nip_from_subblock(sub_block)
-        name_ev = extract_party_name_from_subblock(sub_block)
+        name_ev = extract_party_name_from_subblock(sub_block, anchors=anchors)
         address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
-            sub_block
+            sub_block, anchors=anchors
         )
 
         evidence[f"{role}.nip"] = nip_ev
@@ -1110,17 +1162,19 @@ def populate_shell(
     header = header_words(parsed_data, seller_sb, buyer_sb)
 
     invoice_ev = extract_labeled_field(
-        header, FIELD_ANCHORS["invoice_number"], _parse_invoice_number
+        header, anchors["invoice_number"], _parse_invoice_number
     )
-    issue_ev, issue_city_ev = extract_issue_date_and_city(header)
+    issue_ev, issue_city_ev = extract_issue_date_and_city(
+        header, anchors=anchors
+    )
     sale_ev = extract_labeled_field(
-        header, FIELD_ANCHORS["sale_date"], date.fromisoformat
+        header, anchors["sale_date"], date.fromisoformat
     )
     payment_form_ev = extract_labeled_field(
-        header, FIELD_ANCHORS["payment_form"], _parse_payment_form
+        header, anchors["payment_form"], _parse_payment_form
     )
     payment_due_date_ev = extract_labeled_field(
-        header, FIELD_ANCHORS["payment_due_date"], date.fromisoformat
+        header, anchors["payment_due_date"], date.fromisoformat
     )
 
     shell.invoice_number = invoice_ev.value
@@ -1138,7 +1192,8 @@ def populate_shell(
     evidence["payment_due_date"] = payment_due_date_ev
 
     bank_account_ev = extract_bank_account_from_words(
-        summary_footer_words(parsed_data, parsed_document.tables)
+        summary_footer_words(parsed_data, parsed_document.tables),
+        anchors=anchors,
     )
     evidence["seller.bank_account"] = bank_account_ev
     shell.seller.bank_account = _as_str(bank_account_ev.value)

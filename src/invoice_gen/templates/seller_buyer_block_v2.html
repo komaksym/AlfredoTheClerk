@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: "DejaVu Sans Pinned";
+    src: url("fonts/DejaVuSans.ttf") format("truetype");
+    font-weight: normal;
+  }
+  @font-face {
+    font-family: "DejaVu Sans Pinned";
+    src: url("fonts/DejaVuSans-Bold.ttf") format("truetype");
+    font-weight: bold;
+  }
+  @page { size: A4; margin: 14mm 16mm 18mm 16mm; }
+  body {
+    font-family: "DejaVu Sans Pinned", sans-serif;
+    font-size: 9pt;
+    line-height: 1.3;
+    color: #000;
+  }
+  p { margin: 0; }
+  .issue-line {
+    margin: 0 0 3mm 0;
+    padding-top: 1mm;
+  }
+  .invoice-meta {
+    width: 78mm;
+    margin-left: auto;
+    margin-bottom: 10mm;
+  }
+  .invoice-title {
+    font-size: 12pt;
+    font-weight: bold;
+    margin: 0 0 2mm 0;
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6mm;
+    margin: 0 0 0.8mm 0;
+  }
+  .meta-label {
+    min-width: 33mm;
+  }
+  .meta-value {
+    text-align: right;
+  }
+  .row {
+    display: flex;
+    gap: 24mm;
+    margin: 0 0 8mm 0;
+  }
+  .col {
+    flex: 1;
+  }
+  .party-title {
+    font-size: 10.5pt;
+    font-weight: bold;
+    margin: 0 0 2mm 0;
+  }
+  .party-name {
+    font-weight: bold;
+    margin: 0 0 0.6mm 0;
+  }
+  .section-title {
+    font-size: 10.5pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin: 8mm 0 2mm 0;
+    letter-spacing: 0.2pt;
+  }
+  .items {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+  }
+  .items th, .items td {
+    border: 0.3mm solid #9e9e9e;
+    padding: 1.4mm 1.8mm;
+    font-size: 8.6pt;
+    text-align: left;
+    vertical-align: top;
+  }
+  .items thead th {
+    background: #eaeaea;
+    font-weight: bold;
+  }
+  .items tr {
+    page-break-inside: avoid;
+  }
+  .items .num {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .totals {
+    margin-top: 0;
+  }
+  .summary-footer {
+    margin-top: 5mm;
+  }
+  .summary-footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10mm;
+  }
+  .summary-footer-label {
+    font-weight: bold;
+  }
+  .summary-footer-value {
+    flex: 1;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+  <p class="issue-line">Wystawiono dnia: __ISSUE_DATE_CITY__</p>
+  <div class="invoice-meta">
+    <p class="invoice-title">Dokument nr __INVOICE_NUMBER__</p>
+    <p class="meta-row">
+      <span class="meta-label">Waluta:</span>
+      <span class="meta-value">__CURRENCY__</span>
+    </p>
+    <p class="meta-row">
+      <span class="meta-label">Termin płatności:</span>
+      <span class="meta-value">__PAYMENT_DUE_DATE__</span>
+    </p>
+    <p class="meta-row">
+      <span class="meta-label">Sposób zapłaty:</span>
+      <span class="meta-value">__PAYMENT_FORM__</span>
+    </p>
+    <p class="meta-row">
+      <span class="meta-label">Data sprzedaży:</span>
+      <span class="meta-value">__SALE_DATE__</span>
+    </p>
+  </div>
+  <div class="row">
+    <div class="col">
+      <p class="party-title">Wystawca:</p>
+      <p class="party-name">__SELLER_NAME__</p>
+      <p>NIP: __SELLER_NIP__</p>
+      <p>__SELLER_ADDR1__</p>
+      <p>__SELLER_ADDR2__</p>
+    </div>
+    <div class="col">
+      <p class="party-title">Odbiorca:</p>
+      <p class="party-name">__BUYER_NAME__</p>
+      <p>NIP: __BUYER_NIP__</p>
+      <p>__BUYER_ADDR1__</p>
+      <p>__BUYER_ADDR2__</p>
+    </div>
+  </div>
+  <p class="section-title">POZYCJE FAKTURY</p>
+  <table class="items">
+    <thead>
+      <tr>
+        <th>Lp.</th>
+        <th>Nazwa</th>
+        <th>J.m.</th>
+        <th class="num">Ilość</th>
+        <th class="num">Cena netto</th>
+        <th class="num">Rabat</th>
+        <th class="num">Stawka VAT</th>
+      </tr>
+    </thead>
+    <tbody>
+__LINE_ITEMS_ROWS__
+    </tbody>
+  </table>
+  <p class="section-title">PODSUMOWANIE</p>
+  <table class="items totals">
+    <thead>
+      <tr>
+        <th>Stawka VAT</th>
+        <th class="num">Wartość netto</th>
+        <th class="num">VAT</th>
+        <th class="num">Wartość brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+__BUCKET_ROWS__
+__TOTALS_ROW__
+    </tbody>
+  </table>
+  <div class="summary-footer">
+    <p class="summary-footer-row">
+      <span class="summary-footer-label">Konto bankowe:</span>
+      <span class="summary-footer-value">__SELLER_BANK_ACCOUNT__</span>
+    </p>
+  </div>
+</body>
+</html>
