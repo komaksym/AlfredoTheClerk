@@ -20,6 +20,7 @@ from src.invoice_gen.benchmark_case import (
 )
 from src.invoice_gen.pdf_rendering import (
     SELLER_BUYER_TEMPLATE_ID,
+    SELLER_BUYER_V2_TEMPLATE_ID,
     SELLER_BUYER_VISIBLE_PATHS,
 )
 from src.invoice_gen.template_visibility import (
@@ -110,19 +111,26 @@ def test_build_benchmark_case_adds_default_manifests() -> None:
         xsd_validator=_stub_validator_valid,
     )
 
-    assert set(case.manifests) == {NO_PDF_TEMPLATE_ID, SELLER_BUYER_TEMPLATE_ID}
+    assert set(case.manifests) == {
+        NO_PDF_TEMPLATE_ID,
+        SELLER_BUYER_TEMPLATE_ID,
+        SELLER_BUYER_V2_TEMPLATE_ID,
+    }
 
     no_pdf = case.manifests[NO_PDF_TEMPLATE_ID]
     assert no_pdf.template_id == NO_PDF_TEMPLATE_ID
     assert no_pdf.fields["shell.currency"] is VisibilityStatus.NOT_RENDERED
 
-    seller_buyer = case.manifests[SELLER_BUYER_TEMPLATE_ID]
-    assert seller_buyer.template_id == SELLER_BUYER_TEMPLATE_ID
-    # Every path the renderer claims to render must be VISIBLE in the
-    # persisted manifest, and nothing else.
-    assert dict(seller_buyer.fields) == {
-        path: VisibilityStatus.VISIBLE for path in SELLER_BUYER_VISIBLE_PATHS
-    }
+    for template_id in (SELLER_BUYER_TEMPLATE_ID, SELLER_BUYER_V2_TEMPLATE_ID):
+        manifest = case.manifests[template_id]
+        assert manifest.template_id == template_id
+        # Every path the renderer claims to render must be VISIBLE in
+        # the persisted manifest, and nothing else. v1 and v2 render
+        # the same field surface, so they share the same visible set.
+        assert dict(manifest.fields) == {
+            path: VisibilityStatus.VISIBLE
+            for path in SELLER_BUYER_VISIBLE_PATHS
+        }
 
 
 # --- save + load round-trip ---------------------------------------------
@@ -174,6 +182,7 @@ def test_save_writes_expected_files(tmp_path: Path) -> None:
     assert {p.name for p in manifests_dir.iterdir()} == {
         "no_pdf.json",
         f"{SELLER_BUYER_TEMPLATE_ID}.json",
+        f"{SELLER_BUYER_V2_TEMPLATE_ID}.json",
     }
 
 
@@ -206,6 +215,7 @@ def test_save_is_idempotent_for_same_case(tmp_path: Path) -> None:
     for manifest_filename in (
         "no_pdf.json",
         f"{SELLER_BUYER_TEMPLATE_ID}.json",
+        f"{SELLER_BUYER_V2_TEMPLATE_ID}.json",
     ):
         assert (dir_a / "manifests" / manifest_filename).read_bytes() == (
             dir_b / "manifests" / manifest_filename
@@ -367,7 +377,11 @@ def test_saved_manifest_round_trips_through_disk(tmp_path: Path) -> None:
     case_dir = tmp_path / _CASE_ID
     save_benchmark_case(case, case_dir)
 
-    for template_id in (NO_PDF_TEMPLATE_ID, SELLER_BUYER_TEMPLATE_ID):
+    for template_id in (
+        NO_PDF_TEMPLATE_ID,
+        SELLER_BUYER_TEMPLATE_ID,
+        SELLER_BUYER_V2_TEMPLATE_ID,
+    ):
         manifest = manifest_from_json(
             (case_dir / "manifests" / f"{template_id}.json").read_text(
                 encoding="utf-8"

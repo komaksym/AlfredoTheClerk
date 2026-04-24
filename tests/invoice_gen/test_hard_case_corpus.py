@@ -23,6 +23,13 @@ from src.invoice_gen.hard_case_corpus import (
     regenerate_hard_case_corpus,
     save_hard_case_fixture,
 )
+from src.invoice_gen.template_registry import TEMPLATE_REGISTRY
+
+
+def _stub_pdfs() -> dict[str, bytes]:
+    """One fake PDF per registered template — enough for loader checks."""
+
+    return {template_id: b"%PDF-1.4\n" for template_id in TEMPLATE_REGISTRY}
 
 
 _FIXED_GENERATED_AT = datetime(2026, 4, 23, 12, 0, 0, tzinfo=UTC)
@@ -99,12 +106,16 @@ def test_save_hard_case_fixture_writes_pinned_pdf(tmp_path: Path) -> None:
     )
 
     directory = tmp_path / "case-0001"
-    save_hard_case_fixture(case, b"%PDF-1.4\n", directory)
+    save_hard_case_fixture(case, _stub_pdfs(), directory)
 
     fixture = load_hard_case_fixture("case-0001", root=tmp_path)
 
     assert fixture.pdf_path == directory / HARD_CASE_PDF_FILENAME
     assert fixture.pdf_path.read_bytes() == b"%PDF-1.4\n"
+    assert set(fixture.pdf_paths) == set(TEMPLATE_REGISTRY)
+    for template_id, path in fixture.pdf_paths.items():
+        assert path == directory / f"{template_id}.pdf"
+        assert path.read_bytes() == b"%PDF-1.4\n"
     assert fixture.case == case
 
 
@@ -137,8 +148,8 @@ def test_iter_hard_case_fixtures_returns_sorted_directory_names(
         xsd_validator=_stub_validator_valid,
     )
 
-    save_hard_case_fixture(case, b"%PDF-1.4\n", tmp_path / "z-case")
-    save_hard_case_fixture(case, b"%PDF-1.4\n", tmp_path / "a-case")
+    save_hard_case_fixture(case, _stub_pdfs(), tmp_path / "z-case")
+    save_hard_case_fixture(case, _stub_pdfs(), tmp_path / "a-case")
 
     assert [
         fixture.directory.name
@@ -156,6 +167,9 @@ def test_regenerate_hard_case_corpus_round_trips_cases(tmp_path: Path) -> None:
     for fixture in fixtures:
         assert fixture.pdf_path.name == HARD_CASE_PDF_FILENAME
         assert fixture.pdf_path.is_file()
+        assert set(fixture.pdf_paths) == set(TEMPLATE_REGISTRY)
+        for path in fixture.pdf_paths.values():
+            assert path.is_file()
         assert load_benchmark_case(fixture.directory) == fixture.case
 
 
@@ -166,3 +180,7 @@ def test_checked_in_hard_case_corpus_is_complete() -> None:
     for fixture in fixtures:
         assert fixture.pdf_path.name == HARD_CASE_PDF_FILENAME
         assert fixture.pdf_path.is_file()
+        assert set(fixture.pdf_paths) == set(TEMPLATE_REGISTRY)
+        for template_id, path in fixture.pdf_paths.items():
+            assert path.name == f"{template_id}.pdf"
+            assert path.is_file()

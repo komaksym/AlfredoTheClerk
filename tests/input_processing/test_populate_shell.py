@@ -16,6 +16,8 @@ from src.input_processing.parse import (
 from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
     FieldEvidence,
+    TEMPLATE_V1_ANCHORS,
+    TEMPLATE_V2_ANCHORS,
     _parse_payment_form,
     extract_bank_account_from_words,
     extract_issue_date_and_city,
@@ -1164,3 +1166,70 @@ def test_extract_summary_rows_picks_first_matching_table() -> None:
     buckets, _ = extract_summary_rows([decoy, target])
 
     assert Decimal("23") in buckets
+
+
+def test_populate_shell_v2_anchors_extract_v2_rendered_invoice():
+    """populate_shell with v2 anchors must read a v2-rendered PDF correctly.
+
+    Extraction with v1 anchors against the same PDF should miss the
+    seller/buyer/invoice_number fields, since v2 uses ``Wystawca`` /
+    ``Odbiorca`` / ``Dokument nr`` instead of the v1 wording. This
+    pair of assertions proves the ``anchors`` parameter actually
+    reaches every label lookup inside the extractor.
+    """
+
+    import io
+
+    from src.input_processing.parse import parse_data
+    from src.invoice_gen.domain_shell import (
+        build_domestic_vat_shell,
+        LineItemShell,
+    )
+    from src.invoice_gen.pdf_rendering import render_seller_buyer_block_v2
+
+    shell = build_domestic_vat_shell()
+    shell.invoice_number = "FV/V2-PARAM/001"
+    shell.issue_date = date(2026, 4, 23)
+    shell.sale_date = date(2026, 4, 22)
+    shell.issue_city = "Warszawa"
+    shell.payment_form = 6
+    shell.payment_due_date = date(2026, 5, 7)
+    shell.seller.name = "Alfa Sp. z o.o."
+    shell.seller.nip = "8637940261"
+    shell.seller.address_line_1 = "ul. Polna 29"
+    shell.seller.address_line_2 = "90-001 Lodz"
+    shell.seller.bank_account = "PL61419283276483503056413953"
+    shell.buyer.name = "Beta Sp. z o.o."
+    shell.buyer.nip = "5423511615"
+    shell.buyer.address_line_1 = "ul. Ogrodowa 70 m. 3"
+    shell.buyer.address_line_2 = "00-001 Warszawa"
+    shell.line_items = [
+        LineItemShell(
+            description="Pakiet serwisowy",
+            unit="usl.",
+            quantity=Decimal("1"),
+            unit_price_net=Decimal("250.00"),
+            discount=None,
+            vat_rate=Decimal("23"),
+        )
+    ]
+
+    pdf_bytes = render_seller_buyer_block_v2(shell)
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        parsed = parse_data(pdf)
+
+    # v2 anchors reach every label lookup -> party blocks resolve.
+    v2_shell, _ = populate_shell(parsed, anchors=TEMPLATE_V2_ANCHORS)
+    assert v2_shell.seller.name == "Alfa Sp. z o.o."
+    assert v2_shell.buyer.name == "Beta Sp. z o.o."
+    assert v2_shell.seller.nip == "8637940261"
+    assert v2_shell.buyer.nip == "5423511615"
+    assert v2_shell.invoice_number == "FV/V2-PARAM/001"
+
+    # v1 anchors cannot match "Wystawca" / "Odbiorca" / "Dokument nr",
+    # so party-specific and invoice_number fields come back unresolved.
+    v1_shell, _ = populate_shell(parsed, anchors=TEMPLATE_V1_ANCHORS)
+    assert v1_shell.seller.name is None
+    assert v1_shell.buyer.name is None
+    assert v1_shell.invoice_number is None
