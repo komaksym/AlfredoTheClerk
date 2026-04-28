@@ -53,7 +53,7 @@ TEMPLATE_V1_ANCHORS: LabelAnchorSet = {
     "seller": ["sprzedawca", "sprzedający"],
     "buyer": ["nabywca", "kupujący"],
     "nip": ["nip"],
-    "invoice_number": ["faktura nr", "numer", "nr faktury", "nr"],
+    "invoice_number": ["faktura nr", "vat nr", "numer", "nr faktury"],
     "currency": ["waluta"],
     # Anchor ``zapłaty`` only, not ``płatności``: the latter is the last
     # word of ``Termin płatności`` and would collide with
@@ -653,11 +653,12 @@ def threshold_for(anchor: str) -> int:
 def find_label(
     words: list[Word], anchors: list[str]
 ) -> tuple[Word, float] | None:
-    """Find the best-scoring Word (or first word of a bigram) matching any anchor.
+    """Find the best-scoring Word matching any anchor.
 
     Single-token anchors score against each word. Multi-token anchors
-    score against sliding-window bigrams of adjacent words; the first
-    word of the winning pair is returned as the label anchor.
+    score against sliding-window bigrams of adjacent words; the last
+    word of the winning pair is returned so value lookup starts after
+    the full label.
     """
 
     best: tuple[Word, float] | None = None
@@ -685,7 +686,7 @@ def find_label(
             )
             score = fuzz.ratio(joined, anchor)
             if score >= floor and (best is None or score > best[1]):
-                best = (words[i], score)
+                best = (words[i + 1], score)
 
     return best
 
