@@ -329,7 +329,21 @@ class TestFindLabel:
         ]
         match = find_label(words, ["faktura nr"])
         assert match is not None
-        assert match[0].text == "Faktura"
+        assert match[0].text == "nr"
+
+    def test_bigram_anchor_value_starts_after_full_label(self):
+        words = [
+            make_word("Dokument", 0, 55, 0, 10),
+            make_word("nr", 60, 75, 0, 10),
+            make_word("FV/V2-PARAM/001", 80, 180, 0, 10),
+        ]
+
+        ev = extract_labeled_field(
+            words, ["dokument nr"], lambda text: "".join(text.split())
+        )
+
+        assert ev.value == "FV/V2-PARAM/001"
+        assert ev.raw_text == "FV/V2-PARAM/001"
 
     def test_no_match_below_threshold(self):
         words = [make_word("Cena:", 0, 30, 0, 10)]
