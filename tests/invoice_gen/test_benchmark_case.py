@@ -344,7 +344,7 @@ def test_load_rejects_unknown_keys_in_case_json(tmp_path: Path) -> None:
 # --- BenchmarkCase is a value object -------------------------------------
 
 
-def test_benchmark_case_equality_is_value_based(tmp_path: Path) -> None:
+def test_benchmark_case_equality_is_value_based() -> None:
     """Two independently built cases with identical inputs must be equal."""
 
     case_a = build_benchmark_case(
