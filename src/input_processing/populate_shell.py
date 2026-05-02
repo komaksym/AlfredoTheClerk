@@ -105,6 +105,25 @@ PL_IBAN_PATTERN = re.compile(r"^PL\d{26}$")
 EvidenceSource = Literal["regex", "fuzzy", "spatial", "llm", "unresolved"]
 
 
+@dataclass(frozen=True, kw_only=True)
+class Candidate:
+    """One value the resolver considered for a field before picking a winner.
+
+    The winning candidate is duplicated on its parent ``FieldEvidence`` (so
+    callers that only want the resolved value never need to walk this list).
+    Losers carry ``rejected_by`` so a downstream repair stage can see which
+    rule discarded them and reason about whether the choice was a close call.
+    """
+
+    value: str | int | date | Decimal | None
+    source: EvidenceSource
+    confidence: float
+    bbox: tuple[float, float, float, float] | None
+    raw_text: str | None = None
+    rule: str | None = None
+    rejected_by: str | None = None
+
+
 @dataclass(kw_only=True)
 class FieldEvidence:
     """Provenance for a single populated shell field."""
@@ -114,6 +133,7 @@ class FieldEvidence:
     confidence: float
     bbox: tuple[float, float, float, float] | None
     raw_text: str | None = None
+    candidates: tuple[Candidate, ...] | None = None
 
 
 def _parse_payment_form(text: str) -> int:
