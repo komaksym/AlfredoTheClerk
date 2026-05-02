@@ -15,6 +15,7 @@ from src.input_processing.parse import (
 )
 from src.input_processing.populate_shell import (
     _NIP_CANDIDATE,
+    Candidate,
     FieldEvidence,
     TEMPLATE_V1_ANCHORS,
     TEMPLATE_V2_ANCHORS,
@@ -682,6 +683,54 @@ def test_field_evidence_raw_text_defaults_to_none():
         bbox=(0, 0, 10, 10),
     )
     assert ev.raw_text is None
+
+
+def test_field_evidence_candidates_default_to_none():
+    """Omitting candidates keeps the legacy single-winner contract intact."""
+
+    ev = FieldEvidence(
+        value="test",
+        source="spatial",
+        confidence=1.0,
+        bbox=(0, 0, 10, 10),
+    )
+
+    assert ev.candidates is None
+
+
+def test_field_evidence_carries_candidate_set():
+    """Resolvers can attach the rejected alternatives alongside the winner."""
+
+    winner = Candidate(
+        value=date(2026, 3, 12),
+        source="regex",
+        confidence=0.7,
+        bbox=(10, 20, 30, 40),
+        raw_text="2026-03-12",
+        rule="first_date_token",
+    )
+    runner_up = Candidate(
+        value=date(2026, 3, 15),
+        source="regex",
+        confidence=0.65,
+        bbox=(10, 60, 30, 80),
+        raw_text="2026-03-15",
+        rejected_by="position_heuristic",
+    )
+
+    ev = FieldEvidence(
+        value=winner.value,
+        source=winner.source,
+        confidence=winner.confidence,
+        bbox=winner.bbox,
+        raw_text=winner.raw_text,
+        candidates=(winner, runner_up),
+    )
+
+    assert ev.candidates is not None
+    assert ev.candidates[0].value == ev.value
+    assert ev.candidates[1].rejected_by == "position_heuristic"
+    assert ev.candidates[1].rule is None
 
 
 def test_nip_extraction_preserves_hyphenated_raw_text():
