@@ -251,28 +251,99 @@ def _find_nip_words(
 def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
     """Scan a sub-block for the first structurally valid NIP."""
 
-    text = _subblock_text(sub_block)
+    def collect_all_plausible_nips(text):
+        checksum_valid_candidates = []
+        rejected_candidates = []
 
-    for match in _NIP_CANDIDATE.finditer(text):
-        digits = match.group().replace("-", "")
-        if not NIP_PATTERN.fullmatch(digits):
-            continue
+        for match in _NIP_CANDIDATE.finditer(text):
+            digits = match.group().replace("-", "")
+            if not NIP_PATTERN.fullmatch(digits):
+                continue
 
-        words = _find_nip_words(sub_block, match.start(), match.end())
-        bbox = bbox_of(words) if words else None
-        confidence = 1.0 if validate_nip_checksum(digits) else 0.5
+            words = _find_nip_words(sub_block, match.start(), match.end())
+            bbox = bbox_of(words) if words else None
+            confidence = 1.0 if validate_nip_checksum(digits) else 0.5
 
-        return FieldEvidence(
-            value=digits,
-            source="regex",
-            confidence=confidence,
-            bbox=bbox,
-            raw_text=match.group(),
+            if confidence == 1.0:
+                checksum_valid_candidates.append(
+                    Candidate(
+                        value=digits,
+                        source="regex",
+                        confidence=confidence,
+                        bbox=bbox,
+                        raw_text=match.group(),
+                        rule="nip_candidate_regex",
+                        rejected_by=None,
+                    )
+                )
+            else:
+                rejected_candidates.append(
+                    Candidate(
+                        value=digits,
+                        source="regex",
+                        confidence=confidence,
+                        bbox=bbox,
+                        raw_text=match.group(),
+                        rule="nip_candidate_regex",
+                        rejected_by="checksum_failed",
+                    )
+                )
+
+        return checksum_valid_candidates, rejected_candidates
+
+    def choose_winner(checksum_valid_candidates, rejected_candidates):
+        all_candidates = tuple(
+            [*checksum_valid_candidates, *rejected_candidates]
         )
 
-    return FieldEvidence(
-        value=None, source="unresolved", confidence=0.0, bbox=None
+        if not all_candidates:
+            return FieldEvidence(
+                value=None,
+                source="unresolved",
+                confidence=0.0,
+                bbox=None,
+            )
+
+        if len(checksum_valid_candidates) == 1:
+            winner = checksum_valid_candidates[0]
+            return FieldEvidence(
+                value=winner.value,
+                source=winner.source,
+                confidence=winner.confidence,
+                bbox=winner.bbox,
+                raw_text=winner.raw_text,
+                candidates=all_candidates,
+            )
+
+        if (
+            len(checksum_valid_candidates) == 0
+            and len(rejected_candidates) == 1
+        ):
+            winner = rejected_candidates[0]
+            return FieldEvidence(
+                value=winner.value,
+                source=winner.source,
+                confidence=winner.confidence,
+                bbox=winner.bbox,
+                raw_text=winner.raw_text,
+                candidates=all_candidates,
+            )
+
+        return FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=None,
+            candidates=all_candidates,
+        )
+
+    text = _subblock_text(sub_block)
+    checksum_valid_candidates, rejected_candidates = collect_all_plausible_nips(
+        text
     )
+    winner = choose_winner(checksum_valid_candidates, rejected_candidates)
+
+    return winner
 
 
 def extract_bank_account_from_words(
