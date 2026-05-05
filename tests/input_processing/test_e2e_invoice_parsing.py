@@ -7,7 +7,7 @@ from pathlib import Path
 import pdfplumber
 
 from src.input_processing.extraction_comparison import compare_full_extraction
-from src.input_processing.parse import parse_data
+from src.input_processing.parse_pdf import parse_data
 from src.invoice_gen.benchmark_case import (
     XsdValidationResult,
     build_benchmark_case,

@@ -30,7 +30,7 @@ from .extraction_diagnostics import (
     ExtractionDiagnostics,
     build_extraction_diagnostics,
 )
-from .parse import ParsedDocument
+from .parse_pdf import ParsedDocument
 from .populate_shell import FieldEvidence, populate_shell
 
 

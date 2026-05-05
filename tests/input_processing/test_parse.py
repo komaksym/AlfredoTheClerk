@@ -2,7 +2,7 @@
 
 import pdfplumber
 
-from src.input_processing.parse import (
+from src.input_processing.parse_pdf import (
     REPO_ROOT_PATH,
     Word,
     Line,

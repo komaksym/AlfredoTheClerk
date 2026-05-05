@@ -28,7 +28,7 @@ from src.invoice_gen.domain_shell import (
 from src.invoice_gen.domestic_vat_seed import NIP_PATTERN
 from src.invoice_gen.pdf_rendering import PAYMENT_FORM_LABELS
 
-from .parse import (
+from .parse_pdf import (
     ParsedDocument,
     ParsedTable,
     SubBlock,

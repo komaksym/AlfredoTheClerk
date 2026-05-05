@@ -6,7 +6,7 @@ import pdfplumber
 import pytest
 
 from src.input_processing.extraction_comparison import compare_full_extraction
-from src.input_processing.parse import parse_data
+from src.input_processing.parse_pdf import parse_data
 from src.invoice_gen.hard_case_corpus import (
     HARD_CASES_ROOT,
     HARD_CASE_TEMPLATE_ID,

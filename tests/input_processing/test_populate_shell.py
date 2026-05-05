@@ -6,7 +6,7 @@ from decimal import Decimal
 import pdfplumber
 import pytest
 
-from src.input_processing.parse import (
+from src.input_processing.parse_pdf import (
     REPO_ROOT_PATH,
     ParsedTable,
     SubBlock,
@@ -1243,7 +1243,7 @@ def test_populate_shell_v2_anchors_extract_v2_rendered_invoice():
 
     import io
 
-    from src.input_processing.parse import parse_data
+    from src.input_processing.parse_pdf import parse_data
     from src.invoice_gen.domain_shell import (
         build_domestic_vat_shell,
         LineItemShell,
