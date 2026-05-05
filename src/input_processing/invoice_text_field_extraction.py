@@ -297,47 +297,6 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
 
         return checksum_valid_candidates, rejected_candidates
 
-    def choose_winner(
-        checksum_valid_candidates: list[Candidate],
-        rejected_candidates: list[Candidate],
-    ) -> FieldEvidence:
-        """Choose a deterministic winner or return ambiguous evidence."""
-
-        all_candidates = (
-            *checksum_valid_candidates,
-            *rejected_candidates,
-        )
-
-        if not all_candidates:
-            return _unresolved_evidence()
-
-        if len(checksum_valid_candidates) == 1:
-            winner = checksum_valid_candidates[0]
-            return FieldEvidence(
-                value=winner.value,
-                source=winner.source,
-                confidence=winner.confidence,
-                bbox=winner.bbox,
-                raw_text=winner.raw_text,
-                candidates=all_candidates,
-            )
-
-        if (
-            len(checksum_valid_candidates) == 0
-            and len(rejected_candidates) == 1
-        ):
-            winner = rejected_candidates[0]
-            return FieldEvidence(
-                value=winner.value,
-                source=winner.source,
-                confidence=winner.confidence,
-                bbox=winner.bbox,
-                raw_text=winner.raw_text,
-                candidates=all_candidates,
-            )
-
-        return _unresolved_evidence(candidates=all_candidates)
-
     text = _subblock_text(sub_block)
     checksum_valid_candidates, rejected_candidates = collect_all_plausible_nips(
         text
@@ -345,6 +304,45 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
     winner = choose_winner(checksum_valid_candidates, rejected_candidates)
 
     return winner
+
+
+def choose_winner(
+    checksum_valid_candidates: list[Candidate],
+    rejected_candidates: list[Candidate],
+) -> FieldEvidence:
+    """Choose a deterministic winner or return ambiguous evidence."""
+
+    all_candidates = (
+        *checksum_valid_candidates,
+        *rejected_candidates,
+    )
+
+    if not all_candidates:
+        return _unresolved_evidence()
+
+    if len(checksum_valid_candidates) == 1:
+        winner = checksum_valid_candidates[0]
+        return FieldEvidence(
+            value=winner.value,
+            source=winner.source,
+            confidence=winner.confidence,
+            bbox=winner.bbox,
+            raw_text=winner.raw_text,
+            candidates=all_candidates,
+        )
+
+    if len(checksum_valid_candidates) == 0 and len(rejected_candidates) == 1:
+        winner = rejected_candidates[0]
+        return FieldEvidence(
+            value=winner.value,
+            source=winner.source,
+            confidence=winner.confidence,
+            bbox=winner.bbox,
+            raw_text=winner.raw_text,
+            candidates=all_candidates,
+        )
+
+    return _unresolved_evidence(candidates=all_candidates)
 
 
 def extract_bank_account_from_words(
