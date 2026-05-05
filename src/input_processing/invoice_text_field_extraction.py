@@ -124,6 +124,13 @@ class FieldEvidence:
     candidates: tuple[Candidate, ...] | None = None
 
 
+@dataclass(frozen=True, kw_only=True)
+class LabelMatch:
+    word: Word
+    score: float
+    anchor: str
+
+
 def _parse_payment_form(text: str) -> int:
     """Reverse-look up a Polish payment-form label to its KSeF enum value.
 
@@ -714,18 +721,10 @@ def threshold_for(anchor: str) -> int:
     return 80
 
 
-def find_label(
+def find_label_candidates(
     words: list[Word], anchors: list[str]
-) -> tuple[Word, float] | None:
-    """Find the best-scoring Word matching any anchor.
-
-    Single-token anchors score against each word. Multi-token anchors
-    score against sliding-window bigrams of adjacent words; the last
-    word of the winning pair is returned so value lookup starts after
-    the full label.
-    """
-
-    best: tuple[Word, float] | None = None
+) -> tuple[LabelMatch, ...]:
+    candidates: list[LabelMatch] = []
 
     for anchor in anchors:
         floor = threshold_for(anchor)
@@ -737,8 +736,10 @@ def find_label(
                     normalize_text(word.text).rstrip(":"),
                     anchor,
                 )
-                if score >= floor and (best is None or score > best[1]):
-                    best = (word, score)
+                if score >= floor:
+                    candidates.append(
+                        LabelMatch(word=word, score=score, anchor=anchor)
+                    )
             continue
 
         for i in range(len(words) - 1):
@@ -749,10 +750,30 @@ def find_label(
                 )
             )
             score = fuzz.ratio(joined, anchor)
-            if score >= floor and (best is None or score > best[1]):
-                best = (words[i + 1], score)
+            if score >= floor:
+                candidates.append(
+                    LabelMatch(word=words[i + 1], score=score, anchor=anchor)
+                )
 
-    return best
+    return tuple(sorted(candidates, key=lambda k: k.score, reverse=True))
+
+
+def find_label(
+    words: list[Word], anchors: list[str]
+) -> tuple[Word, float] | None:
+    """Find the best-scoring Word matching any anchor.
+
+    Single-token anchors score against each word. Multi-token anchors
+    score against sliding-window bigrams of adjacent words; the last
+    word of the winning pair is returned so value lookup starts after
+    the full label.
+    """
+
+    label_matches = find_label_candidates(words, anchors)
+    if not label_matches:
+        return None
+
+    return (label_matches[0].word, label_matches[0].score)
 
 
 def find_right_neighbor(label: Word, words: list[Word]) -> Word | None:
