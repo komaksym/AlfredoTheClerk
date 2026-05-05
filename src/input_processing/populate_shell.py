@@ -297,12 +297,7 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
         )
 
         if not all_candidates:
-            return FieldEvidence(
-                value=None,
-                source="unresolved",
-                confidence=0.0,
-                bbox=None,
-            )
+            return _unresolved_evidence()
 
         if len(checksum_valid_candidates) == 1:
             winner = checksum_valid_candidates[0]
@@ -329,13 +324,7 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
                 candidates=all_candidates,
             )
 
-        return FieldEvidence(
-            value=None,
-            source="unresolved",
-            confidence=0.0,
-            bbox=None,
-            candidates=all_candidates,
-        )
+        return _unresolved_evidence(candidates=all_candidates)
 
     text = _subblock_text(sub_block)
     checksum_valid_candidates, rejected_candidates = collect_all_plausible_nips(
@@ -390,7 +379,9 @@ def extract_bank_account_from_words(
     )
 
 
-def _unresolved_evidence(words: list[Word] | None = None) -> FieldEvidence:
+def _unresolved_evidence(
+    words: list[Word] | None = None, candidates: list[Candidate] | None = None
+) -> FieldEvidence:
     """Build an unresolved FieldEvidence, optionally bounded by `words`."""
 
     return FieldEvidence(
@@ -398,6 +389,7 @@ def _unresolved_evidence(words: list[Word] | None = None) -> FieldEvidence:
         source="unresolved",
         confidence=0.0,
         bbox=bbox_of(words) if words else None,
+        candidates=candidates,
     )
 
 
