@@ -31,7 +31,8 @@ from .extraction_diagnostics import (
     build_extraction_diagnostics,
 )
 from .parse_pdf import ParsedDocument
-from .populate_shell import FieldEvidence, populate_shell
+from .populate_shell import populate_shell
+from .invoice_text_field_extraction import FieldEvidence
 
 
 @dataclass(frozen=True, kw_only=True)

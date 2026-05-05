@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .populate_shell import FieldEvidence
+from .invoice_text_field_extraction import FieldEvidence
 
 
 class FieldStatus(Enum):

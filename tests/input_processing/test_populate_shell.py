@@ -13,7 +13,8 @@ from src.input_processing.parse_pdf import (
     TableCell,
     parse_data,
 )
-from src.input_processing.populate_shell import (
+from src.input_processing.populate_shell import populate_shell
+from src.input_processing.invoice_text_field_extraction import (
     _NIP_CANDIDATE,
     Candidate,
     FieldEvidence,
@@ -34,7 +35,6 @@ from src.input_processing.populate_shell import (
     find_seller_buyer_subblocks,
     find_value_word,
     header_words,
-    populate_shell,
     subblock_lines,
     threshold_for,
     validate_nip_checksum,

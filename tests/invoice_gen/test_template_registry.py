@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.input_processing.populate_shell import (
+from src.input_processing.invoice_text_field_extraction import (
     TEMPLATE_V1_ANCHORS,
     TEMPLATE_V2_ANCHORS,
 )

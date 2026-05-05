@@ -14,7 +14,7 @@ from src.input_processing.extraction_comparison import (
     compare_header_extraction,
 )
 from src.input_processing.extraction_diagnostics import ExtractionDiagnostics
-from src.input_processing.populate_shell import FieldEvidence
+from src.input_processing.invoice_text_field_extraction import FieldEvidence
 from src.invoice_gen.comparison import ComparisonPolicy, ComparisonReport
 from src.invoice_gen.domain_shell import build_domestic_vat_shell
 from src.invoice_gen.domestic_vat_shell_validation import (

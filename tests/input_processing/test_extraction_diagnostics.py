@@ -8,7 +8,7 @@ from src.input_processing.extraction_diagnostics import (
     FieldStatus,
     build_extraction_diagnostics,
 )
-from src.input_processing.populate_shell import FieldEvidence
+from src.input_processing.invoice_text_field_extraction import FieldEvidence
 
 
 def test_present_field_from_regex_evidence():
