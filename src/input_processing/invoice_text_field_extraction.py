@@ -352,34 +352,101 @@ def extract_bank_account_from_words(
 ) -> FieldEvidence:
     """Extract a PL IBAN from a summary-area ``Konto bankowe`` row."""
 
-    match = find_label(words, anchors["bank_account"])
-    if match is None:
-        return _unresolved_evidence()
+    def find_all_plausible_ibans(
+        words: list[Word],
+        *,
+        bank_account_anchors: list[str],
+    ) -> tuple[list[Candidate], list[Candidate], list[Word]]:
+        """Collect bank-account candidates and labels that lack values.
 
-    label_word, _ = match
-    value_word = find_value_word(label_word, words)
-    if value_word is None:
-        return _unresolved_evidence([label_word])
+        The first returned list contains checksum-valid IBAN candidates. The
+        second contains malformed or checksum-failed values that were still
+        found next to a bank-account label. The third preserves labels whose
+        value neighbor was missing, so unresolved evidence can still point at
+        the field location.
+        """
 
-    raw_text = value_word.text.strip()
-    bbox = bbox_of([label_word, value_word])
-    if not PL_IBAN_PATTERN.fullmatch(raw_text):
-        return FieldEvidence(
-            value=None,
-            source="unresolved",
-            confidence=0.0,
-            bbox=bbox,
-            raw_text=raw_text,
+        checksum_valid_candidates: list[Candidate] = []
+        rejected_candidates: list[Candidate] = []
+        label_words_without_value: list[Word] = []
+
+        label_candidates = find_label_candidates(words, bank_account_anchors)
+
+        if not label_candidates:
+            return [], [], []
+
+        for lc in label_candidates:
+            label_word = lc.word
+            value_word = find_value_word(label_word, words)
+            if value_word is None:
+                label_words_without_value.append(label_word)
+                continue
+
+            raw_text = value_word.text.strip()
+            bbox = bbox_of([label_word, value_word])
+            if not PL_IBAN_PATTERN.fullmatch(raw_text):
+                rejected_candidates.append(
+                    Candidate(
+                        value=None,
+                        source="unresolved",
+                        confidence=0.0,
+                        bbox=bbox,
+                        raw_text=raw_text,
+                        rule="pl_iban_regex",
+                        rejected_by="iban_pattern_failed",
+                    )
+                )
+                continue
+
+            confidence = 1.0 if validate_pl_iban_checksum(raw_text) else 0.5
+            if confidence == 1.0:
+                checksum_valid_candidates.append(
+                    Candidate(
+                        value=raw_text,
+                        source="regex",
+                        confidence=confidence,
+                        bbox=bbox,
+                        raw_text=raw_text,
+                        rule="pl_iban_regex",
+                        rejected_by=None,
+                    )
+                )
+            else:
+                rejected_candidates.append(
+                    Candidate(
+                        value=raw_text,
+                        source="regex",
+                        confidence=confidence,
+                        bbox=bbox,
+                        raw_text=raw_text,
+                        rule="pl_iban_regex",
+                        rejected_by="iban_checksum_failed",
+                    )
+                )
+
+        return (
+            checksum_valid_candidates,
+            rejected_candidates,
+            label_words_without_value,
         )
 
-    confidence = 1.0 if validate_pl_iban_checksum(raw_text) else 0.5
-    return FieldEvidence(
-        value=raw_text,
-        source="regex",
-        confidence=confidence,
-        bbox=bbox,
-        raw_text=raw_text,
+    (
+        checksum_valid_candidates,
+        rejected_candidates,
+        label_words_without_value,
+    ) = find_all_plausible_ibans(
+        words,
+        bank_account_anchors=anchors["bank_account"],
     )
+    if (
+        not checksum_valid_candidates
+        and not rejected_candidates
+        and label_words_without_value
+    ):
+        return _unresolved_evidence(label_words_without_value)
+
+    winner = choose_winner(checksum_valid_candidates, rejected_candidates)
+    return winner
 
 
 def _unresolved_evidence(
