@@ -126,6 +126,8 @@ class FieldEvidence:
 
 @dataclass(frozen=True, kw_only=True)
 class LabelMatch:
+    """One structural label match found before extracting a field value."""
+
     word: Word
     score: float
     anchor: str
@@ -244,11 +246,20 @@ def _find_nip_words(
 
 
 def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
-    """Scan a sub-block for the first structurally valid NIP."""
+    """Extract a NIP winner while preserving plausible alternatives.
 
-    def collect_all_plausible_nips(text):
-        checksum_valid_candidates = []
-        rejected_candidates = []
+    The deterministic winner remains on ``FieldEvidence.value`` for existing
+    callers. Every structurally valid NIP-like value is also attached as a
+    candidate so a later repair layer can inspect close calls.
+    """
+
+    def collect_all_plausible_nips(
+        text: str,
+    ) -> tuple[list[Candidate], list[Candidate]]:
+        """Split NIP-shaped matches by checksum validity."""
+
+        checksum_valid_candidates: list[Candidate] = []
+        rejected_candidates: list[Candidate] = []
 
         for match in _NIP_CANDIDATE.finditer(text):
             digits = match.group().replace("-", "")
@@ -286,9 +297,15 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
 
         return checksum_valid_candidates, rejected_candidates
 
-    def choose_winner(checksum_valid_candidates, rejected_candidates):
-        all_candidates = tuple(
-            [*checksum_valid_candidates, *rejected_candidates]
+    def choose_winner(
+        checksum_valid_candidates: list[Candidate],
+        rejected_candidates: list[Candidate],
+    ) -> FieldEvidence:
+        """Choose a deterministic winner or return ambiguous evidence."""
+
+        all_candidates = (
+            *checksum_valid_candidates,
+            *rejected_candidates,
         )
 
         if not all_candidates:
@@ -368,9 +385,10 @@ def extract_bank_account_from_words(
 
 
 def _unresolved_evidence(
-    words: list[Word] | None = None, candidates: list[Candidate] | None = None
+    words: list[Word] | None = None,
+    candidates: tuple[Candidate, ...] | None = None,
 ) -> FieldEvidence:
-    """Build an unresolved FieldEvidence, optionally bounded by `words`."""
+    """Build unresolved evidence, optionally bounded by words/candidates."""
 
     return FieldEvidence(
         value=None,
@@ -724,6 +742,12 @@ def threshold_for(anchor: str) -> int:
 def find_label_candidates(
     words: list[Word], anchors: list[str]
 ) -> tuple[LabelMatch, ...]:
+    """Return all fuzzy label matches above each anchor's threshold.
+
+    Multi-token anchors return the last word of the matched phrase so existing
+    value-neighbor lookup starts after the complete label.
+    """
+
     candidates: list[LabelMatch] = []
 
     for anchor in anchors:
@@ -761,12 +785,13 @@ def find_label_candidates(
 def find_label(
     words: list[Word], anchors: list[str]
 ) -> tuple[Word, float] | None:
-    """Find the best-scoring Word matching any anchor.
+    """Find the best-scoring label word matching any anchor.
 
     Single-token anchors score against each word. Multi-token anchors
     score against sliding-window bigrams of adjacent words; the last
     word of the winning pair is returned so value lookup starts after
-    the full label.
+    the full label. Use ``find_label_candidates`` when all plausible label
+    matches are needed.
     """
 
     label_matches = find_label_candidates(words, anchors)
