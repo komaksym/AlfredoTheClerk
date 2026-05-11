@@ -10,7 +10,7 @@ Current scope covers:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Callable, Literal
@@ -481,6 +481,103 @@ def _candidate_bbox(
     )
 
 
+def _field_evidence_from_candidate(
+    winner: Candidate,
+    candidates: tuple[Candidate, ...],
+) -> FieldEvidence:
+    """Build resolved field evidence from the winning candidate."""
+
+    return FieldEvidence(
+        value=winner.value,
+        source=winner.source,
+        confidence=winner.confidence,
+        bbox=winner.bbox,
+        raw_text=winner.raw_text,
+        candidates=candidates,
+    )
+
+
+def _unique_candidates(candidates: list[Candidate]) -> list[Candidate]:
+    """Drop duplicate candidates produced by overlapping extraction rules."""
+
+    seen: set[
+        tuple[
+            str | int | date | Decimal | None,
+            EvidenceSource,
+            float,
+            tuple[float, float, float, float] | None,
+            str | None,
+            str | None,
+            str | None,
+        ]
+    ] = set()
+    unique: list[Candidate] = []
+    for candidate in candidates:
+        key = (
+            candidate.value,
+            candidate.source,
+            candidate.confidence,
+            candidate.bbox,
+            candidate.raw_text,
+            candidate.rule,
+            candidate.rejected_by,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _choose_candidate_winner(
+    valid_candidates: list[Candidate],
+    rejected_candidates: list[Candidate],
+) -> FieldEvidence:
+    """Choose the best parsed candidate or return unresolved ambiguity."""
+
+    valid_candidates = _unique_candidates(valid_candidates)
+    rejected_candidates = _unique_candidates(rejected_candidates)
+    all_candidates = (*valid_candidates, *rejected_candidates)
+
+    if not valid_candidates:
+        raw_text = (
+            all_candidates[0].raw_text if len(all_candidates) == 1 else None
+        )
+        return FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=_candidate_bbox(all_candidates),
+            raw_text=raw_text,
+            candidates=all_candidates,
+        )
+
+    if len(valid_candidates) == 1:
+        return _field_evidence_from_candidate(
+            valid_candidates[0], all_candidates
+        )
+
+    top_score = max(valid_candidates, key=lambda x: x.confidence).confidence
+    top_candidates = [c for c in valid_candidates if c.confidence == top_score]
+    if len(top_candidates) != 1:
+        return FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=_candidate_bbox(all_candidates),
+            candidates=all_candidates,
+        )
+
+    winner = top_candidates[0]
+    lower_confidence = tuple(
+        replace(candidate, rejected_by="lower_confidence")
+        for candidate in valid_candidates
+        if candidate != winner
+    )
+    candidates = (winner, *lower_confidence, *rejected_candidates)
+    return _field_evidence_from_candidate(winner, candidates)
+
+
 def _line_text(words: list[Word]) -> str:
     """Join a line's words into a single space-separated string."""
 
@@ -578,73 +675,176 @@ def extract_issue_date_and_city(
     *,
     anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> tuple[FieldEvidence, FieldEvidence]:
-    """Parse ``Wystawiono dnia: YYYY-MM-DD, Miasto`` from the header."""
+    """Extract issue date and city while preserving candidate alternatives."""
 
-    match = find_label(header, anchors["issue_date"])
-    if match is None:
+    def find_issue_date_and_city_candidates(
+        matches: tuple[LabelMatch, ...],
+    ) -> tuple[
+        list[Candidate],
+        list[Candidate],
+        list[Candidate],
+        list[Candidate],
+    ]:
+        """Build issue-date and issue-city candidates from label matches."""
+
+        valid_date_candidates: list[Candidate] = []
+        rejected_date_candidates: list[Candidate] = []
+        valid_city_candidates: list[Candidate] = []
+        rejected_city_candidates: list[Candidate] = []
+
+        for match in matches:
+            label_word = match.word
+            confidence = match.score / 100
+            line = _line_for_word(header, label_word)
+            if line is None:
+                bbox = bbox_of([label_word])
+                rejected_date_candidates.append(
+                    Candidate(
+                        value=None,
+                        source="unresolved",
+                        confidence=0.0,
+                        bbox=bbox,
+                        raw_text=label_word.text,
+                        rule="issue_date_line_date",
+                        rejected_by="line_not_found",
+                    )
+                )
+                rejected_city_candidates.append(
+                    Candidate(
+                        value=None,
+                        source="unresolved",
+                        confidence=0.0,
+                        bbox=bbox,
+                        raw_text=label_word.text,
+                        rule="issue_city_after_issue_date",
+                        rejected_by="line_not_found",
+                    )
+                )
+                continue
+
+            text = _line_text(line)
+            bbox = bbox_of(line)
+            date_matches = list(re.finditer(r"\b\d{4}-\d{2}-\d{2}\b", text))
+            if not date_matches:
+                rejected_date_candidates.append(
+                    Candidate(
+                        value=None,
+                        source="unresolved",
+                        confidence=0.0,
+                        bbox=bbox,
+                        raw_text=text,
+                        rule="issue_date_line_date",
+                        rejected_by="date_pattern_missing",
+                    )
+                )
+                rejected_city_candidates.append(
+                    Candidate(
+                        value=None,
+                        source="unresolved",
+                        confidence=0.0,
+                        bbox=bbox,
+                        raw_text=text,
+                        rule="issue_city_after_issue_date",
+                        rejected_by="date_pattern_missing",
+                    )
+                )
+                continue
+
+            for date_match in date_matches:
+                raw_date = date_match.group()
+                remainder = text[date_match.end() :].strip()
+                city_text = remainder.lstrip(",").strip()
+
+                try:
+                    parsed_date = date.fromisoformat(raw_date)
+                except ValueError:
+                    rejected_date_candidates.append(
+                        Candidate(
+                            value=None,
+                            source="unresolved",
+                            confidence=0.0,
+                            bbox=bbox,
+                            raw_text=raw_date,
+                            rule="issue_date_line_date",
+                            rejected_by="date_parser_failed",
+                        )
+                    )
+                    rejected_city_candidates.append(
+                        Candidate(
+                            value=None,
+                            source="unresolved",
+                            confidence=0.0,
+                            bbox=bbox,
+                            raw_text=city_text or text,
+                            rule="issue_city_after_issue_date",
+                            rejected_by="date_parser_failed",
+                        )
+                    )
+                    continue
+
+                valid_date_candidates.append(
+                    Candidate(
+                        value=parsed_date,
+                        source="fuzzy",
+                        confidence=confidence,
+                        bbox=bbox,
+                        raw_text=raw_date,
+                        rule="issue_date_line_date",
+                    )
+                )
+
+                if city_text:
+                    valid_city_candidates.append(
+                        Candidate(
+                            value=city_text,
+                            source="fuzzy",
+                            confidence=confidence,
+                            bbox=bbox,
+                            raw_text=city_text,
+                            rule="issue_city_after_issue_date",
+                        )
+                    )
+                else:
+                    rejected_city_candidates.append(
+                        Candidate(
+                            value=None,
+                            source="unresolved",
+                            confidence=0.0,
+                            bbox=bbox,
+                            raw_text=text,
+                            rule="issue_city_after_issue_date",
+                            rejected_by="city_missing",
+                        )
+                    )
+
+        return (
+            _unique_candidates(valid_date_candidates),
+            _unique_candidates(rejected_date_candidates),
+            _unique_candidates(valid_city_candidates),
+            _unique_candidates(rejected_city_candidates),
+        )
+
+    matches = find_label_candidates(header, anchors["issue_date"])
+    if not matches:
         return _unresolved_evidence(), _unresolved_evidence()
 
-    label_word, score = match
-    line = _line_for_word(header, label_word)
-    if not line:
-        return _unresolved_evidence(), _unresolved_evidence()
+    (
+        valid_date_candidates,
+        rejected_date_candidates,
+        valid_city_candidates,
+        rejected_city_candidates,
+    ) = find_issue_date_and_city_candidates(matches)
 
-    text = _line_text(line)
-    bbox = bbox_of(line)
-    confidence = score / 100
-
-    date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", text)
-    if date_match is None:
-        unresolved = FieldEvidence(
-            value=None,
-            source="unresolved",
-            confidence=0.0,
-            bbox=bbox,
-            raw_text=text,
-        )
-        return unresolved, unresolved
-
-    raw_date = date_match.group()
-    remainder = text[date_match.end() :].strip()
-    city_text = remainder.lstrip(",").strip()
-
-    try:
-        parsed_date = date.fromisoformat(raw_date)
-    except ValueError:
-        date_ev = FieldEvidence(
-            value=None,
-            source="unresolved",
-            confidence=0.0,
-            bbox=bbox,
-            raw_text=raw_date,
-        )
-    else:
-        date_ev = FieldEvidence(
-            value=parsed_date,
-            source="fuzzy",
-            confidence=confidence,
-            bbox=bbox,
-            raw_text=raw_date,
-        )
-
-    if city_text:
-        city_ev = FieldEvidence(
-            value=city_text,
-            source="fuzzy",
-            confidence=confidence,
-            bbox=bbox,
-            raw_text=city_text,
-        )
-    else:
-        city_ev = FieldEvidence(
-            value=None,
-            source="unresolved",
-            confidence=0.0,
-            bbox=bbox,
-            raw_text=text,
-        )
-
-    return date_ev, city_ev
+    return (
+        _choose_candidate_winner(
+            valid_date_candidates,
+            rejected_date_candidates,
+        ),
+        _choose_candidate_winner(
+            valid_city_candidates,
+            rejected_city_candidates,
+        ),
+    )
 
 
 def summary_footer_words(
@@ -967,37 +1167,6 @@ def extract_labeled_field(
     ) -> tuple[list[Candidate], list[Candidate]]:
         """Build parsed field candidates from plausible label matches."""
 
-        def unique_candidates(candidates: list[Candidate]) -> list[Candidate]:
-            """Drop duplicate candidates produced by overlapping anchors."""
-
-            seen: set[
-                tuple[
-                    str | int | date | Decimal | None,
-                    EvidenceSource,
-                    float,
-                    tuple[float, float, float, float] | None,
-                    str | None,
-                    str | None,
-                    str | None,
-                ]
-            ] = set()
-            unique: list[Candidate] = []
-            for candidate in candidates:
-                key = (
-                    candidate.value,
-                    candidate.source,
-                    candidate.confidence,
-                    candidate.bbox,
-                    candidate.raw_text,
-                    candidate.rule,
-                    candidate.rejected_by,
-                )
-                if key in seen:
-                    continue
-                seen.add(key)
-                unique.append(candidate)
-            return unique
-
         rejected_candidates: list[Candidate] = []
         valid_candidates: list[Candidate] = []
 
@@ -1046,63 +1215,12 @@ def extract_labeled_field(
                         rejected_by="parser_failed",
                     )
                 )
-        return unique_candidates(valid_candidates), unique_candidates(
+        return _unique_candidates(valid_candidates), _unique_candidates(
             rejected_candidates
         )
 
-    def find_winner_field(
-        valid_candidates: list[Candidate],
-        rejected_candidates: list[Candidate],
-    ) -> FieldEvidence:
-        """Choose the best parsed field candidate or return ambiguity."""
-
-        all_candidates = (*valid_candidates, *rejected_candidates)
-
-        if not valid_candidates:
-            return FieldEvidence(
-                value=None,
-                source="unresolved",
-                confidence=0.0,
-                bbox=_candidate_bbox(all_candidates),
-                candidates=all_candidates,
-            )
-
-        if len(valid_candidates) == 1:
-            winner = valid_candidates[0]
-            return FieldEvidence(
-                value=winner.value,
-                source=winner.source,
-                confidence=winner.confidence,
-                bbox=winner.bbox,
-                raw_text=winner.raw_text,
-                candidates=all_candidates,
-            )
-
-        top_score = max(valid_candidates, key=lambda x: x.confidence).confidence
-        top_candidates = [
-            c for c in valid_candidates if c.confidence == top_score
-        ]
-        if len(top_candidates) == 1:
-            winner = top_candidates[0]
-            return FieldEvidence(
-                value=winner.value,
-                source=winner.source,
-                confidence=winner.confidence,
-                bbox=winner.bbox,
-                raw_text=winner.raw_text,
-                candidates=all_candidates,
-            )
-
-        return FieldEvidence(
-            value=None,
-            source="unresolved",
-            confidence=0.0,
-            bbox=_candidate_bbox(all_candidates),
-            candidates=all_candidates,
-        )
-
     valid_candidates, rejected_candidates = find_field_candidates(matches)
-    return find_winner_field(valid_candidates, rejected_candidates)
+    return _choose_candidate_winner(valid_candidates, rejected_candidates)
 
 
 _LINE_ITEM_HEADER_ANCHORS = (

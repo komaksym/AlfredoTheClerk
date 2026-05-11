@@ -465,6 +465,107 @@ def test_issue_and_other_nearby_dates_do_not_collide():
     assert due_date_ev.value == date(2026, 5, 20)
 
 
+def test_issue_date_duplicate_anchor_candidates_dedupe():
+    anchors = {
+        **TEMPLATE_V1_ANCHORS,
+        "issue_date": ["wystawienia", "data wystawienia"],
+    }
+    words = [
+        make_word("Data", 0, 30, 0, 10),
+        make_word("wystawienia:", 35, 105, 0, 10),
+        make_word("2026-05-18,", 110, 180, 0, 10),
+        make_word("Poznan", 185, 230, 0, 10),
+    ]
+
+    issue_date_ev, issue_city_ev = extract_issue_date_and_city(
+        words, anchors=anchors
+    )
+
+    assert issue_date_ev.value == date(2026, 5, 18)
+    assert issue_city_ev.value == "Poznan"
+    assert issue_date_ev.candidates is not None
+    assert len(issue_date_ev.candidates) == 1
+    assert issue_city_ev.candidates is not None
+    assert len(issue_city_ev.candidates) == 1
+
+
+def test_issue_date_prefers_higher_confidence_candidate():
+    words = [
+        make_word("Wystawiono", 0, 60, 0, 10),
+        make_word("2026-05-18,", 65, 135, 0, 10),
+        make_word("Poznan", 140, 185, 0, 10),
+        make_word("Wystawione", 0, 60, 20, 30),
+        make_word("2026-05-19,", 65, 135, 20, 30),
+        make_word("Krakow", 140, 185, 20, 30),
+    ]
+
+    issue_date_ev, issue_city_ev = extract_issue_date_and_city(words)
+
+    assert issue_date_ev.value == date(2026, 5, 18)
+    assert issue_city_ev.value == "Poznan"
+    assert issue_date_ev.candidates is not None
+    assert any(
+        c.value == date(2026, 5, 19) and c.rejected_by == "lower_confidence"
+        for c in issue_date_ev.candidates
+    )
+
+
+def test_issue_date_tied_candidates_are_ambiguous():
+    words = [
+        make_word("Wystawiono", 0, 60, 0, 10),
+        make_word("2026-05-18,", 65, 135, 0, 10),
+        make_word("Poznan", 140, 185, 0, 10),
+        make_word("Wystawiono", 0, 60, 20, 30),
+        make_word("2026-05-19,", 65, 135, 20, 30),
+        make_word("Krakow", 140, 185, 20, 30),
+    ]
+
+    issue_date_ev, issue_city_ev = extract_issue_date_and_city(words)
+
+    assert issue_date_ev.value is None
+    assert issue_date_ev.source == "unresolved"
+    assert issue_date_ev.candidates is not None
+    assert {c.value for c in issue_date_ev.candidates} == {
+        date(2026, 5, 18),
+        date(2026, 5, 19),
+    }
+    assert issue_city_ev.value is None
+    assert issue_city_ev.candidates is not None
+    assert {c.value for c in issue_city_ev.candidates} == {"Poznan", "Krakow"}
+
+
+def test_issue_date_parser_failure_preserves_candidate_context():
+    words = [
+        make_word("Wystawiono", 0, 60, 0, 10),
+        make_word("2026-99-99,", 65, 135, 0, 10),
+        make_word("Poznan", 140, 185, 0, 10),
+    ]
+
+    issue_date_ev, issue_city_ev = extract_issue_date_and_city(words)
+
+    assert issue_date_ev.value is None
+    assert issue_date_ev.raw_text == "2026-99-99"
+    assert issue_date_ev.bbox is not None
+    assert issue_date_ev.candidates is not None
+    assert issue_date_ev.candidates[0].rejected_by == "date_parser_failed"
+    assert issue_city_ev.value is None
+
+
+def test_issue_city_missing_is_unresolved_candidate():
+    words = [
+        make_word("Wystawiono", 0, 60, 0, 10),
+        make_word("2026-05-18", 65, 135, 0, 10),
+    ]
+
+    issue_date_ev, issue_city_ev = extract_issue_date_and_city(words)
+
+    assert issue_date_ev.value == date(2026, 5, 18)
+    assert issue_city_ev.value is None
+    assert issue_city_ev.bbox is not None
+    assert issue_city_ev.candidates is not None
+    assert issue_city_ev.candidates[0].rejected_by == "city_missing"
+
+
 class TestParsePaymentForm:
     """`_parse_payment_form` is the reverse of `_format_payment_form`.
 
