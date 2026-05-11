@@ -8,9 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
-
 .python-version
-
-.ipynb_checkpoints
-.DS_Store
 .secrets.baseline
+
+# OS
+.DS_Store
+
+# Jupyter notebook-specific
+.ipynb_checkpoints
+
+# IDE
+.vscode/
