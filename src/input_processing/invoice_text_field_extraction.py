@@ -464,6 +464,23 @@ def _unresolved_evidence(
     )
 
 
+def _candidate_bbox(
+    candidates: tuple[Candidate, ...],
+) -> tuple[float, float, float, float] | None:
+    """Return the union bbox for candidates that carry geometry."""
+
+    boxes = [candidate.bbox for candidate in candidates if candidate.bbox]
+    if not boxes:
+        return None
+
+    return (
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    )
+
+
 def _line_text(words: list[Word]) -> str:
     """Join a line's words into a single space-separated string."""
 
@@ -939,44 +956,153 @@ def extract_labeled_field(
 ) -> FieldEvidence:
     """Fuzzy-find label in `header`, read its spatial neighbor, parse."""
 
-    match = find_label(header, anchors)
-    if match is None:
+    matches = find_label_candidates(header, anchors)
+    if not matches:
         return FieldEvidence(
             value=None, source="unresolved", confidence=0.0, bbox=None
         )
 
-    label_word, score = match
-    value_words = find_value_words(label_word, header)
-    if value_words is None:
+    def find_field_candidates(
+        matches: tuple[LabelMatch, ...],
+    ) -> tuple[list[Candidate], list[Candidate]]:
+        """Build parsed field candidates from plausible label matches."""
+
+        def unique_candidates(candidates: list[Candidate]) -> list[Candidate]:
+            """Drop duplicate candidates produced by overlapping anchors."""
+
+            seen: set[
+                tuple[
+                    str | int | date | Decimal | None,
+                    EvidenceSource,
+                    float,
+                    tuple[float, float, float, float] | None,
+                    str | None,
+                    str | None,
+                    str | None,
+                ]
+            ] = set()
+            unique: list[Candidate] = []
+            for candidate in candidates:
+                key = (
+                    candidate.value,
+                    candidate.source,
+                    candidate.confidence,
+                    candidate.bbox,
+                    candidate.raw_text,
+                    candidate.rule,
+                    candidate.rejected_by,
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                unique.append(candidate)
+            return unique
+
+        rejected_candidates: list[Candidate] = []
+        valid_candidates: list[Candidate] = []
+
+        for m in matches:
+            label_word, score = m.word, m.score
+            value_words = find_value_words(label_word, header)
+
+            if value_words is None:
+                rejected_candidates.append(
+                    Candidate(
+                        value=None,
+                        source="unresolved",
+                        confidence=0.0,
+                        bbox=bbox_of([label_word]),
+                        rule="labeled_field_value",
+                        rejected_by="value_finder_failed",
+                    )
+                )
+                continue
+
+            bbox = bbox_of([label_word, *value_words])
+            raw_text = " ".join(word.text for word in value_words)
+
+            try:
+                parsed_value = parser(raw_text)
+                valid_candidates.append(
+                    Candidate(
+                        value=parsed_value,
+                        source="fuzzy",
+                        confidence=score / 100,
+                        bbox=bbox,
+                        raw_text=raw_text,
+                        rule="labeled_field_value",
+                    )
+                )
+
+            except (ValueError, TypeError):
+                rejected_candidates.append(
+                    Candidate(
+                        value=None,
+                        source="unresolved",
+                        confidence=0.0,
+                        bbox=bbox,
+                        raw_text=raw_text,
+                        rule="labeled_field_value",
+                        rejected_by="parser_failed",
+                    )
+                )
+        return unique_candidates(valid_candidates), unique_candidates(
+            rejected_candidates
+        )
+
+    def find_winner_field(
+        valid_candidates: list[Candidate],
+        rejected_candidates: list[Candidate],
+    ) -> FieldEvidence:
+        """Choose the best parsed field candidate or return ambiguity."""
+
+        all_candidates = (*valid_candidates, *rejected_candidates)
+
+        if not valid_candidates:
+            return FieldEvidence(
+                value=None,
+                source="unresolved",
+                confidence=0.0,
+                bbox=_candidate_bbox(all_candidates),
+                candidates=all_candidates,
+            )
+
+        if len(valid_candidates) == 1:
+            winner = valid_candidates[0]
+            return FieldEvidence(
+                value=winner.value,
+                source=winner.source,
+                confidence=winner.confidence,
+                bbox=winner.bbox,
+                raw_text=winner.raw_text,
+                candidates=all_candidates,
+            )
+
+        top_score = max(valid_candidates, key=lambda x: x.confidence).confidence
+        top_candidates = [
+            c for c in valid_candidates if c.confidence == top_score
+        ]
+        if len(top_candidates) == 1:
+            winner = top_candidates[0]
+            return FieldEvidence(
+                value=winner.value,
+                source=winner.source,
+                confidence=winner.confidence,
+                bbox=winner.bbox,
+                raw_text=winner.raw_text,
+                candidates=all_candidates,
+            )
+
         return FieldEvidence(
             value=None,
             source="unresolved",
             confidence=0.0,
-            bbox=bbox_of([label_word]),
+            bbox=_candidate_bbox(all_candidates),
+            candidates=all_candidates,
         )
 
-    bbox = bbox_of([label_word, *value_words])
-
-    raw_text = " ".join(word.text for word in value_words)
-
-    try:
-        value = parser(raw_text)
-    except (ValueError, TypeError):
-        return FieldEvidence(
-            value=None,
-            source="unresolved",
-            confidence=0.0,
-            bbox=bbox,
-            raw_text=raw_text,
-        )
-
-    return FieldEvidence(
-        value=value,
-        source="fuzzy",
-        confidence=score / 100,
-        bbox=bbox,
-        raw_text=raw_text,
-    )
+    valid_candidates, rejected_candidates = find_field_candidates(matches)
+    return find_winner_field(valid_candidates, rejected_candidates)
 
 
 _LINE_ITEM_HEADER_ANCHORS = (
