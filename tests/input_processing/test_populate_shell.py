@@ -645,6 +645,10 @@ class TestExtractPartyNameFromSubblock:
         assert ev.source == "spatial"
         assert ev.confidence == 1.0
         assert ev.bbox is not None
+        assert ev.candidates is not None
+        assert len(ev.candidates) == 1
+        assert ev.candidates[0].value == "Sklep Domowy"
+        assert ev.candidates[0].rule == "party_name_between_anchor_and_nip"
 
     def test_unresolved_when_no_line_exists_between_anchor_and_nip(self):
         sub_block = make_party_sub_block(
@@ -658,7 +662,10 @@ class TestExtractPartyNameFromSubblock:
 
         assert ev.value is None
         assert ev.source == "unresolved"
-        assert ev.bbox is None
+        assert ev.candidates is not None
+        assert len(ev.candidates) == 1
+        assert ev.candidates[0].rejected_by == "party_name_missing"
+        assert ev.candidates[0].rule == "party_name_between_anchor_and_nip"
 
     def test_collapses_wrapped_lines_between_anchor_and_nip(self):
         sub_block = make_party_sub_block(
@@ -675,6 +682,87 @@ class TestExtractPartyNameFromSubblock:
         assert ev.value == "Sklep Domowy"
         assert ev.source == "spatial"
         assert ev.bbox is not None
+        assert ev.candidates is not None
+        assert len(ev.candidates) == 1
+        assert ev.candidates[0].raw_text == "Sklep Domowy"
+
+    def test_unresolved_when_party_anchor_missing(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sklep", "Domowy"],
+                ["NIP:", "8637940261"],
+            ]
+        )
+
+        ev = extract_party_name_from_subblock(sub_block)
+
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.candidates is not None
+        assert len(ev.candidates) == 1
+        assert ev.candidates[0].rejected_by == "party_anchor_missing"
+        assert ev.candidates[0].rule == "party_name_between_anchor_and_nip"
+
+    def test_unresolved_when_nip_line_missing_after_party_anchor(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep", "Domowy"],
+            ]
+        )
+
+        ev = extract_party_name_from_subblock(sub_block)
+
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.candidates is not None
+        assert len(ev.candidates) == 1
+        assert ev.candidates[0].rejected_by == "nip_line_missing"
+        assert ev.candidates[0].rule == "party_name_between_anchor_and_nip"
+
+    def test_multiple_party_name_boundaries_are_ambiguous(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Firma", "A"],
+                ["NIP:", "8637940261"],
+                ["Nabywca"],
+                ["Firma", "B"],
+                ["NIP:", "5423511615"],
+            ]
+        )
+
+        ev = extract_party_name_from_subblock(sub_block)
+
+        assert ev.value is None
+        assert ev.source == "unresolved"
+        assert ev.candidates is not None
+        values = {candidate.value for candidate in ev.candidates}
+        assert "Firma A" in values
+        assert "Firma B" in values
+        assert len(values) > 1
+
+    def test_duplicate_party_name_boundaries_collapse_to_one_candidate(self):
+        duplicate_anchors = {
+            **TEMPLATE_V1_ANCHORS,
+            "seller": ["sprzedawca", "sprzedawca"],
+            "buyer": [],
+        }
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep", "Domowy"],
+                ["NIP:", "8637940261"],
+            ]
+        )
+
+        ev = extract_party_name_from_subblock(
+            sub_block, anchors=duplicate_anchors
+        )
+
+        assert ev.value == "Sklep Domowy"
+        assert ev.candidates is not None
+        assert len(ev.candidates) == 1
 
 
 class TestExtractPartyAddressesFromSubblock:

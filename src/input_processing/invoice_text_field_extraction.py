@@ -632,6 +632,28 @@ def _spatial_lines_evidence(lines: list[list[Word]]) -> FieldEvidence:
     )
 
 
+def _spatial_lines_candidate(
+    lines: list[list[Word]],
+    *,
+    rule: str,
+    confidence: float,
+    rejected_by: str | None = None,
+) -> Candidate:
+    """Build one spatial candidate from one or more visual lines."""
+
+    words = _line_words(lines)
+    raw_text = " ".join(_line_text(line) for line in lines)
+    return Candidate(
+        value=_collapse_whitespace(raw_text),
+        source="spatial",
+        confidence=confidence,
+        bbox=bbox_of(words),
+        raw_text=raw_text,
+        rule=rule,
+        rejected_by=rejected_by,
+    )
+
+
 def _words_to_lines(words: list[Word]) -> list[list[Word]]:
     """Group words into non-empty visual lines."""
 
@@ -912,19 +934,75 @@ def extract_party_name_from_subblock(
 ) -> FieldEvidence:
     """Extract the party name rendered between the anchor and NIP line."""
 
+    def rejected_name_candidate(
+        reason: str,
+        context_lines: list[list[Word]],
+    ) -> Candidate:
+        """Build unresolved party-name candidate with spatial context."""
+
+        words = _line_words(context_lines)
+        raw_text = " ".join(_line_text(line) for line in context_lines)
+        return Candidate(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox_of(words) if words else None,
+            raw_text=raw_text or None,
+            rule="party_name_between_anchor_and_nip",
+            rejected_by=reason,
+        )
+
     lines = subblock_lines(sub_block)
-    anchor_idx, nip_idx = _find_party_anchor_and_nip_lines(
-        lines, anchors=anchors
-    )
+    party_anchors = set(anchors["seller"]) | set(anchors["buyer"])
+    nip_anchors = set(anchors["nip"])
 
-    if anchor_idx is None or nip_idx is None:
-        return _unresolved_evidence()
+    anchor_indices = [
+        idx
+        for idx, line in enumerate(lines)
+        if _line_tokens(line) & party_anchors
+    ]
+    if not anchor_indices:
+        return _choose_candidate_winner(
+            [],
+            [rejected_name_candidate("party_anchor_missing", lines)],
+        )
 
-    candidate_lines = lines[anchor_idx + 1 : nip_idx]
-    if not candidate_lines:
-        return _unresolved_evidence(_line_words(candidate_lines))
+    valid_candidates: list[Candidate] = []
+    rejected_candidates: list[Candidate] = []
 
-    return _spatial_lines_evidence(candidate_lines)
+    for anchor_idx in anchor_indices:
+        nip_indices = [
+            idx
+            for idx, line in enumerate(
+                lines[anchor_idx + 1 :], start=anchor_idx + 1
+            )
+            if _line_tokens(line) & nip_anchors
+        ]
+        if not nip_indices:
+            rejected_candidates.append(
+                rejected_name_candidate("nip_line_missing", lines[anchor_idx:])
+            )
+            continue
+
+        for nip_idx in nip_indices:
+            candidate_lines = lines[anchor_idx + 1 : nip_idx]
+            if not candidate_lines:
+                rejected_candidates.append(
+                    rejected_name_candidate(
+                        "party_name_missing", lines[anchor_idx : nip_idx + 1]
+                    )
+                )
+                continue
+
+            valid_candidates.append(
+                _spatial_lines_candidate(
+                    candidate_lines,
+                    rule="party_name_between_anchor_and_nip",
+                    confidence=1.0,
+                )
+            )
+
+    return _choose_candidate_winner(valid_candidates, rejected_candidates)
 
 
 def extract_party_addresses_from_subblock(
@@ -933,27 +1011,6 @@ def extract_party_addresses_from_subblock(
     anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> tuple[FieldEvidence, FieldEvidence]:
     """Extract up to two address lines below the NIP line."""
-
-    def address_candidate(
-        address_lines: list[list[Word]],
-        *,
-        rule: str,
-        confidence: float,
-        rejected_by: str | None = None,
-    ) -> Candidate:
-        """Build one address candidate from one or more visual lines."""
-
-        words = _line_words(address_lines)
-        raw_text = " ".join(_line_text(line) for line in address_lines)
-        return Candidate(
-            value=_collapse_whitespace(raw_text),
-            source="spatial",
-            confidence=confidence,
-            bbox=bbox_of(words),
-            raw_text=raw_text,
-            rule=rule,
-            rejected_by=rejected_by,
-        )
 
     def missing_address_2_candidate(
         address_lines: list[list[Word]],
@@ -996,14 +1053,14 @@ def extract_party_addresses_from_subblock(
                 else 0.75
             )
             address_1_candidates.append(
-                address_candidate(
+                _spatial_lines_candidate(
                     address_lines[:split_idx],
                     rule="party_address_line_1_split",
                     confidence=confidence,
                 )
             )
             address_2_candidates.append(
-                address_candidate(
+                _spatial_lines_candidate(
                     address_lines[split_idx:],
                     rule="party_address_line_2_split",
                     confidence=confidence,
@@ -1095,7 +1152,7 @@ def extract_party_addresses_from_subblock(
         return _unresolved_evidence(), _unresolved_evidence()
 
     if len(candidate_lines) == 1:
-        address_1_candidate = address_candidate(
+        address_1_candidate = _spatial_lines_candidate(
             candidate_lines,
             rule="party_address_line_1_split",
             confidence=1.0,
