@@ -934,6 +934,154 @@ def extract_party_addresses_from_subblock(
 ) -> tuple[FieldEvidence, FieldEvidence]:
     """Extract up to two address lines below the NIP line."""
 
+    def address_candidate(
+        address_lines: list[list[Word]],
+        *,
+        rule: str,
+        confidence: float,
+        rejected_by: str | None = None,
+    ) -> Candidate:
+        """Build one address candidate from one or more visual lines."""
+
+        words = _line_words(address_lines)
+        raw_text = " ".join(_line_text(line) for line in address_lines)
+        return Candidate(
+            value=_collapse_whitespace(raw_text),
+            source="spatial",
+            confidence=confidence,
+            bbox=bbox_of(words),
+            raw_text=raw_text,
+            rule=rule,
+            rejected_by=rejected_by,
+        )
+
+    def missing_address_2_candidate(
+        address_lines: list[list[Word]],
+    ) -> Candidate:
+        """Build the paired candidate for a missing second address line."""
+
+        words = _line_words(address_lines)
+        raw_text = " ".join(_line_text(line) for line in address_lines)
+        return Candidate(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=bbox_of(words),
+            raw_text=raw_text,
+            rule="party_address_line_2_split",
+            rejected_by="address_line_2_missing",
+        )
+
+    def split_address_candidates(
+        address_lines: list[list[Word]],
+    ) -> tuple[list[Candidate], list[Candidate]]:
+        """Generate paired address candidates for each non-empty split."""
+
+        postal_idx = next(
+            (
+                idx
+                for idx, line in enumerate(address_lines)
+                if _POSTAL_CODE_PATTERN.search(_line_text(line))
+            ),
+            None,
+        )
+
+        address_1_candidates: list[Candidate] = []
+        address_2_candidates: list[Candidate] = []
+
+        for split_idx in range(1, len(address_lines)):
+            confidence = (
+                1.0
+                if len(address_lines) == 2 or split_idx == postal_idx
+                else 0.75
+            )
+            address_1_candidates.append(
+                address_candidate(
+                    address_lines[:split_idx],
+                    rule="party_address_line_1_split",
+                    confidence=confidence,
+                )
+            )
+            address_2_candidates.append(
+                address_candidate(
+                    address_lines[split_idx:],
+                    rule="party_address_line_2_split",
+                    confidence=confidence,
+                )
+            )
+
+        return address_1_candidates, address_2_candidates
+
+    def unresolved_address_evidence(
+        candidates: tuple[Candidate, ...],
+    ) -> FieldEvidence:
+        """Build unresolved address evidence from paired candidates."""
+
+        raw_text = candidates[0].raw_text if len(candidates) == 1 else None
+        return FieldEvidence(
+            value=None,
+            source="unresolved",
+            confidence=0.0,
+            bbox=_candidate_bbox(candidates),
+            raw_text=raw_text,
+            candidates=candidates,
+        )
+
+    def choose_paired_address_evidence(
+        address_1_candidates: list[Candidate],
+        address_2_candidates: list[Candidate],
+    ) -> tuple[FieldEvidence, FieldEvidence]:
+        """Choose paired winners while preserving candidate index pairing."""
+
+        top_score = max(
+            candidate.confidence for candidate in address_1_candidates
+        )
+        top_indices = [
+            idx
+            for idx, candidate in enumerate(address_1_candidates)
+            if candidate.confidence == top_score
+        ]
+        if len(top_indices) != 1 or top_score < 1.0:
+            return (
+                unresolved_address_evidence(tuple(address_1_candidates)),
+                unresolved_address_evidence(tuple(address_2_candidates)),
+            )
+
+        winner_idx = top_indices[0]
+        paired_candidates = [
+            (
+                address_1_candidates[winner_idx],
+                address_2_candidates[winner_idx],
+            )
+        ]
+        paired_candidates.extend(
+            (
+                replace(candidate_1, rejected_by="lower_confidence"),
+                replace(candidate_2, rejected_by="lower_confidence"),
+            )
+            for idx, (candidate_1, candidate_2) in enumerate(
+                zip(
+                    address_1_candidates,
+                    address_2_candidates,
+                    strict=True,
+                )
+            )
+            if idx != winner_idx
+        )
+
+        ordered_address_1 = tuple(pair[0] for pair in paired_candidates)
+        ordered_address_2 = tuple(pair[1] for pair in paired_candidates)
+        return (
+            _field_evidence_from_candidate(
+                address_1_candidates[winner_idx],
+                ordered_address_1,
+            ),
+            _field_evidence_from_candidate(
+                address_2_candidates[winner_idx],
+                ordered_address_2,
+            ),
+        )
+
     lines = subblock_lines(sub_block)
     anchor_idx, nip_idx = _find_party_anchor_and_nip_lines(
         lines, anchors=anchors
@@ -946,36 +1094,27 @@ def extract_party_addresses_from_subblock(
     if not candidate_lines:
         return _unresolved_evidence(), _unresolved_evidence()
 
-    address2_idx = next(
-        (
-            idx
-            for idx, line in enumerate(candidate_lines)
-            if _POSTAL_CODE_PATTERN.search(_line_text(line))
-        ),
-        None,
-    )
-    if address2_idx is not None:
-        address1_lines = candidate_lines[:address2_idx]
-        address2_lines = candidate_lines[address2_idx:]
-        if address1_lines and address2_lines:
-            return (
-                _spatial_lines_evidence(address1_lines),
-                _spatial_lines_evidence(address2_lines),
-            )
-
     if len(candidate_lines) == 1:
-        return _spatial_line_evidence(
-            candidate_lines[0]
-        ), _unresolved_evidence()
-
-    if len(candidate_lines) == 2:
+        address_1_candidate = address_candidate(
+            candidate_lines,
+            rule="party_address_line_1_split",
+            confidence=1.0,
+        )
+        address_2_candidate = missing_address_2_candidate(candidate_lines)
         return (
-            _spatial_line_evidence(candidate_lines[0]),
-            _spatial_line_evidence(candidate_lines[1]),
+            _field_evidence_from_candidate(
+                address_1_candidate, (address_1_candidate,)
+            ),
+            unresolved_address_evidence((address_2_candidate,)),
         )
 
-    ambiguous = _unresolved_evidence(_line_words(candidate_lines))
-    return ambiguous, ambiguous
+    address_1_candidates, address_2_candidates = split_address_candidates(
+        candidate_lines
+    )
+    return choose_paired_address_evidence(
+        address_1_candidates,
+        address_2_candidates,
+    )
 
 
 def header_words(

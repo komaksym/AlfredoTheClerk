@@ -763,6 +763,156 @@ class TestExtractPartyAddressesFromSubblock:
         assert address_1_ev.bbox is not None
         assert address_2_ev.bbox is not None
 
+    def test_single_address_line_attaches_missing_second_line_candidate(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["ul.", "Polna", "29"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value == "ul. Polna 29"
+        assert address_1_ev.candidates is not None
+        assert [candidate.value for candidate in address_1_ev.candidates] == [
+            "ul. Polna 29"
+        ]
+        assert address_2_ev.value is None
+        assert address_2_ev.candidates is not None
+        assert address_2_ev.candidates[0].value is None
+        assert address_2_ev.candidates[0].rule == "party_address_line_2_split"
+        assert address_2_ev.candidates[0].rejected_by == (
+            "address_line_2_missing"
+        )
+
+    def test_two_address_lines_attach_paired_candidates(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["ul.", "Polna", "29"],
+                ["90-001", "Lodz"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value == "ul. Polna 29"
+        assert address_2_ev.value == "90-001 Lodz"
+        assert address_1_ev.candidates is not None
+        assert address_2_ev.candidates is not None
+        assert [candidate.value for candidate in address_1_ev.candidates] == [
+            "ul. Polna 29"
+        ]
+        assert [candidate.value for candidate in address_2_ev.candidates] == [
+            "90-001 Lodz"
+        ]
+        assert address_1_ev.candidates[0].rule == "party_address_line_1_split"
+        assert address_2_ev.candidates[0].rule == "party_address_line_2_split"
+
+    def test_postal_boundary_winner_keeps_lower_confidence_split_candidates(
+        self,
+    ):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["ul.", "Bardzo", "Dluga", "29A"],
+                ["lok.", "45"],
+                ["90-001", "Lodz"],
+                ["woj.", "lodzkie"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value == "ul. Bardzo Dluga 29A lok. 45"
+        assert address_2_ev.value == "90-001 Lodz woj. lodzkie"
+        assert address_1_ev.candidates is not None
+        assert address_2_ev.candidates is not None
+        assert len(address_1_ev.candidates) == 3
+        assert len(address_2_ev.candidates) == 3
+        assert address_1_ev.candidates[0].value == address_1_ev.value
+        assert address_2_ev.candidates[0].value == address_2_ev.value
+        assert address_1_ev.candidates[0].rejected_by is None
+        assert address_2_ev.candidates[0].rejected_by is None
+        assert {
+            candidate.rejected_by for candidate in address_1_ev.candidates[1:]
+        } == {"lower_confidence"}
+        assert {
+            candidate.rejected_by for candidate in address_2_ev.candidates[1:]
+        } == {"lower_confidence"}
+
+    def test_more_than_two_address_lines_without_postal_code_is_ambiguous(
+        self,
+    ):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["Budynek", "A"],
+                ["ul.", "Polna", "29"],
+                ["lok.", "4"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value is None
+        assert address_2_ev.value is None
+        assert address_1_ev.candidates is not None
+        assert address_2_ev.candidates is not None
+        assert [
+            (address_1.value, address_2.value)
+            for address_1, address_2 in zip(
+                address_1_ev.candidates, address_2_ev.candidates, strict=True
+            )
+        ] == [
+            ("Budynek A", "ul. Polna 29 lok. 4"),
+            ("Budynek A ul. Polna 29", "lok. 4"),
+        ]
+
+    def test_postal_code_on_first_address_line_is_not_a_valid_winner(self):
+        sub_block = make_party_sub_block(
+            [
+                ["Sprzedawca"],
+                ["Sklep"],
+                ["NIP:", "8637940261"],
+                ["90-001", "Lodz"],
+                ["ul.", "Polna", "29"],
+                ["lok.", "4"],
+            ]
+        )
+
+        address_1_ev, address_2_ev = extract_party_addresses_from_subblock(
+            sub_block
+        )
+
+        assert address_1_ev.value is None
+        assert address_2_ev.value is None
+        assert address_1_ev.candidates is not None
+        assert address_2_ev.candidates is not None
+        assert {
+            candidate.confidence for candidate in address_1_ev.candidates
+        } == {0.75}
+        assert {
+            candidate.confidence for candidate in address_2_ev.candidates
+        } == {0.75}
+
 
 def test_field_evidence_accepts_date():
     ev = FieldEvidence(
