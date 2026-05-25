@@ -9,30 +9,43 @@ from src.input_processing.extraction_comparison import compare_full_extraction
 from src.input_processing.parse_pdf import parse_data
 from src.invoice_gen.hard_case_corpus import (
     HARD_CASES_ROOT,
-    HARD_CASE_TEMPLATE_ID,
     iter_hard_case_fixtures,
 )
+from src.invoice_gen.template_registry import get_template
 
 
 _HARD_CASE_FIXTURES = iter_hard_case_fixtures(root=HARD_CASES_ROOT)
+_HARD_CASE_TEMPLATE_PARAMS = [
+    (fixture, template_id)
+    for fixture in _HARD_CASE_FIXTURES
+    for template_id in sorted(fixture.pdf_paths)
+]
 
 
 @pytest.mark.parametrize(
-    "fixture",
-    _HARD_CASE_FIXTURES,
-    ids=[fixture.case_id for fixture in _HARD_CASE_FIXTURES],
+    ("fixture", "template_id"),
+    _HARD_CASE_TEMPLATE_PARAMS,
+    ids=[
+        f"{fixture.case_id}-{template_id}"
+        for fixture, template_id in _HARD_CASE_TEMPLATE_PARAMS
+    ],
 )
-def test_hard_case_fixture_pdf_round_trips_end_to_end(fixture) -> None:
-    """Each pinned hard-case PDF should round-trip back to persisted truth."""
+def test_hard_case_fixture_pdf_round_trips_end_to_end(
+    fixture, template_id
+) -> None:
+    """Each pinned hard-case PDF template should round-trip to truth."""
 
-    with pdfplumber.open(fixture.pdf_path) as pdf:
+    template = get_template(template_id)
+
+    with pdfplumber.open(fixture.pdf_paths[template_id]) as pdf:
         parsed_document = parse_data(pdf)
 
     result = compare_full_extraction(
         parsed_document,
         fixture.case.shell,
         fixture.case.policy,
-        fixture.case.manifests[HARD_CASE_TEMPLATE_ID],
+        fixture.case.manifests[template_id],
+        anchors=template.label_anchors,
     )
 
     assert result.validation.is_valid is True

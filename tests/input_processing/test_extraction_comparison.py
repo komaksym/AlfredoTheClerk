@@ -14,7 +14,10 @@ from src.input_processing.extraction_comparison import (
     compare_header_extraction,
 )
 from src.input_processing.extraction_diagnostics import ExtractionDiagnostics
-from src.input_processing.invoice_text_field_extraction import FieldEvidence
+from src.input_processing.invoice_text_field_extraction import (
+    FieldEvidence,
+    TEMPLATE_V1_ANCHORS,
+)
 from src.invoice_gen.comparison import ComparisonPolicy, ComparisonReport
 from src.invoice_gen.domain_shell import build_domestic_vat_shell
 from src.invoice_gen.domestic_vat_shell_validation import (
@@ -52,9 +55,10 @@ def test_compare_header_extraction_runs_pipeline_and_bundles_outputs(
     )
     calls: list[str] = []
 
-    def fake_populate(arg):
+    def fake_populate(arg, *, anchors):
         calls.append("populate")
         assert arg is parsed_data
+        assert anchors is TEMPLATE_V1_ANCHORS
         return extracted_shell, evidence
 
     def fake_validate(arg):

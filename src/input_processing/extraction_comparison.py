@@ -31,8 +31,12 @@ from .extraction_diagnostics import (
     build_extraction_diagnostics,
 )
 from .parse_pdf import ParsedDocument
+from .invoice_text_field_extraction import (
+    FieldEvidence,
+    LabelAnchorSet,
+    TEMPLATE_V1_ANCHORS,
+)
 from .populate_shell import populate_shell
-from .invoice_text_field_extraction import FieldEvidence
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -51,10 +55,12 @@ def compare_header_extraction(
     truth: DomesticVatInvoiceShell,
     policy: ComparisonPolicy,
     visibility: TemplateVisibilityManifest,
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> HeaderExtractionResult:
     """Run the header extraction pipeline and compare the result to truth."""
 
-    shell, evidence = populate_shell(parsed_document)
+    shell, evidence = populate_shell(parsed_document, anchors=anchors)
     validation = validate_header_only_shell(shell)
     diagnostics = build_extraction_diagnostics(evidence)
     comparison = compare_shells_with_visibility(
@@ -142,10 +148,12 @@ def compare_full_extraction(
     truth: DomesticVatInvoiceShell,
     policy: ComparisonPolicy,
     visibility: TemplateVisibilityManifest,
+    *,
+    anchors: LabelAnchorSet = TEMPLATE_V1_ANCHORS,
 ) -> FullExtractionResult:
     """Run the full extraction pipeline and compare shell + summary to truth."""
 
-    shell, evidence = populate_shell(parsed_document)
+    shell, evidence = populate_shell(parsed_document, anchors=anchors)
     validation = validate_header_and_line_items_shell(shell)
     diagnostics = build_extraction_diagnostics(evidence)
 
