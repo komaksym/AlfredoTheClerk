@@ -19,3 +19,6 @@ wheels/
 
 # IDE
 .vscode/
+
+# API keys
+.env
