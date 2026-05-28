@@ -250,6 +250,7 @@ def get_gutters(
     if not all_gaps:
         return []
 
+    # Treat only recurring whitespace corridors as gutters, not one-off gaps.
     # Each candidate: [tightened_start, tightened_end, {line indices}]
     gutters: list[list] = []
     for gap, line_idx in all_gaps:
@@ -306,6 +307,7 @@ def parse_sub_blocks(block: Block) -> list[SubBlock]:
         col_words: list[Word] = []
         for line in block.lines:
             for word in line.words:
+                # Assign by overlap so words touching a gutter stay deterministic.
                 overlaps = [
                     max(
                         0.0,
@@ -404,6 +406,7 @@ def parse_data(pdf_file: PDF) -> ParsedDocument:
     page = pdf_file.pages[0]
     text = page.extract_words()
 
+    # Free text and bordered tables are separate geometry layers downstream.
     words = parse_words(text)
     lines = parse_lines(words)
     blocks = parse_blocks(lines)

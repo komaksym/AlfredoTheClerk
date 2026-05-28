@@ -66,6 +66,7 @@ def populate_shell(
         parsed_data, anchors=anchors
     )
 
+    # Party sub-block parsing and population
     party_subblocks = (
         ("seller", shell.seller, seller_sb),
         ("buyer", shell.buyer, buyer_sb),
@@ -73,6 +74,7 @@ def populate_shell(
 
     for role, party, sub_block in party_subblocks:
         if sub_block is None:
+            # Keep a complete evidence map even when a whole party block is absent.
             for field_name in (
                 "nip",
                 "name",
@@ -98,6 +100,7 @@ def populate_shell(
         party.address_line_1 = address_1_ev.value
         party.address_line_2 = address_2_ev.value
 
+    # Header field parsing and population
     header = header_words(parsed_data, seller_sb, buyer_sb)
 
     invoice_ev = extract_labeled_field(
@@ -130,6 +133,7 @@ def populate_shell(
     evidence["payment_form"] = payment_form_ev
     evidence["payment_due_date"] = payment_due_date_ev
 
+    # Footer and line-items table parsing and population
     bank_account_ev = extract_bank_account_from_words(
         summary_footer_words(parsed_data, parsed_document.tables),
         anchors=anchors,
@@ -159,6 +163,7 @@ def populate_shell(
         parsed_document.tables
     )
 
+    # Summary values stay in evidence; comparison code assembles summaries later.
     for key, ev in totals_evidence.items():
         evidence[f"summary.{key}"] = ev
 

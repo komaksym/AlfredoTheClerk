@@ -464,6 +464,9 @@ def _unresolved_evidence(
     )
 
 
+# Candidate resolution helpers
+
+
 def _candidate_bbox(
     candidates: tuple[Candidate, ...],
 ) -> tuple[float, float, float, float] | None:
@@ -815,6 +818,7 @@ def extract_issue_date_and_city(
                     )
                 )
 
+                # The native header renders city after the issue date on the same line.
                 if city_text:
                     valid_city_candidates.append(
                         Candidate(
@@ -1168,6 +1172,7 @@ def extract_party_addresses_from_subblock(
     address_1_candidates, address_2_candidates = split_address_candidates(
         candidate_lines
     )
+    # Each candidate pair comes from the same split point; choose them together.
     return choose_paired_address_evidence(
         address_1_candidates,
         address_2_candidates,
@@ -1258,6 +1263,9 @@ def find_label_candidates(
                 )
 
     return tuple(sorted(candidates, key=lambda k: k.score, reverse=True))
+
+
+# Generic label-to-value extraction helpers
 
 
 def find_label(
@@ -1439,6 +1447,9 @@ _LINE_ITEM_FIELD_NAMES = (
 )
 
 
+# Bordered line-items table extraction
+
+
 def _match_line_items_header(row: list) -> bool:
     """Return True if ``row`` fuzzy-matches the six expected header labels."""
 
@@ -1604,6 +1615,9 @@ _SUMMARY_HEADER_ANCHORS = (
 )
 _SUMMARY_HEADER_THRESHOLD = 80
 _SUMMARY_TOTALS_LABEL = "razem"
+
+
+# Bordered VAT-summary table extraction
 
 
 def _match_summary_header(row: list) -> bool:

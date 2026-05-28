@@ -104,6 +104,7 @@ def build_extracted_summary(
         match = _BUCKET_KEY_PATTERN.match(key)
         if match is None:
             continue
+        # Evidence paths encode the VAT bucket key; parse it before grouping.
         rate = Decimal(match.group("rate"))
         attr = match.group("attr")
         bucket_fields.setdefault(rate, {})[attr] = _as_decimal(ev.value)
@@ -157,6 +158,7 @@ def compare_full_extraction(
     validation = validate_header_and_line_items_shell(shell)
     diagnostics = build_extraction_diagnostics(evidence)
 
+    # Summary totals live in evidence, so rebuild comparable summary objects here.
     extracted_summary = build_extracted_summary(evidence)
     truth_summary = summarize_domestic_vat_shell(truth)
 
