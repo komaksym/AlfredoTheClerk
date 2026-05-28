@@ -155,11 +155,17 @@ def compare_full_extraction(
     """Run the full extraction pipeline and compare shell + summary to truth."""
 
     shell, evidence = populate_shell(parsed_document, anchors=anchors)
-    validation = validate_header_and_line_items_shell(shell)
-    diagnostics = build_extraction_diagnostics(evidence)
+    validation = validate_header_and_line_items_shell(
+        shell
+    )  # Value-based validation
+    diagnostics = build_extraction_diagnostics(
+        evidence
+    )  # Mismatch type = missing ? unresolved? ambiguous? correct?
 
     # Summary totals live in evidence, so rebuild comparable summary objects here.
-    extracted_summary = build_extracted_summary(evidence)
+    extracted_summary = build_extracted_summary(
+        evidence
+    )  # Podsumowanie table summary
     truth_summary = summarize_domestic_vat_shell(truth)
 
     shell_report = compare_shells_with_visibility(
