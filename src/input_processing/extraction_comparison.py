@@ -144,6 +144,17 @@ class FullExtractionResult:
     comparison: ComparisonReport
 
 
+@dataclass(frozen=True, kw_only=True)
+class RepairContext:
+    """Report of the extraction context of one full header + line-items + summary run needed for the agent to resolve issues"""
+
+    shell: DomesticVatInvoiceShell
+    extracted_summary: DomesticVatInvoiceSummary
+    evidence: dict[str, FieldEvidence]
+    validation: ShellValidationResult
+    diagnostics: ExtractionDiagnostics
+
+
 def compare_full_extraction(
     parsed_document: ParsedDocument,
     truth: DomesticVatInvoiceShell,

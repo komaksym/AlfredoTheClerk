@@ -110,6 +110,7 @@ class Candidate:
     raw_text: str | None = None
     rule: str | None = None
     rejected_by: str | None = None
+    same_line_text: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -245,6 +246,38 @@ def _find_nip_words(
     return hit
 
 
+def _same_line_text_for_bbox(
+    words: list[Word],
+    bbox: tuple[float, float, float, float] | None,
+) -> str | None:
+    """Return text from the visual line intersecting ``bbox``.
+
+    ``bbox_of`` uses ``(x0, x1, top, bottom)`` ordering. Candidate bboxes
+    can be value-only, so this helper recovers the full label/value line
+    by matching words with enough vertical overlap.
+    """
+
+    if bbox is None:
+        return None
+
+    _, _, top, bottom = bbox
+    height = bottom - top
+    if height <= 0:
+        return None
+
+    same_line_words = []
+    for word in words:
+        overlap = min(word.bottom, bottom) - max(word.top, top)
+        if overlap > 0.5 * min(word.height, height):
+            same_line_words.append(word)
+
+    if not same_line_words:
+        return None
+
+    same_line_words.sort(key=lambda word: word.x0)
+    return _line_text(same_line_words)
+
+
 def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
     """Extract a NIP winner while preserving plausible alternatives.
 
@@ -269,6 +302,7 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
             words = _find_nip_words(sub_block, match.start(), match.end())
             bbox = bbox_of(words) if words else None
             confidence = 1.0 if validate_nip_checksum(digits) else 0.5
+            same_line_text = _same_line_text_for_bbox(sub_block.words, bbox)
 
             if confidence == 1.0:
                 checksum_valid_candidates.append(
@@ -280,6 +314,7 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
                         raw_text=match.group(),
                         rule="nip_candidate_regex",
                         rejected_by=None,
+                        same_line_text=same_line_text,
                     )
                 )
             else:
@@ -292,6 +327,7 @@ def extract_nip_from_subblock(sub_block: SubBlock) -> FieldEvidence:
                         raw_text=match.group(),
                         rule="nip_candidate_regex",
                         rejected_by="checksum_failed",
+                        same_line_text=same_line_text,
                     )
                 )
 
@@ -384,6 +420,7 @@ def extract_bank_account_from_words(
 
             raw_text = value_word.text.strip()
             bbox = bbox_of([label_word, value_word])
+            same_line_text = _same_line_text_for_bbox(words, bbox)
             if not PL_IBAN_PATTERN.fullmatch(raw_text):
                 rejected_candidates.append(
                     Candidate(
@@ -394,6 +431,7 @@ def extract_bank_account_from_words(
                         raw_text=raw_text,
                         rule="pl_iban_regex",
                         rejected_by="iban_pattern_failed",
+                        same_line_text=same_line_text,
                     )
                 )
                 continue
@@ -409,6 +447,7 @@ def extract_bank_account_from_words(
                         raw_text=raw_text,
                         rule="pl_iban_regex",
                         rejected_by=None,
+                        same_line_text=same_line_text,
                     )
                 )
             else:
@@ -421,6 +460,7 @@ def extract_bank_account_from_words(
                         raw_text=raw_text,
                         rule="pl_iban_regex",
                         rejected_by="iban_checksum_failed",
+                        same_line_text=same_line_text,
                     )
                 )
 
@@ -1379,20 +1419,23 @@ def extract_labeled_field(
             value_words = find_value_words(label_word, header)
 
             if value_words is None:
+                bbox = bbox_of([label_word])
                 rejected_candidates.append(
                     Candidate(
                         value=None,
                         source="unresolved",
                         confidence=0.0,
-                        bbox=bbox_of([label_word]),
+                        bbox=bbox,
                         rule="labeled_field_value",
                         rejected_by="value_finder_failed",
+                        same_line_text=_same_line_text_for_bbox(header, bbox),
                     )
                 )
                 continue
 
             bbox = bbox_of([label_word, *value_words])
             raw_text = " ".join(word.text for word in value_words)
+            same_line_text = _same_line_text_for_bbox(header, bbox)
 
             try:
                 parsed_value = parser(raw_text)
@@ -1404,6 +1447,7 @@ def extract_labeled_field(
                         bbox=bbox,
                         raw_text=raw_text,
                         rule="labeled_field_value",
+                        same_line_text=same_line_text,
                     )
                 )
 
@@ -1417,6 +1461,7 @@ def extract_labeled_field(
                         raw_text=raw_text,
                         rule="labeled_field_value",
                         rejected_by="parser_failed",
+                        same_line_text=same_line_text,
                     )
                 )
         return _unique_candidates(valid_candidates), _unique_candidates(

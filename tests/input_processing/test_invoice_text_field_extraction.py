@@ -1076,6 +1076,34 @@ def test_field_evidence_carries_candidate_set():
     assert ev.candidates[1].rule is None
 
 
+def test_nip_candidate_carries_same_line_text_for_agent_context():
+    """Value-only candidate bboxes should still preserve their full line."""
+
+    sub_block = make_sub_block(make_text_line(["NIP:", "8637940261"], top=0))
+
+    ev = extract_nip_from_subblock(sub_block)
+
+    assert ev.candidates is not None
+    assert ev.candidates[0].raw_text == "8637940261"
+    assert ev.candidates[0].same_line_text == "NIP: 8637940261"
+
+
+def test_labeled_field_candidate_carries_same_line_text_for_agent_context():
+    """Labeled-field candidates should expose the full label/value line."""
+
+    words = make_text_line(["Wystawiono", "2026-03-15"], top=0)
+
+    ev = extract_labeled_field(
+        words,
+        ["wystawiono"],
+        date.fromisoformat,
+    )
+
+    assert ev.candidates is not None
+    assert ev.candidates[0].value == date(2026, 3, 15)
+    assert ev.candidates[0].same_line_text == "Wystawiono 2026-03-15"
+
+
 def test_nip_extraction_preserves_hyphenated_raw_text():
     """raw_text should carry the original hyphenated form from the PDF."""
 
