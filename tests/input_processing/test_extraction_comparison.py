@@ -5,24 +5,34 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 from datetime import date
 from decimal import Decimal
+import io
 
+import pdfplumber
 import pytest
 
 from src.input_processing.extraction_comparison import (
     HeaderExtractionResult,
+    RepairContext,
     build_extracted_summary,
     compare_header_extraction,
+    run_full_extraction,
 )
 from src.input_processing.extraction_diagnostics import ExtractionDiagnostics
+from src.input_processing.parse_pdf import parse_data
 from src.input_processing.invoice_text_field_extraction import (
+    COMBINED_ANCHORS,
     FieldEvidence,
     TEMPLATE_V1_ANCHORS,
 )
 from src.invoice_gen.comparison import ComparisonPolicy, ComparisonReport
-from src.invoice_gen.domain_shell import build_domestic_vat_shell
+from src.invoice_gen.domain_shell import (
+    LineItemShell,
+    build_domestic_vat_shell,
+)
 from src.invoice_gen.domestic_vat_shell_validation import (
     ShellValidationResult,
 )
+from src.invoice_gen.pdf_rendering import render_seller_buyer_block_v2
 from src.invoice_gen.template_visibility import TemplateVisibilityManifest
 
 
@@ -124,6 +134,110 @@ def test_header_extraction_result_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         result.shell = build_domestic_vat_shell()  # type: ignore[misc]
+
+
+def test_run_full_extraction_returns_repair_context_with_combined_anchors(
+    monkeypatch,
+) -> None:
+    """Production extraction should bundle repair context without truth."""
+
+    parsed_data = [["parsed"]]
+    extracted_shell = build_domestic_vat_shell()
+    evidence = {
+        "summary.invoice_net_total": FieldEvidence(
+            value=Decimal("10.00"),
+            source="spatial",
+            confidence=1.0,
+            bbox=(0.0, 0.0, 10.0, 10.0),
+        ),
+    }
+    validation = ShellValidationResult(errors=[])
+    diagnostics = ExtractionDiagnostics(fields={})
+    calls: list[str] = []
+
+    def fake_populate(arg, *, anchors):
+        calls.append("populate")
+        assert arg is parsed_data
+        assert anchors is COMBINED_ANCHORS
+        return extracted_shell, evidence
+
+    def fake_validate(arg):
+        calls.append("validate")
+        assert arg is extracted_shell
+        return validation
+
+    def fake_diagnostics(arg):
+        calls.append("diagnostics")
+        assert arg is evidence
+        return diagnostics
+
+    monkeypatch.setattr(
+        "src.input_processing.extraction_comparison.populate_shell",
+        fake_populate,
+    )
+    monkeypatch.setattr(
+        "src.input_processing.extraction_comparison.validate_header_and_line_items_shell",
+        fake_validate,
+    )
+    monkeypatch.setattr(
+        "src.input_processing.extraction_comparison.build_extraction_diagnostics",
+        fake_diagnostics,
+    )
+
+    result = run_full_extraction(parsed_data)
+
+    assert isinstance(result, RepairContext)
+    assert calls == ["populate", "validate", "diagnostics"]
+    assert result.shell is extracted_shell
+    assert result.evidence is evidence
+    assert result.validation is validation
+    assert result.diagnostics is diagnostics
+    assert result.extracted_summary.invoice_net_total == Decimal("10.00")
+
+
+def test_run_full_extraction_combined_anchors_extract_v2_rendered_invoice():
+    """Default production anchors should cover the registered v2 labels."""
+
+    shell = build_domestic_vat_shell()
+    shell.invoice_number = "FV/V2-PARAM/001"
+    shell.issue_date = date(2026, 4, 23)
+    shell.sale_date = date(2026, 4, 22)
+    shell.issue_city = "Warszawa"
+    shell.payment_form = 6
+    shell.payment_due_date = date(2026, 5, 7)
+    shell.seller.name = "Alfa Sp. z o.o."
+    shell.seller.nip = "8637940261"
+    shell.seller.address_line_1 = "ul. Polna 29"
+    shell.seller.address_line_2 = "90-001 Lodz"
+    shell.seller.bank_account = "PL61419283276483503056413953"
+    shell.buyer.name = "Beta Sp. z o.o."
+    shell.buyer.nip = "5423511615"
+    shell.buyer.address_line_1 = "ul. Ogrodowa 70 m. 3"
+    shell.buyer.address_line_2 = "00-001 Warszawa"
+    shell.line_items = [
+        LineItemShell(
+            description="Pakiet serwisowy",
+            unit="usl.",
+            quantity=Decimal("1"),
+            unit_price_net=Decimal("250.00"),
+            discount=None,
+            vat_rate=Decimal("23"),
+        )
+    ]
+
+    pdf_bytes = render_seller_buyer_block_v2(shell)
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        result = run_full_extraction(parse_data(pdf))
+
+    assert result.shell.seller.name == "Alfa Sp. z o.o."
+    assert result.shell.buyer.name == "Beta Sp. z o.o."
+    assert result.shell.seller.nip == "8637940261"
+    assert result.shell.buyer.nip == "5423511615"
+    assert result.shell.invoice_number == "FV/V2-PARAM/001"
+    assert result.validation.is_valid is True
+    assert result.diagnostics.missing_paths == []
+    assert result.diagnostics.ambiguous_paths == []
 
 
 def _decimal_ev(value: Decimal | None) -> FieldEvidence:
