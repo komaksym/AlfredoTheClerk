@@ -8,6 +8,7 @@ Current scope covers:
 """
 
 from __future__ import annotations
+from collections import defaultdict
 
 import re
 from dataclasses import dataclass, replace
@@ -69,6 +70,7 @@ TEMPLATE_V2_ANCHORS: LabelAnchorSet = {
     "payment_due_date": ["płatności"],
     "bank_account": ["bankowe"],
 }
+
 
 # Reverse of pdf_rendering.PAYMENT_FORM_LABELS: Polish label (lowercased)
 # to KSeF TformaPlatnosci enum value. Built once at import time so the
@@ -132,6 +134,19 @@ class LabelMatch:
     word: Word
     score: float
     anchor: str
+
+
+def merge_anchor_sets(*anchor_sets):
+    merged = defaultdict(list)
+
+    for anchors in anchor_sets:
+        for k, v in anchors.items():
+            merged[k].extend(v)
+
+    return {k: list(dict.fromkeys(v)) for k, v in merged.items()}
+
+
+COMBINED_ANCHORS = merge_anchor_sets(TEMPLATE_V1_ANCHORS, TEMPLATE_V2_ANCHORS)
 
 
 def _parse_payment_form(text: str) -> int:

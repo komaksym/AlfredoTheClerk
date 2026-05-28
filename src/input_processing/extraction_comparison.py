@@ -35,6 +35,7 @@ from .invoice_text_field_extraction import (
     FieldEvidence,
     LabelAnchorSet,
     TEMPLATE_V1_ANCHORS,
+    COMBINED_ANCHORS,
 )
 from .populate_shell import populate_shell
 
@@ -153,6 +154,34 @@ class RepairContext:
     evidence: dict[str, FieldEvidence]
     validation: ShellValidationResult
     diagnostics: ExtractionDiagnostics
+
+
+def run_full_extraction(
+    parsed_document: ParsedDocument,
+    anchors: LabelAnchorSet = COMBINED_ANCHORS,
+) -> FullExtractionResult:
+    """Run the full extraction pipeline and compare shell + summary to truth."""
+
+    shell, evidence = populate_shell(parsed_document, anchors=anchors)
+    validation = validate_header_and_line_items_shell(
+        shell
+    )  # Value-based validation
+    diagnostics = build_extraction_diagnostics(
+        evidence
+    )  # Mismatch type = missing ? unresolved? ambiguous? correct?
+
+    # Summary totals live in evidence, so rebuild comparable summary objects here.
+    extracted_summary = build_extracted_summary(
+        evidence
+    )  # Podsumowanie table summary
+
+    return RepairContext(
+        shell=shell,
+        extracted_summary=extracted_summary,
+        evidence=evidence,
+        validation=validation,
+        diagnostics=diagnostics,
+    )
 
 
 def compare_full_extraction(
