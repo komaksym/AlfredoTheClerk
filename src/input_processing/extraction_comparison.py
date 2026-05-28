@@ -30,13 +30,13 @@ from .extraction_diagnostics import (
     ExtractionDiagnostics,
     build_extraction_diagnostics,
 )
-from .parse_pdf import ParsedDocument
 from .invoice_text_field_extraction import (
+    COMBINED_ANCHORS,
     FieldEvidence,
     LabelAnchorSet,
     TEMPLATE_V1_ANCHORS,
-    COMBINED_ANCHORS,
 )
+from .parse_pdf import ParsedDocument
 from .populate_shell import populate_shell
 
 
@@ -147,7 +147,7 @@ class FullExtractionResult:
 
 @dataclass(frozen=True, kw_only=True)
 class RepairContext:
-    """Report of the extraction context of one full header + line-items + summary run needed for the agent to resolve issues"""
+    """Production extraction context for downstream repair."""
 
     shell: DomesticVatInvoiceShell
     extracted_summary: DomesticVatInvoiceSummary
@@ -158,22 +158,17 @@ class RepairContext:
 
 def run_full_extraction(
     parsed_document: ParsedDocument,
+    *,
     anchors: LabelAnchorSet = COMBINED_ANCHORS,
-) -> FullExtractionResult:
-    """Run the full extraction pipeline and compare shell + summary to truth."""
+) -> RepairContext:
+    """Run production extraction without benchmark truth comparison."""
 
     shell, evidence = populate_shell(parsed_document, anchors=anchors)
-    validation = validate_header_and_line_items_shell(
-        shell
-    )  # Value-based validation
-    diagnostics = build_extraction_diagnostics(
-        evidence
-    )  # Mismatch type = missing ? unresolved? ambiguous? correct?
+    validation = validate_header_and_line_items_shell(shell)
+    diagnostics = build_extraction_diagnostics(evidence)
 
     # Summary totals live in evidence, so rebuild comparable summary objects here.
-    extracted_summary = build_extracted_summary(
-        evidence
-    )  # Podsumowanie table summary
+    extracted_summary = build_extracted_summary(evidence)
 
     return RepairContext(
         shell=shell,

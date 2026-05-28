@@ -8,7 +8,6 @@ Current scope covers:
 """
 
 from __future__ import annotations
-from collections import defaultdict
 
 import re
 from dataclasses import dataclass, replace
@@ -136,14 +135,15 @@ class LabelMatch:
     anchor: str
 
 
-def merge_anchor_sets(*anchor_sets):
-    merged = defaultdict(list)
+def merge_anchor_sets(*anchor_sets: LabelAnchorSet) -> LabelAnchorSet:
+    merged: LabelAnchorSet = {}
 
     for anchors in anchor_sets:
-        for k, v in anchors.items():
-            merged[k].extend(v)
+        for key, values in anchors.items():
+            merged.setdefault(key, [])
+            merged[key].extend(values)
 
-    return {k: list(dict.fromkeys(v)) for k, v in merged.items()}
+    return {key: list(dict.fromkeys(values)) for key, values in merged.items()}
 
 
 COMBINED_ANCHORS = merge_anchor_sets(TEMPLATE_V1_ANCHORS, TEMPLATE_V2_ANCHORS)
