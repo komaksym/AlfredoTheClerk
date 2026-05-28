@@ -69,8 +69,9 @@ def validate_header_only_shell(
 ) -> ShellValidationResult:
     """Validate a header-only partial shell for M3 extraction.
 
-    Skips line_items, issue_city, payment_form, and adnotations
-    because these fields are not populated by header-only extraction.
+    Skips line_items, issue_city, payment_form, and adnotations. This
+    legacy scoped validator covers only the original required
+    header/party subset.
     """
 
     errors: list[ShellValidationError] = []
@@ -88,15 +89,14 @@ def validate_header_and_line_items_shell(
 ) -> ShellValidationResult:
     """Validate header, parties, and line items for M4 extraction.
 
-    Skips issue_city, payment_form, and adnotations — those fields
-    are not rendered by the current template and not populated by
-    the M4 extractor. Roadmap §2 requires scoped validation for
-    partial-shell milestones rather than the full-shell validator.
+    Includes rendered/scored invoice fields such as issue_city and
+    payment_form. Skips only adnotations because they are fixed XML
+    defaults, not PDF-extracted business values.
     """
 
     errors: list[ShellValidationError] = []
 
-    _validate_header_invoice_fields(shell, errors)
+    _validate_invoice_fields(shell, errors)
     _validate_party_fields(shell.seller, "seller", errors)
     _validate_buyer_fields(shell.buyer, errors)
     _validate_cross_party_rules(shell, errors)
@@ -112,10 +112,7 @@ def _validate_header_invoice_fields(
     shell: DomesticVatInvoiceShell,
     errors: list[ShellValidationError],
 ) -> None:
-    """Validate header-level fields for partial shells.
-
-    Skips issue_city and payment_form (not extracted / not rendered).
-    """
+    """Validate the legacy required header subset for partial shells."""
 
     if shell.profile is not InvoiceProfile.DOMESTIC_VAT:
         _add_error(

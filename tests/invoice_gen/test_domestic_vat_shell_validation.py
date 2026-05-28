@@ -308,18 +308,37 @@ def test_validate_header_and_line_items_shell_rejects_bad_line_item_values() -> 
     _assert_has_error(result, "line_items[0].vat_rate", "unsupported_value")
 
 
-def test_validate_header_and_line_items_shell_ignores_unrendered_fields() -> (
-    None
-):
-    """Missing issue_city, payment_form, and adnotations must not fail.
-
-    The M4 template does not render these yet, so the scoped validator
-    treats them as out of scope.
-    """
+def test_validate_header_and_line_items_shell_requires_issue_city() -> None:
+    """Missing issue_city must fail the M4 scoped validator."""
 
     shell = _make_valid_header_and_line_items_shell()
     shell.issue_city = None
-    shell.payment_form = None
+
+    result = validate_header_and_line_items_shell(shell)
+
+    _assert_has_error(result, "issue_city", "required")
+
+
+def test_validate_header_and_line_items_shell_rejects_bad_payment_form() -> (
+    None
+):
+    """Unsupported payment_form values must fail the M4 scoped validator."""
+
+    shell = _make_valid_header_and_line_items_shell()
+    shell.payment_form = 999
+
+    result = validate_header_and_line_items_shell(shell)
+
+    _assert_has_error(result, "payment_form", "unsupported_value")
+
+
+def test_validate_header_and_line_items_shell_skips_adnotations() -> None:
+    """Adnotations must not fail the M4 scoped validator.
+
+    They are fixed XML defaults, not values rendered into the PDF.
+    """
+
+    shell = _make_valid_header_and_line_items_shell()
     shell.adnotations = None
 
     result = validate_header_and_line_items_shell(shell)
@@ -360,6 +379,8 @@ def _make_valid_header_shell():
     shell.issue_date = date(2026, 11, 24)
     shell.sale_date = date(2026, 11, 23)
     shell.invoice_number = "FV2026/11/390"
+    shell.issue_city = "Warszawa"
+    shell.payment_form = 2
     shell.seller.nip = "8637940261"
     shell.seller.name = "Firma Testowa Sp. z o.o."
     shell.seller.address_line_1 = "ul. Testowa 1"
