@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import copy
 import re
 from dataclasses import dataclass
 
 from src.input_processing.extraction_comparison import RepairContext
+from src.input_processing.invoice_text_field_extraction import Candidate
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
 
@@ -39,7 +42,16 @@ LINE_ITEM_REPAIRABLE = {
     "vat_rate",
 }
 
-pattern = re.compile(r"^line_items\[(\d+)\]\.([a-z_]+)$")
+_LINE_ITEM_PATH_PATTERN = re.compile(r"^line_items\[(\d+)\]\.([a-z_]+)$")
+
+
+class RepairKernelError(ValueError):
+    """Raised when an agent repair command fails deterministic safety checks."""
+
+    def __init__(self, *, path: str, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"{reason}: {path}")
 
 
 @dataclass(frozen=True)
@@ -81,22 +93,23 @@ class RepairSession:
             validation=context.validation,
         )
 
-    def validate_path_support(self, path):
-        # is a supported shell path
+    def validate_path_support(self, path: str) -> bool:
+        """Return whether ``path`` names a shell field repair can mutate."""
+
         if path in TOP_LEVEL_REPAIRABLE:
             return True
 
         if "." not in path:
             return False
 
-        prefix, suf = path.split(".", maxsplit=1)
-        if prefix == "seller" and suf in SELLER_REPAIRABLE:
+        prefix, suffix = path.split(".", maxsplit=1)
+        if prefix == "seller" and suffix in SELLER_REPAIRABLE:
             return True
 
-        if prefix == "buyer" and suf in BUYER_REPAIRABLE:
+        if prefix == "buyer" and suffix in BUYER_REPAIRABLE:
             return True
 
-        match = pattern.match(path)
+        match = _LINE_ITEM_PATH_PATTERN.match(path)
         if match is not None:
             index = int(match.group(1))
             field = match.group(2)
@@ -109,30 +122,32 @@ class RepairSession:
 
         return False
 
-    def validate_command(self, command):
+    def validate_command(self, command: RepairCommand) -> Candidate:
+        """Validate an agent command and return its selected candidate."""
+
         path = command.path
 
-        # Validate path exists in evidence
-        assert path in self.context.evidence, (
-            "Path should exist in field evidence"
-        )
-        # is not summary.*
-        assert not path.startswith("summary.")
+        if path not in self.context.evidence:
+            raise RepairKernelError(path=path, reason="missing_evidence")
 
-        # is a supported shell path
-        assert self.validate_path_support(path)
+        if path.startswith("summary.") or not self.validate_path_support(path):
+            raise RepairKernelError(path=path, reason="unsupported_path")
 
-        # evidence has candidates
         candidates = self.context.evidence[path].candidates
-        assert candidates
+        if not candidates:
+            raise RepairKernelError(path=path, reason="no_candidates")
 
-        # candidate index is valid
-        candidates_len = len(candidates)
-        assert 0 <= command.candidate_index < candidates_len
+        if not 0 <= command.candidate_index < len(candidates):
+            raise RepairKernelError(
+                path=path,
+                reason="candidate_index_out_of_range",
+            )
 
-        # selected candidate value is not None
         selected_candidate = candidates[command.candidate_index]
-        assert selected_candidate.value is not None
+        if selected_candidate.value is None:
+            raise RepairKernelError(path=path, reason="candidate_value_missing")
+
+        return selected_candidate
 
     def promote_candidate(self, command: RepairCommand) -> RepairResult:
-        pass
+        raise NotImplementedError("Candidate promotion is implemented in M6.2")
