@@ -133,6 +133,20 @@ def route_repair_context(context: RepairContext) -> RepairRoute:
     )
 
 
+def decide_repair_direction(context):
+    repair_route_result = route_repair_context(context)
+    route_status = repair_route_result.status
+
+    if route_status is RepairRouteStatus.NO_REPAIR_NEEDED:
+        return context.shell
+
+    if route_status is RepairRouteStatus.AGENT_REPAIR_AVAILABLE:
+        raise NotImplementedError("Agent escalation not implemented yet")
+
+    if route_status is RepairRouteStatus.MANUAL_REVIEW_REQUIRED:
+        raise NotImplementedError("Human escalation not implemented yet")
+
+
 def _validation_errors_by_path(
     context: RepairContext,
 ) -> dict[str, list[ShellValidationError]]:
