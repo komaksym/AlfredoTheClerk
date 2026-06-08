@@ -9,7 +9,13 @@ from .invoice_text_field_extraction import FieldEvidence
 
 
 class FieldStatus(Enum):
-    """Extraction outcome for a single shell field."""
+    """Machine status assigned to a field after deterministic extraction.
+
+    PRESENT means the field resolved to a usable value or an observed blank.
+    MISSING means no candidate was found. AMBIGUOUS means candidates or a
+    location were found but no winner could be selected. NORMALIZED means the
+    stored value differs from raw PDF text after parser cleanup.
+    """
 
     PRESENT = "present"
     MISSING = "missing"
@@ -19,7 +25,7 @@ class FieldStatus(Enum):
 
 @dataclass(frozen=True, kw_only=True)
 class FieldDiagnostic:
-    """Classification of one extracted field."""
+    """Status, raw text, and explanation for one extracted field path."""
 
     path: str
     status: FieldStatus
@@ -29,7 +35,12 @@ class FieldDiagnostic:
 
 @dataclass(kw_only=True)
 class ExtractionDiagnostics:
-    """Diagnostics for all fields produced by one extraction run."""
+    """Per-field extraction statuses used to route repair work.
+
+    This object describes whether each extracted field is present, missing,
+    ambiguous, or normalized. It does not validate business rules; validation
+    lives in ``ShellValidationResult``.
+    """
 
     fields: dict[str, FieldDiagnostic] = field(default_factory=dict)
 

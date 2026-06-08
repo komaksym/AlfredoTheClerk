@@ -27,7 +27,11 @@ _ALLOWED_PAYMENT_FORMS = {1, 2, 6}
 
 @dataclass(frozen=True, kw_only=True)
 class ShellValidationError:
-    """One machine-readable validation problem found in the shell."""
+    """Business-rule failure for one shell path.
+
+    ``path`` identifies the invalid field, ``code`` is stable enough for
+    routing/tests, and ``message`` is the reader-facing explanation.
+    """
 
     path: str
     code: str
@@ -36,7 +40,12 @@ class ShellValidationError:
 
 @dataclass(kw_only=True)
 class ShellValidationResult:
-    """Collected validation result for one domestic VAT shell."""
+    """Business validation outcome for a domestic VAT shell.
+
+    An empty ``errors`` list means the shell satisfies the scoped validator.
+    Non-empty errors identify required, malformed, unsupported, or inconsistent
+    shell fields independently of extraction confidence.
+    """
 
     errors: list[ShellValidationError] = field(default_factory=list)
 

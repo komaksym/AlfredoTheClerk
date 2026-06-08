@@ -42,7 +42,12 @@ from .populate_shell import populate_shell
 
 @dataclass(frozen=True, kw_only=True)
 class HeaderExtractionResult:
-    """Bundled output of one header-extraction comparison run."""
+    """Header extraction output plus validation, diagnostics, and scoring.
+
+    Used by benchmark tests to keep the extracted shell, field evidence,
+    value-based validation errors, extraction statuses, and truth comparison
+    report together.
+    """
 
     shell: DomesticVatInvoiceShell
     evidence: dict[str, FieldEvidence]
@@ -135,7 +140,11 @@ def build_extracted_summary(
 
 @dataclass(frozen=True, kw_only=True)
 class FullExtractionResult:
-    """Bundled output of one full header + line-items + summary run."""
+    """Full benchmark extraction output with shell and summary comparison data.
+
+    This is the truth-aware result used in scoring mode. Production repair uses
+    ``RepairContext`` instead because it has no ground-truth comparison report.
+    """
 
     shell: DomesticVatInvoiceShell
     extracted_summary: DomesticVatInvoiceSummary
@@ -147,7 +156,12 @@ class FullExtractionResult:
 
 @dataclass(frozen=True, kw_only=True)
 class RepairContext:
-    """Production extraction context for downstream repair."""
+    """Production extraction snapshot handed to deterministic/agentic repair.
+
+    Contains the draft shell, extracted field evidence and candidates,
+    value-based validation errors, and extraction diagnostics. It is the
+    immutable starting point for later repair sessions.
+    """
 
     shell: DomesticVatInvoiceShell
     extracted_summary: DomesticVatInvoiceSummary
