@@ -8,6 +8,7 @@ import pytest
 
 from src.agentic_repair.repair_kernel import (
     RepairCommand,
+    RepairDecision,
     RepairKernelError,
     RepairSession,
 )
@@ -21,7 +22,10 @@ from src.invoice_gen.domain_shell import LineItemShell, build_domestic_vat_shell
 from src.invoice_gen.domestic_vat_shell_summary import (
     DomesticVatInvoiceSummary,
 )
-from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
+from src.invoice_gen.domestic_vat_shell_validation import (
+    ShellValidationError,
+    ShellValidationResult,
+)
 
 
 def _summary() -> DomesticVatInvoiceSummary:
@@ -177,3 +181,78 @@ def test_validate_command_rejects_unsafe_commands(
 
     assert error.value.reason == reason
     assert error.value.path == command.path
+
+
+def test_promote_candidate_returns_repaired_shell_without_mutating_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session(
+        evidence={
+            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
+        }
+    )
+    session.shell.invoice_number = "BAD"
+    validation = ShellValidationResult(errors=[])
+
+    def fake_validate(shell):
+        assert shell is not session.shell
+        assert shell.invoice_number == "FV/001"
+        return validation
+
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_kernel.validate_pdf_extracted_shell",
+        fake_validate,
+    )
+
+    result = session.promote_candidate(
+        _command("invoice_number", candidate_index=1)
+    )
+
+    assert result.shell.invoice_number == "FV/001"
+    assert session.shell.invoice_number == "BAD"
+    assert result.decisions == (
+        RepairDecision(
+            path="invoice_number",
+            old_value="BAD",
+            new_value="FV/001",
+            candidate_index=1,
+            reason="candidate is better supported by context",
+        ),
+    )
+    assert result.validation is validation
+
+
+def test_promote_candidate_returns_failed_validation_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session(
+        evidence={
+            "line_items[0].quantity": _evidence_with_candidates(
+                Decimal("1"), Decimal("-2")
+            ),
+        }
+    )
+    session.shell.line_items[0].quantity = Decimal("1")
+    validation = ShellValidationResult(
+        errors=[
+            ShellValidationError(
+                path="line_items[0].quantity",
+                code="invalid_value",
+                message="quantity must be positive",
+            )
+        ]
+    )
+
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_kernel.validate_pdf_extracted_shell",
+        lambda shell: validation,
+    )
+
+    result = session.promote_candidate(
+        _command("line_items[0].quantity", candidate_index=1)
+    )
+
+    assert result.shell.line_items[0].quantity == Decimal("-2")
+    assert session.shell.line_items[0].quantity == Decimal("1")
+    assert result.validation is validation
+    assert result.validation.is_valid is False
