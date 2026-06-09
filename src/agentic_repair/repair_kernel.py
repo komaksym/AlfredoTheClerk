@@ -1,3 +1,10 @@
+"""Deterministic candidate-promotion primitives for agentic repair.
+
+The kernel is the safety boundary around LLM output: an agent may request a
+candidate promotion, but this module validates the command, copies the shell,
+applies the selected evidence-backed value, and reruns scoped validation.
+"""
+
 from __future__ import annotations
 
 import copy
@@ -12,7 +19,7 @@ from src.invoice_gen.domestic_vat_shell_validation import (
     validate_pdf_extracted_shell,
 )
 
-TOP_LEVEL_REPAIRABLE = {
+TOP_LEVEL_REPAIRABLE: set[str] = {
     "invoice_number",
     "issue_date",
     "sale_date",
@@ -21,7 +28,7 @@ TOP_LEVEL_REPAIRABLE = {
     "payment_due_date",
 }
 
-SELLER_REPAIRABLE = {
+SELLER_REPAIRABLE: set[str] = {
     "nip",
     "name",
     "address_line_1",
@@ -29,14 +36,14 @@ SELLER_REPAIRABLE = {
     "bank_account",
 }
 
-BUYER_REPAIRABLE = {
+BUYER_REPAIRABLE: set[str] = {
     "nip",
     "name",
     "address_line_1",
     "address_line_2",
 }
 
-LINE_ITEM_REPAIRABLE = {
+LINE_ITEM_REPAIRABLE: set[str] = {
     "description",
     "unit",
     "quantity",
@@ -45,7 +52,9 @@ LINE_ITEM_REPAIRABLE = {
     "vat_rate",
 }
 
-_LINE_ITEM_PATH_PATTERN = re.compile(r"^line_items\[(\d+)\]\.([a-z_]+)$")
+_LINE_ITEM_PATH_PATTERN: re.Pattern[str] = re.compile(
+    r"^line_items\[(\d+)\]\.([a-z_]+)$"
+)
 
 
 class RepairKernelError(ValueError):
@@ -59,6 +68,8 @@ class RepairKernelError(ValueError):
 
 @dataclass(frozen=True)
 class RepairDecision:
+    """Audit record for one accepted candidate-promotion command."""
+
     path: str
     old_value: object
     new_value: object
@@ -68,6 +79,8 @@ class RepairDecision:
 
 @dataclass(frozen=True)
 class RepairCommand:
+    """Agent-selected request to promote one existing evidence candidate."""
+
     path: str
     candidate_index: int
     reason: str
@@ -75,6 +88,8 @@ class RepairCommand:
 
 @dataclass(frozen=True)
 class RepairResult:
+    """Shell copy produced by repair plus its decision log and validation."""
+
     shell: DomesticVatInvoiceShell
     decisions: tuple[RepairDecision, ...]
     validation: ShellValidationResult
@@ -82,6 +97,8 @@ class RepairResult:
 
 @dataclass(frozen=True)
 class RepairSession:
+    """Immutable repair session state built from one extraction context."""
+
     context: RepairContext
     shell: DomesticVatInvoiceShell
     decisions: tuple[RepairDecision, ...]
@@ -89,6 +106,8 @@ class RepairSession:
 
     @classmethod
     def from_context(cls, context: RepairContext) -> "RepairSession":
+        """Start repair from a deep copy of the original extracted shell."""
+
         return cls(
             context=context,
             shell=copy.deepcopy(context.shell),
@@ -101,6 +120,8 @@ class RepairSession:
         shell: DomesticVatInvoiceShell,
         path: str,
     ) -> object:
+        """Read a supported repair path from ``shell``."""
+
         if path in TOP_LEVEL_REPAIRABLE:
             return getattr(shell, path)
 
@@ -125,6 +146,8 @@ class RepairSession:
         path: str,
         new_value: object,
     ) -> None:
+        """Write ``new_value`` into a supported repair path on ``shell``."""
+
         if path in TOP_LEVEL_REPAIRABLE:
             setattr(shell, path, new_value)
             return
@@ -204,6 +227,12 @@ class RepairSession:
         return selected_candidate
 
     def promote_candidate(self, command: RepairCommand) -> RepairResult:
+        """Apply one validated candidate promotion to a copied shell.
+
+        Validation failure after promotion is returned in ``RepairResult``;
+        only unsafe commands raise ``RepairKernelError`` before mutation.
+        """
+
         selected_candidate = self.validate_command(command)
 
         new_value = selected_candidate.value

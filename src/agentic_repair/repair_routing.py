@@ -7,6 +7,7 @@ from enum import Enum
 
 from src.input_processing.extraction_comparison import RepairContext
 from src.input_processing.extraction_diagnostics import FieldStatus
+from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
 from src.invoice_gen.domestic_vat_shell_validation import (
     ShellValidationError,
 )
@@ -22,7 +23,7 @@ class RepairRouteStatus(Enum):
 
 @dataclass(frozen=True, kw_only=True)
 class RepairableField:
-    """Problem path that can be offered to the agent for candidate choice."""
+    """Problem path that has evidence candidates an agent may choose from."""
 
     path: str
     current_value: object
@@ -33,7 +34,7 @@ class RepairableField:
 
 @dataclass(frozen=True, kw_only=True)
 class BlockingField:
-    """Problem path that requires escalation because no safe candidate exists."""
+    """Problem path that cannot be repaired with evidence-backed candidates."""
 
     path: str
     reason: str
@@ -43,7 +44,7 @@ class BlockingField:
 
 @dataclass(frozen=True, kw_only=True)
 class RepairRoute:
-    """Skip/agent/manual-review route with field-level details."""
+    """Deterministic repair route plus field-level routing details."""
 
     status: RepairRouteStatus
     repairable_fields: tuple[RepairableField, ...]
@@ -51,7 +52,12 @@ class RepairRoute:
 
 
 def route_repair_context(context: RepairContext) -> RepairRoute:
-    """Decide whether repair should skip, launch an agent, or require review."""
+    """Inspect extraction state and choose skip, agent, or manual review.
+
+    Problem paths come from shell validation errors plus missing/ambiguous
+    extraction diagnostics. A path is agent-repairable only when it has
+    non-summary evidence with at least one candidate value.
+    """
 
     errors_by_path = _validation_errors_by_path(context)
     problem_paths = _problem_paths(context, errors_by_path)
@@ -133,7 +139,13 @@ def route_repair_context(context: RepairContext) -> RepairRoute:
     )
 
 
-def decide_repair_direction(context):
+def decide_repair_direction(context: RepairContext) -> DomesticVatInvoiceShell:
+    """Temporary route consumer used before agent/manual flows exist.
+
+    No-op routes return the extracted shell. Agent and manual-review branches
+    raise until the orchestration layer is implemented.
+    """
+
     repair_route_result = route_repair_context(context)
     route_status = repair_route_result.status
 
@@ -141,10 +153,19 @@ def decide_repair_direction(context):
         return context.shell
 
     if route_status is RepairRouteStatus.AGENT_REPAIR_AVAILABLE:
+        # Run agentic workflow, pass to the agent the fields that
+        # are repairable, all of the metadata about those fields
+        # and get back a repaired field, if the field is successfully repaired
+        # with validations passed => overwrite it, if not, escalate for human review
+        # (agent should have retries to try and repair a field a few times
+        # and not just give up after the first try).
         raise NotImplementedError("Agent escalation not implemented yet")
 
     if route_status is RepairRouteStatus.MANUAL_REVIEW_REQUIRED:
+        # Escalate these fields for a review to a human.
         raise NotImplementedError("Human escalation not implemented yet")
+
+    raise NotImplementedError(f"Unsupported repair route: {route_status}")
 
 
 def _validation_errors_by_path(
@@ -164,7 +185,7 @@ def _problem_paths(
 ) -> list[str]:
     """Return sorted paths that deterministically require repair attention."""
 
-    paths = set(errors_by_path)
+    paths: set[str] = set(errors_by_path)
     paths.update(context.diagnostics.missing_paths)
     paths.update(context.diagnostics.ambiguous_paths)
     return sorted(paths)
