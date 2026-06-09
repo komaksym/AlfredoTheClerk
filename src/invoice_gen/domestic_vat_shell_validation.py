@@ -93,13 +93,13 @@ def validate_header_only_shell(
     return ShellValidationResult(errors=errors)
 
 
-def validate_header_and_line_items_shell(
+def validate_pdf_extracted_shell(
     shell: DomesticVatInvoiceShell,
 ) -> ShellValidationResult:
-    """Validate header, parties, and line items for M4 extraction.
+    """Validate the shell fields populated by current PDF extraction.
 
-    Includes rendered/scored invoice fields such as issue_city and
-    payment_form. Skips only adnotations because they are fixed XML
+    Includes invoice header fields, seller/buyer party fields, cross-party
+    rules, and line items. Skips only adnotations because they are fixed XML
     defaults, not PDF-extracted business values.
     """
 
@@ -112,6 +112,14 @@ def validate_header_and_line_items_shell(
     _validate_line_items(shell.line_items, errors)
 
     return ShellValidationResult(errors=errors)
+
+
+def validate_header_and_line_items_shell(
+    shell: DomesticVatInvoiceShell,
+) -> ShellValidationResult:
+    """Compatibility wrapper for the old PDF extraction validator name."""
+
+    return validate_pdf_extracted_shell(shell)
 
 
 # --- Shell-section validators --------------------------------------------

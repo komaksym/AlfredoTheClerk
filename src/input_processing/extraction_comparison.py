@@ -21,8 +21,8 @@ from src.invoice_gen.domestic_vat_shell_summary import (
 )
 from src.invoice_gen.domestic_vat_shell_validation import (
     ShellValidationResult,
-    validate_header_and_line_items_shell,
     validate_header_only_shell,
+    validate_pdf_extracted_shell,
 )
 from src.invoice_gen.template_visibility import TemplateVisibilityManifest
 
@@ -178,7 +178,7 @@ def run_full_extraction(
     """Run production extraction without benchmark truth comparison."""
 
     shell, evidence = populate_shell(parsed_document, anchors=anchors)
-    validation = validate_header_and_line_items_shell(shell)
+    validation = validate_pdf_extracted_shell(shell)
     diagnostics = build_extraction_diagnostics(evidence)
 
     # Summary totals live in evidence, so rebuild comparable summary objects here.
@@ -204,9 +204,7 @@ def compare_full_extraction(
     """Run the full extraction pipeline and compare shell + summary to truth."""
 
     shell, evidence = populate_shell(parsed_document, anchors=anchors)
-    validation = validate_header_and_line_items_shell(
-        shell
-    )  # Value-based validation
+    validation = validate_pdf_extracted_shell(shell)  # Value-based validation
     diagnostics = build_extraction_diagnostics(
         evidence
     )  # Mismatch type = missing ? unresolved? ambiguous? correct?

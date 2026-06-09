@@ -176,7 +176,7 @@ def test_run_full_extraction_returns_repair_context_with_combined_anchors(
         fake_populate,
     )
     monkeypatch.setattr(
-        "src.input_processing.extraction_comparison.validate_header_and_line_items_shell",
+        "src.input_processing.extraction_comparison.validate_pdf_extracted_shell",
         fake_validate,
     )
     monkeypatch.setattr(

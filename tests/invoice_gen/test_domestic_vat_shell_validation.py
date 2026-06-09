@@ -15,6 +15,7 @@ from src.invoice_gen.domestic_vat_shell_validation import (
     validate_domestic_vat_shell,
     validate_header_and_line_items_shell,
     validate_header_only_shell,
+    validate_pdf_extracted_shell,
 )
 from src.invoice_gen.domain_shell import (
     LineItemShell,
@@ -260,47 +261,41 @@ def test_validate_header_only_shell_still_checks_cross_party_nip() -> None:
     _assert_has_error(result, "buyer.nip", "invalid_relation")
 
 
-# --- validate_header_and_line_items_shell (M4 scoped validator) ---------
+# --- validate_pdf_extracted_shell (PDF extraction scoped validator) -----
 
 
-def test_validate_header_and_line_items_shell_accepts_seed_mapped_shell() -> (
-    None
-):
-    """The seed-42 mapped shell should pass the M4 scoped validator."""
+def test_validate_pdf_extracted_shell_accepts_seed_mapped_shell() -> None:
+    """The seed-42 mapped shell should pass the PDF extraction validator."""
 
     shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(seed=42))
 
-    result = validate_header_and_line_items_shell(shell)
+    result = validate_pdf_extracted_shell(shell)
 
     assert result.is_valid is True
     assert result.errors == []
 
 
-def test_validate_header_and_line_items_shell_rejects_missing_line_items() -> (
-    None
-):
-    """Empty line_items must still fail the M4 scoped validator."""
+def test_validate_pdf_extracted_shell_rejects_missing_line_items() -> None:
+    """Empty line_items must still fail the PDF extraction validator."""
 
-    shell = _make_valid_header_and_line_items_shell()
+    shell = _make_valid_pdf_extracted_shell()
     shell.line_items = []
 
-    result = validate_header_and_line_items_shell(shell)
+    result = validate_pdf_extracted_shell(shell)
 
     _assert_has_error(result, "line_items", "required")
 
 
-def test_validate_header_and_line_items_shell_rejects_bad_line_item_values() -> (
-    None
-):
+def test_validate_pdf_extracted_shell_rejects_bad_line_item_values() -> None:
     """Non-positive quantity/price and disallowed VAT rates must be rejected."""
 
-    shell = _make_valid_header_and_line_items_shell()
+    shell = _make_valid_pdf_extracted_shell()
     shell.line_items[0].quantity = Decimal("-1")
     shell.line_items[0].unit_price_net = Decimal("0")
     shell.line_items[0].discount = Decimal("5000")
     shell.line_items[0].vat_rate = Decimal("99")
 
-    result = validate_header_and_line_items_shell(shell)
+    result = validate_pdf_extracted_shell(shell)
 
     _assert_has_error(result, "line_items[0].quantity", "invalid_value")
     _assert_has_error(result, "line_items[0].unit_price_net", "invalid_value")
@@ -308,46 +303,56 @@ def test_validate_header_and_line_items_shell_rejects_bad_line_item_values() -> 
     _assert_has_error(result, "line_items[0].vat_rate", "unsupported_value")
 
 
-def test_validate_header_and_line_items_shell_requires_issue_city() -> None:
-    """Missing issue_city must fail the M4 scoped validator."""
+def test_validate_pdf_extracted_shell_requires_issue_city() -> None:
+    """Missing issue_city must fail the PDF extraction validator."""
 
-    shell = _make_valid_header_and_line_items_shell()
+    shell = _make_valid_pdf_extracted_shell()
     shell.issue_city = None
 
-    result = validate_header_and_line_items_shell(shell)
+    result = validate_pdf_extracted_shell(shell)
 
     _assert_has_error(result, "issue_city", "required")
 
 
-def test_validate_header_and_line_items_shell_rejects_bad_payment_form() -> (
-    None
-):
-    """Unsupported payment_form values must fail the M4 scoped validator."""
+def test_validate_pdf_extracted_shell_rejects_bad_payment_form() -> None:
+    """Unsupported payment_form values must fail the PDF extraction validator."""
 
-    shell = _make_valid_header_and_line_items_shell()
+    shell = _make_valid_pdf_extracted_shell()
     shell.payment_form = 999
 
-    result = validate_header_and_line_items_shell(shell)
+    result = validate_pdf_extracted_shell(shell)
 
     _assert_has_error(result, "payment_form", "unsupported_value")
 
 
-def test_validate_header_and_line_items_shell_skips_adnotations() -> None:
-    """Adnotations must not fail the M4 scoped validator.
+def test_validate_pdf_extracted_shell_skips_adnotations() -> None:
+    """Adnotations must not fail the PDF extraction validator.
 
     They are fixed XML defaults, not values rendered into the PDF.
     """
 
-    shell = _make_valid_header_and_line_items_shell()
+    shell = _make_valid_pdf_extracted_shell()
     shell.adnotations = None
+
+    result = validate_pdf_extracted_shell(shell)
+
+    assert result.is_valid is True
+
+
+def test_validate_header_and_line_items_shell_keeps_compatibility_name() -> (
+    None
+):
+    """The old scoped-validator name should delegate to the new API."""
+
+    shell = _make_valid_pdf_extracted_shell()
 
     result = validate_header_and_line_items_shell(shell)
 
     assert result.is_valid is True
 
 
-def _make_valid_header_and_line_items_shell():
-    """Build a shell that should pass the M4 scoped validator."""
+def _make_valid_pdf_extracted_shell():
+    """Build a shell that should pass the PDF extraction validator."""
 
     shell = _make_valid_header_shell()
     shell.line_items = [
