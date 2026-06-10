@@ -58,11 +58,7 @@ def format_repair_result_for_tool(result: RepairResult) -> str:
     )
 
 
-@dataclass(frozen=True, kw_only=True)
-class AgentRepairResult:
-    repair_result: RepairResult | None
-    tool_called: bool
-    final_messages: tuple[AnyMessage, ...]
+# --- CUSTOM RUNNER & CUSTOM EXPECTED AGENT OUTPUT CONTRACT
 
 
 def runner(session, payload, model):
@@ -105,6 +101,16 @@ def runner(session, payload, model):
         ),
         final_messages=tuple(final_state["messages"]),
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class AgentRepairResult:
+    repair_result: RepairResult | None
+    tool_called: bool
+    final_messages: tuple[AnyMessage, ...]
+
+
+# --- GENERAL LANGGRAPH WORKFLOW
 
 
 def build_repair_tools(session: RepairSession):
