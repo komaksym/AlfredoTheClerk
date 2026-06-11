@@ -10,6 +10,7 @@ from src.agentic_repair.repair_kernel import (
     RepairCommand,
     RepairDecision,
     RepairKernelError,
+    RepairPlanCommand,
     RepairSession,
 )
 from src.input_processing.extraction_comparison import RepairContext
@@ -181,6 +182,70 @@ def test_validate_command_rejects_unsafe_commands(
 
     assert error.value.reason == reason
     assert error.value.path == command.path
+
+
+def test_validate_plan_rejects_empty_plan() -> None:
+    session = _session()
+
+    with pytest.raises(ValueError, match="repair_plan_empty"):
+        session.validate_plan(RepairPlanCommand(repair_commands=()))
+
+
+def test_validate_plan_rejects_duplicate_paths() -> None:
+    session = _session(
+        evidence={
+            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
+        }
+    )
+
+    with pytest.raises(RepairKernelError) as error:
+        session.validate_plan(
+            RepairPlanCommand(
+                repair_commands=(
+                    _command("invoice_number", candidate_index=0),
+                    _command("invoice_number", candidate_index=1),
+                )
+            )
+        )
+
+    assert error.value.reason == "duplicate_path"
+    assert error.value.path == "invoice_number"
+
+
+def test_validate_plan_rejects_invalid_command() -> None:
+    session = _session(evidence={})
+
+    with pytest.raises(RepairKernelError) as error:
+        session.validate_plan(
+            RepairPlanCommand(repair_commands=(_command("seller.nip"),))
+        )
+
+    assert error.value.reason == "missing_evidence"
+    assert error.value.path == "seller.nip"
+
+
+def test_validate_plan_returns_selected_candidates_in_command_order() -> None:
+    session = _session(
+        evidence={
+            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
+            "seller.nip": _evidence_with_candidates("1111111111", "8637940261"),
+        }
+    )
+
+    candidates = session.validate_plan(
+        RepairPlanCommand(
+            repair_commands=(
+                _command("seller.nip", candidate_index=1),
+                _command("invoice_number", candidate_index=1),
+            )
+        )
+    )
+
+    assert isinstance(candidates, tuple)
+    assert [candidate.value for candidate in candidates] == [
+        "8637940261",
+        "FV/001",
+    ]
 
 
 def test_promote_candidate_returns_repaired_shell_without_mutating_session(

@@ -87,6 +87,13 @@ class RepairCommand:
 
 
 @dataclass(frozen=True)
+class RepairPlanCommand:
+    """Agent-selected batch of candidate promotions to apply together."""
+
+    repair_commands: tuple[RepairCommand, ...]
+
+
+@dataclass(frozen=True)
 class RepairResult:
     """Shell copy produced by repair plus its decision log and validation."""
 
@@ -225,6 +232,35 @@ class RepairSession:
             raise RepairKernelError(path=path, reason="candidate_value_missing")
 
         return selected_candidate
+
+    def validate_plan(
+        self,
+        plan: RepairPlanCommand,
+    ) -> tuple[Candidate, ...]:
+        """Validate a batch plan and return selected candidates in plan order.
+
+        Plan validation rejects malformed batches before mutation. Individual
+        command safety still flows through ``validate_command`` so path support,
+        evidence, candidate bounds, and candidate values keep one contract.
+        """
+
+        if not plan.repair_commands:
+            raise ValueError("repair_plan_empty")
+
+        seen_paths: set[str] = set()
+        selected_candidates: list[Candidate] = []
+
+        for command in plan.repair_commands:
+            if command.path in seen_paths:
+                raise RepairKernelError(
+                    path=command.path,
+                    reason="duplicate_path",
+                )
+
+            seen_paths.add(command.path)
+            selected_candidates.append(self.validate_command(command))
+
+        return tuple(selected_candidates)
 
     def promote_candidate(self, command: RepairCommand) -> RepairResult:
         """Apply one validated candidate promotion to a copied shell.
