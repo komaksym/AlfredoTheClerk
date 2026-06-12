@@ -296,34 +296,3 @@ class RepairSession:
             decisions=(*self.decisions, *repair_decisions),
             validation=validation_result,
         )
-
-    def promote_candidate(self, command: RepairCommand) -> RepairResult:
-        """Apply one validated candidate promotion to a copied shell.
-
-        Validation failure after promotion is returned in ``RepairResult``;
-        only unsafe commands raise ``RepairKernelError`` before mutation.
-        """
-
-        selected_candidate = self.validate_command(command)
-
-        new_value = selected_candidate.value
-        old_value = self.get_shell_value(self.shell, command.path)
-
-        repaired_shell = copy.deepcopy(self.shell)
-        self.set_shell_value(repaired_shell, command.path, new_value)
-
-        repair_decision = RepairDecision(
-            path=command.path,
-            old_value=old_value,
-            new_value=new_value,
-            candidate_index=command.candidate_index,
-            reason=command.reason,
-        )
-
-        validation_result = validate_pdf_extracted_shell(repaired_shell)
-        result = RepairResult(
-            shell=repaired_shell,
-            decisions=(*self.decisions, repair_decision),
-            validation=validation_result,
-        )
-        return result
