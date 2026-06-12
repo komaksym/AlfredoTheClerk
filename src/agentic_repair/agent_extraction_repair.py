@@ -1,3 +1,5 @@
+"""LangGraph agent wrapper for evidence-backed invoice repair."""
+
 import json
 import operator
 from typing import Literal
@@ -44,10 +46,14 @@ MAX_TOOL_CALLS = 1
 
 
 def format_agent_repair_payload(payload: AgentRepairPayload) -> str:
+    """Serialize the compact repair payload into model-facing JSON."""
+
     return json.dumps(asdict(payload), default=str)
 
 
 def format_repair_result_for_tool(result: RepairResult) -> str:
+    """Serialize batch repair decisions and validation for a tool response."""
+
     if not result.decisions:
         raise ValueError("Cannot format repair tool result without decisions")
 
@@ -70,6 +76,8 @@ def format_repair_result_for_tool(result: RepairResult) -> str:
 
 
 def runner(session, payload, model):
+    """Run the repair agent once and return the latest deterministic result."""
+
     tools, get_latest_result = build_repair_tools(session)
 
     tools_by_name = {tool.name: tool for tool in tools}
@@ -113,6 +121,8 @@ def runner(session, payload, model):
 
 @dataclass(frozen=True, kw_only=True)
 class AgentRepairResult:
+    """Agent run outcome plus the deterministic repair result, if any."""
+
     repair_result: RepairResult | None
     tool_called: bool
     final_messages: tuple[AnyMessage, ...]
@@ -122,6 +132,8 @@ class AgentRepairResult:
 
 
 class RepairCommandInput(BaseModel):
+    """Model-facing schema for one candidate-promotion choice."""
+
     path: str = Field(description="Exact field path from the repair payload.")
     candidate_index: int = Field(
         ge=0,
@@ -134,6 +146,8 @@ class RepairCommandInput(BaseModel):
 
 
 def build_repair_tools(session: RepairSession):
+    """Build repair tools bound to one immutable repair session."""
+
     latest_repair_result = None
 
     @tool
@@ -168,20 +182,26 @@ def build_repair_tools(session: RepairSession):
         return latest_repair_result
 
     def get_latest_result():
+        """Return the last repair result produced by the tool call."""
+
         return latest_repair_result
 
     return [apply_repair_plan], get_latest_result
 
 
 class MessagesState(TypedDict):
+    """LangGraph state carried between model and tool nodes."""
+
     messages: Annotated[list[AnyMessage], operator.add]
     payload: AgentRepairPayload
     llm_calls: int
 
 
 def make_llm_call_node(model_with_tools):
+    """Create the graph node that asks the model for the next action."""
+
     def llm_call(state: dict):
-        """LLM decides whether to call a tool or not"""
+        """Invoke the model with the repair prompt, payload, and history."""
 
         return {
             "messages": [
@@ -204,7 +224,7 @@ def make_llm_call_node(model_with_tools):
 
 
 def should_continue(state: MessagesState) -> Literal["tool_node", END]:
-    """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
+    """Route to tools only while call budgets allow pending tool calls."""
 
     messages = state["messages"]
     last_message = messages[-1]
@@ -225,8 +245,10 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:
 
 
 def make_llm_tool_node(tools_by_name):
+    """Create the graph node that executes whitelisted tool calls."""
+
     def tool_node(state: dict):
-        """Performs the tool call"""
+        """Run requested tools and return their observations as messages."""
 
         last_message = state["messages"][-1]
 
