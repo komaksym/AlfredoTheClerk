@@ -12,20 +12,28 @@ from langchain.messages import (
 from langchain.tools import tool
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import Annotated, TypedDict
+from pydantic import BaseModel, Field
 
 from src.agentic_repair.repair_kernel import (
     RepairCommand,
     RepairResult,
     RepairSession,
+    RepairPlanCommand,
 )
 from src.agentic_repair.repair_payload import AgentRepairPayload
 
 
 SYSTEM_PROMPT = """
-        You are repairing extracted invoice fields.
-        You may only choose from listed candidates.
-        Call promote_candidate(path, candidate_index, reason).
-        Do not invent values.
+You repair extracted invoice fields by selecting from existing candidates.
+
+Call apply_repair_plan once when repairs are needed. Pass repair_commands as a
+JSON list. Each item must contain:
+- path: exact field path from the payload
+- candidate_index: zero-based index of an existing candidate for that path
+- reason: brief evidence-based explanation for the selected candidate
+
+Include every selected repair in that one list. Do not invent paths, candidate
+indexes, or values. If no evidence-backed repair is possible, do not call a tool.
 """
 
 MAX_LLM_CALLS = 2
@@ -113,28 +121,56 @@ class AgentRepairResult:
 # --- GENERAL LANGGRAPH WORKFLOW
 
 
+class RepairCommandInput(BaseModel):
+    path: str = Field(description="Exact field path from the repair payload.")
+    candidate_index: int = Field(
+        ge=0,
+        description="Zero-based index of an existing candidate for this path.",
+    )
+    reason: str = Field(
+        min_length=1,
+        description="Brief evidence-based explanation for the selected candidate.",
+    )
+
+
 def build_repair_tools(session: RepairSession):
     latest_repair_result = None
 
     @tool
-    def promote_candidate(path, candidate_index, reason) -> RepairResult:
-        """
-        Repair the fields in the payload by looking at the candidates
-        and outputting a decision based on which candidate's value you
-        think is the actual correct answer.
+    def apply_repair_plan(
+        repair_commands: list[RepairCommandInput],
+    ) -> RepairResult:
+        """Apply selected field repairs in one batch.
+
+        Args:
+            repair_commands: JSON list of repair choices. Each item must include
+                path, candidate_index, and reason.
+
+        Call once with every selected repair. Use only exact payload paths and
+        existing candidate indexes. Do not invent values; the kernel promotes
+        only selected candidate values.
         """
         nonlocal latest_repair_result
-        latest_repair_result = session.promote_candidate(
-            RepairCommand(
-                path=path, candidate_index=candidate_index, reason=reason
+
+        parsed_repair_commands = []
+        for command in repair_commands:
+            parsed_repair_commands.append(
+                RepairCommand(
+                    path=command.path,
+                    candidate_index=command.candidate_index,
+                    reason=command.reason,
+                )
             )
+
+        latest_repair_result = session.apply_repair_plan(
+            RepairPlanCommand(repair_commands=tuple(parsed_repair_commands))
         )
         return latest_repair_result
 
     def get_latest_result():
         return latest_repair_result
 
-    return [promote_candidate], get_latest_result
+    return [apply_repair_plan], get_latest_result
 
 
 class MessagesState(TypedDict):
