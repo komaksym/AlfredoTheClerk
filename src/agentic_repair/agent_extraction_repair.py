@@ -51,7 +51,7 @@ def format_repair_result_for_tool(result: RepairResult) -> str:
     if not result.decisions:
         raise ValueError("Cannot format repair tool result without decisions")
 
-    latest_decision = asdict(result.decisions[-1])
+    decisions = [asdict(decision) for decision in result.decisions]
     validation_errors = [asdict(error) for error in result.validation.errors]
     validation_is_valid = result.validation.is_valid
 
@@ -61,7 +61,7 @@ def format_repair_result_for_tool(result: RepairResult) -> str:
     }
 
     return json.dumps(
-        {"latest_decision": latest_decision, "validation": validation_data},
+        {"decisions": decisions, "validation": validation_data},
         default=str,
     )
 
