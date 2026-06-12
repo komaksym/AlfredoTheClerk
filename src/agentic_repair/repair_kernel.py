@@ -262,6 +262,41 @@ class RepairSession:
 
         return tuple(selected_candidates)
 
+    def apply_repair_plan(self, plan: RepairPlanCommand) -> RepairResult:
+        """Apply a validated batch plan to one copied shell.
+
+        All commands are validated before any mutation. The repaired shell is
+        validated once after every selected candidate has been promoted.
+        """
+
+        selected_candidates = self.validate_plan(plan)
+        repaired_shell = copy.deepcopy(self.shell)
+
+        repair_decisions: list[RepairDecision] = []
+        for command, candidate in zip(
+            plan.repair_commands, selected_candidates
+        ):
+            new_value = candidate.value
+            old_value = self.get_shell_value(repaired_shell, command.path)
+
+            self.set_shell_value(repaired_shell, command.path, new_value)
+            repair_decisions.append(
+                RepairDecision(
+                    path=command.path,
+                    old_value=old_value,
+                    new_value=new_value,
+                    candidate_index=command.candidate_index,
+                    reason=command.reason,
+                )
+            )
+
+        validation_result = validate_pdf_extracted_shell(repaired_shell)
+        return RepairResult(
+            shell=repaired_shell,
+            decisions=(*self.decisions, *repair_decisions),
+            validation=validation_result,
+        )
+
     def promote_candidate(self, command: RepairCommand) -> RepairResult:
         """Apply one validated candidate promotion to a copied shell.
 
