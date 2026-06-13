@@ -1,8 +1,10 @@
 """LangGraph agent wrapper for evidence-backed invoice repair."""
 
+from __future__ import annotations
+
 import json
 import operator
-from typing import Literal
+from typing import Any, Callable, Literal
 from dataclasses import dataclass, asdict
 
 from langchain.messages import (
@@ -75,7 +77,11 @@ def format_repair_result_for_tool(result: RepairResult) -> str:
 # --- CUSTOM RUNNER & CUSTOM EXPECTED AGENT OUTPUT CONTRACT
 
 
-def runner(session, payload, model):
+def runner(
+    session: RepairSession,
+    payload: AgentRepairPayload,
+    model: Any,
+) -> AgentRepairResult:
     """Run the repair agent once and return the latest deterministic result."""
 
     tools, get_latest_result = build_repair_tools(session)
@@ -145,10 +151,12 @@ class RepairCommandInput(BaseModel):
     )
 
 
-def build_repair_tools(session: RepairSession):
+def build_repair_tools(
+    session: RepairSession,
+) -> tuple[list[Any], Callable[[], RepairResult | None]]:
     """Build repair tools bound to one immutable repair session."""
 
-    latest_repair_result = None
+    latest_repair_result: RepairResult | None = None
 
     @tool
     def apply_repair_plan(
@@ -166,7 +174,7 @@ def build_repair_tools(session: RepairSession):
         """
         nonlocal latest_repair_result
 
-        parsed_repair_commands = []
+        parsed_repair_commands: list[RepairCommand] = []
         for command in repair_commands:
             parsed_repair_commands.append(
                 RepairCommand(
@@ -181,7 +189,7 @@ def build_repair_tools(session: RepairSession):
         )
         return latest_repair_result
 
-    def get_latest_result():
+    def get_latest_result() -> RepairResult | None:
         """Return the last repair result produced by the tool call."""
 
         return latest_repair_result
@@ -197,10 +205,12 @@ class MessagesState(TypedDict):
     llm_calls: int
 
 
-def make_llm_call_node(model_with_tools):
+def make_llm_call_node(
+    model_with_tools: Any,
+) -> Callable[[MessagesState], dict[str, object]]:
     """Create the graph node that asks the model for the next action."""
 
-    def llm_call(state: dict):
+    def llm_call(state: MessagesState) -> dict[str, object]:
         """Invoke the model with the repair prompt, payload, and history."""
 
         return {
@@ -244,10 +254,12 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:
     return END
 
 
-def make_llm_tool_node(tools_by_name):
+def make_llm_tool_node(
+    tools_by_name: dict[str, Any],
+) -> Callable[[MessagesState], dict[str, list[ToolMessage]]]:
     """Create the graph node that executes whitelisted tool calls."""
 
-    def tool_node(state: dict):
+    def tool_node(state: MessagesState) -> dict[str, list[ToolMessage]]:
         """Run requested tools and return their observations as messages."""
 
         last_message = state["messages"][-1]
@@ -261,7 +273,7 @@ def make_llm_tool_node(tools_by_name):
         if requested > remaining:
             raise ValueError("Tool call budget exceeded")
 
-        result = []
+        result: list[ToolMessage] = []
         for tool_call in last_message.tool_calls:
             if tool_call["name"] not in tools_by_name:
                 raise ValueError("The tool is not in the tool whitelist")
