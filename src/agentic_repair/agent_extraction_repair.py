@@ -233,7 +233,7 @@ def make_llm_call_node(
     return llm_call
 
 
-def should_continue(state: MessagesState) -> Literal["tool_node", END]:
+def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyright: ignore[reportInvalidTypeForm]
     """Route to tools only while call budgets allow pending tool calls."""
 
     messages = state["messages"]
