@@ -146,13 +146,13 @@ def decide_repair_direction(context: RepairContext) -> DomesticVatInvoiceShell:
     raise until the orchestration layer is implemented.
     """
 
-    repair_route_result = route_repair_context(context)
-    route_status = repair_route_result.status
+    route = route_repair_context(context)
+    status = route.status
 
-    if route_status is RepairRouteStatus.NO_REPAIR_NEEDED:
+    if status is RepairRouteStatus.NO_REPAIR_NEEDED:
         return context.shell
 
-    if route_status is RepairRouteStatus.AGENT_REPAIR_AVAILABLE:
+    if status is RepairRouteStatus.AGENT_REPAIR_AVAILABLE:
         # Run agentic workflow, pass to the agent the fields that
         # are repairable, all of the metadata about those fields
         # and get back a repaired field, if the field is successfully repaired
@@ -161,11 +161,11 @@ def decide_repair_direction(context: RepairContext) -> DomesticVatInvoiceShell:
         # and not just give up after the first try).
         raise NotImplementedError("Agent escalation not implemented yet")
 
-    if route_status is RepairRouteStatus.MANUAL_REVIEW_REQUIRED:
+    if status is RepairRouteStatus.MANUAL_REVIEW_REQUIRED:
         # Escalate these fields for a review to a human.
         raise NotImplementedError("Human escalation not implemented yet")
 
-    raise NotImplementedError(f"Unsupported repair route: {route_status}")
+    raise NotImplementedError(f"Unsupported repair route: {status}")
 
 
 def _validation_errors_by_path(

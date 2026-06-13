@@ -41,16 +41,16 @@ def build_agent_repair_payload(
 ) -> AgentRepairPayload:
     """Build compact agent-facing fields from deterministic repair routing."""
 
-    agent_repair_fields: list[AgentRepairField] = []
+    fields: list[AgentRepairField] = []
 
     for field in route.repairable_fields:
-        agent_repair_candidates: list[AgentRepairCandidate] = []
+        candidates: list[AgentRepairCandidate] = []
 
         evidence = context.evidence[field.path]
-        candidates = evidence.candidates or ()
+        evidence_candidates = evidence.candidates or ()
 
-        for idx, candidate in enumerate(candidates):
-            agent_repair_candidates.append(
+        for idx, candidate in enumerate(evidence_candidates):
+            candidates.append(
                 AgentRepairCandidate(
                     index=idx,
                     value=candidate.value,
@@ -62,14 +62,14 @@ def build_agent_repair_payload(
                 )
             )
 
-        agent_repair_fields.append(
+        fields.append(
             AgentRepairField(
                 path=field.path,
                 current_value=field.current_value,
                 diagnostic_status=field.diagnostic_status,
                 validation_errors=field.validation_errors,
-                candidates=tuple(agent_repair_candidates),
+                candidates=tuple(candidates),
             )
         )
 
-    return AgentRepairPayload(payload=tuple(agent_repair_fields))
+    return AgentRepairPayload(payload=tuple(fields))

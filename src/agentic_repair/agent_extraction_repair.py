@@ -156,7 +156,7 @@ def build_repair_tools(
 ) -> tuple[list[Any], Callable[[], RepairResult | None]]:
     """Build repair tools bound to one immutable repair session."""
 
-    latest_repair_result: RepairResult | None = None
+    latest_result: RepairResult | None = None
 
     @tool
     def apply_repair_plan(
@@ -172,11 +172,11 @@ def build_repair_tools(
         existing candidate indexes. Do not invent values; the kernel promotes
         only selected candidate values.
         """
-        nonlocal latest_repair_result
+        nonlocal latest_result
 
-        parsed_repair_commands: list[RepairCommand] = []
+        commands: list[RepairCommand] = []
         for command in repair_commands:
-            parsed_repair_commands.append(
+            commands.append(
                 RepairCommand(
                     path=command.path,
                     candidate_index=command.candidate_index,
@@ -184,15 +184,15 @@ def build_repair_tools(
                 )
             )
 
-        latest_repair_result = session.apply_repair_plan(
-            RepairPlanCommand(repair_commands=tuple(parsed_repair_commands))
+        latest_result = session.apply_repair_plan(
+            RepairPlanCommand(repair_commands=tuple(commands))
         )
-        return latest_repair_result
+        return latest_result
 
     def get_latest_result() -> RepairResult | None:
         """Return the last repair result produced by the tool call."""
 
-        return latest_repair_result
+        return latest_result
 
     return [apply_repair_plan], get_latest_result
 

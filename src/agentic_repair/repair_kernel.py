@@ -272,7 +272,7 @@ class RepairSession:
         selected_candidates = self.validate_plan(plan)
         repaired_shell = copy.deepcopy(self.shell)
 
-        repair_decisions: list[RepairDecision] = []
+        decisions: list[RepairDecision] = []
         for command, candidate in zip(
             plan.repair_commands, selected_candidates
         ):
@@ -280,7 +280,7 @@ class RepairSession:
             old_value = self.get_shell_value(repaired_shell, command.path)
 
             self.set_shell_value(repaired_shell, command.path, new_value)
-            repair_decisions.append(
+            decisions.append(
                 RepairDecision(
                     path=command.path,
                     old_value=old_value,
@@ -293,6 +293,6 @@ class RepairSession:
         validation_result = validate_pdf_extracted_shell(repaired_shell)
         return RepairResult(
             shell=repaired_shell,
-            decisions=(*self.decisions, *repair_decisions),
+            decisions=(*self.decisions, *decisions),
             validation=validation_result,
         )
