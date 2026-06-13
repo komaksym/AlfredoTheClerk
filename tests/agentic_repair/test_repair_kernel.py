@@ -11,71 +11,18 @@ from src.agentic_repair.repair_kernel import (
     RepairDecision,
     RepairKernelError,
     RepairPlanCommand,
-    RepairSession,
 )
-from src.input_processing.extraction_comparison import RepairContext
-from src.input_processing.extraction_diagnostics import ExtractionDiagnostics
+from tests.agentic_repair.factories import (
+    make_evidence_with_candidates,
+    make_repair_session,
+)
 from src.input_processing.invoice_text_field_extraction import (
-    Candidate,
     FieldEvidence,
-)
-from src.invoice_gen.domain_shell import LineItemShell, build_domestic_vat_shell
-from src.invoice_gen.domestic_vat_shell_summary import (
-    DomesticVatInvoiceSummary,
 )
 from src.invoice_gen.domestic_vat_shell_validation import (
     ShellValidationError,
     ShellValidationResult,
 )
-
-
-def _summary() -> DomesticVatInvoiceSummary:
-    return DomesticVatInvoiceSummary(
-        line_computations=[],
-        bucket_summaries={},
-        invoice_net_total=Decimal("0.00"),
-        invoice_vat_total=Decimal("0.00"),
-        invoice_gross_total=Decimal("0.00"),
-    )
-
-
-def _candidate(value: object) -> Candidate:
-    return Candidate(
-        value=value,
-        source="fuzzy",
-        confidence=0.9,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        raw_text=str(value) if value is not None else None,
-    )
-
-
-def _evidence_with_candidates(*values: object) -> FieldEvidence:
-    return FieldEvidence(
-        value=values[0] if values else None,
-        source="fuzzy",
-        confidence=0.9,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        candidates=tuple(_candidate(value) for value in values),
-    )
-
-
-def _session(
-    *,
-    evidence: dict[str, FieldEvidence] | None = None,
-    line_item_count: int = 1,
-) -> RepairSession:
-    shell = build_domestic_vat_shell()
-    shell.line_items = [LineItemShell() for _ in range(line_item_count)]
-
-    context = RepairContext(
-        shell=shell,
-        extracted_summary=_summary(),
-        evidence=evidence or {},
-        validation=ShellValidationResult(errors=[]),
-        diagnostics=ExtractionDiagnostics(fields={}),
-    )
-
-    return RepairSession.from_context(context)
 
 
 def _command(
@@ -109,13 +56,13 @@ def test_validate_path_support_recognizes_supported_shell_paths(
     path: str,
     expected: bool,
 ) -> None:
-    assert _session().validate_path_support(path) is expected
+    assert make_repair_session().validate_path_support(path) is expected
 
 
 def test_validate_command_returns_selected_candidate() -> None:
-    session = _session(
+    session = make_repair_session(
         evidence={
-            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
         }
     )
 
@@ -132,12 +79,16 @@ def test_validate_command_returns_selected_candidate() -> None:
         (_command("seller.nip"), {}, "missing_evidence"),
         (
             _command("summary.invoice_net_total"),
-            {"summary.invoice_net_total": _evidence_with_candidates("10.00")},
+            {
+                "summary.invoice_net_total": make_evidence_with_candidates(
+                    "10.00"
+                )
+            },
             "unsupported_path",
         ),
         (
             _command("buyer.bank_account"),
-            {"buyer.bank_account": _evidence_with_candidates("PL...")},
+            {"buyer.bank_account": make_evidence_with_candidates("PL...")},
             "unsupported_path",
         ),
         (
@@ -155,17 +106,17 @@ def test_validate_command_returns_selected_candidate() -> None:
         ),
         (
             _command("seller.nip", candidate_index=-1),
-            {"seller.nip": _evidence_with_candidates("1234567890")},
+            {"seller.nip": make_evidence_with_candidates("1234567890")},
             "candidate_index_out_of_range",
         ),
         (
             _command("seller.nip", candidate_index=1),
-            {"seller.nip": _evidence_with_candidates("1234567890")},
+            {"seller.nip": make_evidence_with_candidates("1234567890")},
             "candidate_index_out_of_range",
         ),
         (
             _command("seller.nip"),
-            {"seller.nip": _evidence_with_candidates(None)},
+            {"seller.nip": make_evidence_with_candidates(None)},
             "candidate_value_missing",
         ),
     ],
@@ -175,7 +126,7 @@ def test_validate_command_rejects_unsafe_commands(
     evidence: dict[str, FieldEvidence],
     reason: str,
 ) -> None:
-    session = _session(evidence=evidence)
+    session = make_repair_session(evidence=evidence)
 
     with pytest.raises(RepairKernelError) as error:
         session.validate_command(command)
@@ -185,16 +136,16 @@ def test_validate_command_rejects_unsafe_commands(
 
 
 def test_validate_plan_rejects_empty_plan() -> None:
-    session = _session()
+    session = make_repair_session()
 
     with pytest.raises(ValueError, match="repair_plan_empty"):
         session.validate_plan(RepairPlanCommand(repair_commands=()))
 
 
 def test_validate_plan_rejects_duplicate_paths() -> None:
-    session = _session(
+    session = make_repair_session(
         evidence={
-            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
         }
     )
 
@@ -213,7 +164,7 @@ def test_validate_plan_rejects_duplicate_paths() -> None:
 
 
 def test_validate_plan_rejects_invalid_command() -> None:
-    session = _session(evidence={})
+    session = make_repair_session(evidence={})
 
     with pytest.raises(RepairKernelError) as error:
         session.validate_plan(
@@ -225,10 +176,12 @@ def test_validate_plan_rejects_invalid_command() -> None:
 
 
 def test_validate_plan_returns_selected_candidates_in_command_order() -> None:
-    session = _session(
+    session = make_repair_session(
         evidence={
-            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
-            "seller.nip": _evidence_with_candidates("1111111111", "8637940261"),
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
+            "seller.nip": make_evidence_with_candidates(
+                "1111111111", "8637940261"
+            ),
         }
     )
 
@@ -251,10 +204,12 @@ def test_validate_plan_returns_selected_candidates_in_command_order() -> None:
 def test_apply_repair_plan_returns_repaired_shell_without_mutating_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = _session(
+    session = make_repair_session(
         evidence={
-            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
-            "seller.nip": _evidence_with_candidates("1111111111", "8637940261"),
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
+            "seller.nip": make_evidence_with_candidates(
+                "1111111111", "8637940261"
+            ),
         }
     )
     session.shell.invoice_number = "BAD"
@@ -310,12 +265,12 @@ def test_apply_repair_plan_returns_repaired_shell_without_mutating_session(
 def test_apply_repair_plan_returns_failed_validation_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = _session(
+    session = make_repair_session(
         evidence={
-            "line_items[0].quantity": _evidence_with_candidates(
+            "line_items[0].quantity": make_evidence_with_candidates(
                 Decimal("1"), Decimal("-2")
             ),
-            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
         }
     )
     session.shell.line_items[0].quantity = Decimal("1")
@@ -354,7 +309,7 @@ def test_apply_repair_plan_returns_failed_validation_result(
 def test_apply_repair_plan_rejects_empty_plan_before_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = _session()
+    session = make_repair_session()
 
     def fail_if_called(shell):
         raise AssertionError("validation should not run for empty plans")
@@ -371,9 +326,9 @@ def test_apply_repair_plan_rejects_empty_plan_before_validation(
 def test_apply_repair_plan_rejects_unsafe_plan_before_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = _session(
+    session = make_repair_session(
         evidence={
-            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
         }
     )
     session.shell.invoice_number = "BAD"

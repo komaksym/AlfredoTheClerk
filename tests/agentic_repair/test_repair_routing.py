@@ -8,77 +8,17 @@ from src.agentic_repair.repair_routing import (
     RepairRouteStatus,
     route_repair_context,
 )
-from src.input_processing.extraction_comparison import RepairContext
+from tests.agentic_repair.factories import (
+    make_evidence_with_candidates,
+    make_repair_context,
+    make_validation_error,
+)
 from src.input_processing.extraction_diagnostics import (
     ExtractionDiagnostics,
     FieldDiagnostic,
     FieldStatus,
 )
-from src.input_processing.invoice_text_field_extraction import (
-    Candidate,
-    FieldEvidence,
-)
-from src.invoice_gen.domain_shell import build_domestic_vat_shell
-from src.invoice_gen.domestic_vat_shell_summary import (
-    DomesticVatInvoiceSummary,
-)
-from src.invoice_gen.domestic_vat_shell_validation import (
-    ShellValidationError,
-    ShellValidationResult,
-)
-
-
-def _summary() -> DomesticVatInvoiceSummary:
-    return DomesticVatInvoiceSummary(
-        line_computations=[],
-        bucket_summaries={},
-        invoice_net_total=Decimal("0.00"),
-        invoice_vat_total=Decimal("0.00"),
-        invoice_gross_total=Decimal("0.00"),
-    )
-
-
-def _context(
-    *,
-    evidence: dict[str, FieldEvidence],
-    validation_errors: list[ShellValidationError] | None = None,
-    diagnostics: ExtractionDiagnostics | None = None,
-) -> RepairContext:
-    return RepairContext(
-        shell=build_domestic_vat_shell(),
-        extracted_summary=_summary(),
-        evidence=evidence,
-        validation=ShellValidationResult(errors=validation_errors or []),
-        diagnostics=diagnostics or ExtractionDiagnostics(fields={}),
-    )
-
-
-def _candidate(value: object) -> Candidate:
-    return Candidate(
-        value=value,
-        source="fuzzy",
-        confidence=0.9,
-        bbox=(0.0, 10.0, 0.0, 10.0),
-        raw_text=str(value) if value is not None else None,
-    )
-
-
-def _evidence_with_candidates(*values: object) -> FieldEvidence:
-    return FieldEvidence(
-        value=values[0] if values else None,
-        source="fuzzy",
-        confidence=0.9,
-        bbox=(0.0, 10.0, 0.0, 10.0),
-        candidates=tuple(_candidate(value) for value in values),
-    )
-
-
-def _validation_error(path: str) -> ShellValidationError:
-    return ShellValidationError(
-        path=path,
-        code="required",
-        message=f"{path} is required",
-    )
+from src.input_processing.invoice_text_field_extraction import FieldEvidence
 
 
 def _diagnostic(path: str, status: FieldStatus) -> FieldDiagnostic:
@@ -92,9 +32,9 @@ def _diagnostic(path: str, status: FieldStatus) -> FieldDiagnostic:
 
 def test_route_skips_agent_when_no_problem_paths() -> None:
     result = route_repair_context(
-        _context(
+        make_repair_context(
             evidence={
-                "invoice_number": _evidence_with_candidates("FV/001"),
+                "invoice_number": make_evidence_with_candidates("FV/001"),
             }
         )
     )
@@ -106,11 +46,11 @@ def test_route_skips_agent_when_no_problem_paths() -> None:
 
 def test_route_launches_agent_for_validation_error_with_candidates() -> None:
     result = route_repair_context(
-        _context(
+        make_repair_context(
             evidence={
-                "invoice_number": _evidence_with_candidates(None, "FV/001"),
+                "invoice_number": make_evidence_with_candidates(None, "FV/001"),
             },
-            validation_errors=[_validation_error("invoice_number")],
+            validation_errors=[make_validation_error("invoice_number")],
         )
     )
 
@@ -126,9 +66,9 @@ def test_route_launches_agent_for_ambiguous_diagnostic_with_candidates() -> (
     None
 ):
     result = route_repair_context(
-        _context(
+        make_repair_context(
             evidence={
-                "seller.nip": _evidence_with_candidates(
+                "seller.nip": make_evidence_with_candidates(
                     "1234567890", "8637940261"
                 ),
             },
@@ -148,7 +88,7 @@ def test_route_launches_agent_for_ambiguous_diagnostic_with_candidates() -> (
 
 def test_route_requires_manual_review_for_problem_without_candidates() -> None:
     result = route_repair_context(
-        _context(
+        make_repair_context(
             evidence={
                 "buyer.nip": FieldEvidence(
                     value=None,
@@ -157,7 +97,7 @@ def test_route_requires_manual_review_for_problem_without_candidates() -> None:
                     bbox=None,
                 ),
             },
-            validation_errors=[_validation_error("buyer.nip")],
+            validation_errors=[make_validation_error("buyer.nip")],
         )
     )
 
@@ -171,11 +111,11 @@ def test_route_requires_manual_review_when_all_candidates_have_no_value() -> (
     None
 ):
     result = route_repair_context(
-        _context(
+        make_repair_context(
             evidence={
-                "seller.name": _evidence_with_candidates(None),
+                "seller.name": make_evidence_with_candidates(None),
             },
-            validation_errors=[_validation_error("seller.name")],
+            validation_errors=[make_validation_error("seller.name")],
         )
     )
 
@@ -185,9 +125,9 @@ def test_route_requires_manual_review_when_all_candidates_have_no_value() -> (
 
 def test_route_treats_summary_paths_as_blocking_not_repairable() -> None:
     result = route_repair_context(
-        _context(
+        make_repair_context(
             evidence={
-                "summary.invoice_gross_total": _evidence_with_candidates(
+                "summary.invoice_gross_total": make_evidence_with_candidates(
                     Decimal("123.00")
                 ),
             },
@@ -208,9 +148,9 @@ def test_route_treats_summary_paths_as_blocking_not_repairable() -> None:
 
 def test_route_ignores_normalized_diagnostics() -> None:
     result = route_repair_context(
-        _context(
+        make_repair_context(
             evidence={
-                "seller.nip": _evidence_with_candidates("8637940261"),
+                "seller.nip": make_evidence_with_candidates("8637940261"),
             },
             diagnostics=ExtractionDiagnostics(
                 fields={

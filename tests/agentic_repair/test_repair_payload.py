@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 from src.agentic_repair.repair_payload import (
     AgentRepairCandidate,
     AgentRepairField,
@@ -14,43 +12,15 @@ from src.agentic_repair.repair_routing import (
     RepairRoute,
     RepairRouteStatus,
 )
-from src.input_processing.extraction_comparison import RepairContext
-from src.input_processing.extraction_diagnostics import (
-    ExtractionDiagnostics,
-    FieldStatus,
+from tests.agentic_repair.factories import (
+    make_repair_context,
 )
+from src.input_processing.extraction_diagnostics import FieldStatus
 from src.input_processing.invoice_text_field_extraction import (
     Candidate,
     FieldEvidence,
 )
-from src.invoice_gen.domain_shell import build_domestic_vat_shell
-from src.invoice_gen.domestic_vat_shell_summary import (
-    DomesticVatInvoiceSummary,
-)
-from src.invoice_gen.domestic_vat_shell_validation import (
-    ShellValidationError,
-    ShellValidationResult,
-)
-
-
-def _summary() -> DomesticVatInvoiceSummary:
-    return DomesticVatInvoiceSummary(
-        line_computations=[],
-        bucket_summaries={},
-        invoice_net_total=Decimal("0.00"),
-        invoice_vat_total=Decimal("0.00"),
-        invoice_gross_total=Decimal("0.00"),
-    )
-
-
-def _context(evidence: dict[str, FieldEvidence]) -> RepairContext:
-    return RepairContext(
-        shell=build_domestic_vat_shell(),
-        extracted_summary=_summary(),
-        evidence=evidence,
-        validation=ShellValidationResult(errors=[]),
-        diagnostics=ExtractionDiagnostics(fields={}),
-    )
+from src.invoice_gen.domestic_vat_shell_validation import ShellValidationError
 
 
 def _route(
@@ -69,7 +39,7 @@ def _route(
 def test_build_agent_repair_payload_returns_empty_payload_without_fields() -> (
     None
 ):
-    result = build_agent_repair_payload(_context({}), _route())
+    result = build_agent_repair_payload(make_repair_context(), _route())
 
     assert result.payload == ()
 
@@ -89,8 +59,8 @@ def test_build_agent_repair_payload_maps_fields_and_candidate_metadata() -> (
         validation_errors=(validation_error,),
         candidate_count=2,
     )
-    context = _context(
-        {
+    context = make_repair_context(
+        evidence={
             "invoice_number": FieldEvidence(
                 value="BAD",
                 source="fuzzy",
@@ -119,7 +89,7 @@ def test_build_agent_repair_payload_maps_fields_and_candidate_metadata() -> (
                     ),
                 ),
             )
-        }
+        },
     )
 
     result = build_agent_repair_payload(

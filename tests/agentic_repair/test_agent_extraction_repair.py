@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 from src.agentic_repair.agent_extraction_repair import (
     SYSTEM_PROMPT,
     build_repair_tools,
@@ -12,63 +10,13 @@ from src.agentic_repair.agent_extraction_repair import (
 from src.agentic_repair.repair_kernel import (
     RepairDecision,
     RepairResult,
-    RepairSession,
 )
-from src.input_processing.extraction_comparison import RepairContext
-from src.input_processing.extraction_diagnostics import ExtractionDiagnostics
-from src.input_processing.invoice_text_field_extraction import (
-    Candidate,
-    FieldEvidence,
+from tests.agentic_repair.factories import (
+    make_evidence_with_candidates,
+    make_repair_session,
 )
 from src.invoice_gen.domain_shell import build_domestic_vat_shell
-from src.invoice_gen.domestic_vat_shell_summary import (
-    DomesticVatInvoiceSummary,
-)
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
-
-
-def _summary() -> DomesticVatInvoiceSummary:
-    return DomesticVatInvoiceSummary(
-        line_computations=[],
-        bucket_summaries={},
-        invoice_net_total=Decimal("0.00"),
-        invoice_vat_total=Decimal("0.00"),
-        invoice_gross_total=Decimal("0.00"),
-    )
-
-
-def _candidate(value: object) -> Candidate:
-    return Candidate(
-        value=value,
-        source="fuzzy",
-        confidence=0.9,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        raw_text=str(value),
-    )
-
-
-def _evidence_with_candidates(*values: object) -> FieldEvidence:
-    return FieldEvidence(
-        value=values[0] if values else None,
-        source="fuzzy",
-        confidence=0.9,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        candidates=tuple(_candidate(value) for value in values),
-    )
-
-
-def _session(
-    *,
-    evidence: dict[str, FieldEvidence] | None = None,
-) -> RepairSession:
-    context = RepairContext(
-        shell=build_domestic_vat_shell(),
-        extracted_summary=_summary(),
-        evidence=evidence or {},
-        validation=ShellValidationResult(errors=[]),
-        diagnostics=ExtractionDiagnostics(fields={}),
-    )
-    return RepairSession.from_context(context)
 
 
 def test_system_prompt_describes_batch_repair_tool_contract() -> None:
@@ -86,7 +34,7 @@ def test_system_prompt_describes_batch_repair_tool_contract() -> None:
 
 
 def test_apply_repair_plan_tool_description_describes_json_shape() -> None:
-    tools, _ = build_repair_tools(_session())
+    tools, _ = build_repair_tools(make_repair_session())
     tool = tools[0]
     description = tool.description.lower()
 
@@ -100,7 +48,7 @@ def test_apply_repair_plan_tool_description_describes_json_shape() -> None:
 
 
 def test_apply_repair_plan_tool_schema_exposes_command_list() -> None:
-    tools, _ = build_repair_tools(_session())
+    tools, _ = build_repair_tools(make_repair_session())
     schema = tools[0].args_schema.model_json_schema()
 
     repair_commands = schema["properties"]["repair_commands"]
@@ -118,10 +66,12 @@ def test_apply_repair_plan_tool_schema_exposes_command_list() -> None:
 def test_apply_repair_plan_tool_applies_multiple_repairs_in_one_call(
     monkeypatch,
 ) -> None:
-    session = _session(
+    session = make_repair_session(
         evidence={
-            "invoice_number": _evidence_with_candidates("BAD", "FV/001"),
-            "seller.nip": _evidence_with_candidates("1111111111", "8637940261"),
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
+            "seller.nip": make_evidence_with_candidates(
+                "1111111111", "8637940261"
+            ),
         }
     )
     session.shell.invoice_number = "BAD"

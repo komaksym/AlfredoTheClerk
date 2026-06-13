@@ -309,6 +309,19 @@ Acceptance:
   repaired to scored shell equivalence
 - repaired shells still pass downstream validation, summary, mapping, and XSD
 
+Current implementation progress:
+
+- deterministic repair routing separates no-repair, agent-repairable, and
+  manual-review paths
+- repair kernel validates candidate-promotion plans before mutation and applies
+  multi-field repairs in one batch
+- agent-facing payloads expose repairable fields, validation errors,
+  diagnostics, and evidence candidates
+- agent tool contract uses one `apply_repair_plan` call for multi-field repair
+- application orchestration returns structured workflow outcomes for no repair,
+  repaired shells, agent failure, and manual review
+- repair test setup now uses shared factories under `tests/agentic_repair`
+
 ## 5. Non-Blocking KSeF Track
 
 This track should not start with arbitrary synthetic fixtures immediately after
