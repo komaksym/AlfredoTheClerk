@@ -35,4 +35,4 @@ def build_repair_model(
 
     setup_keys()
 
-    return (init_chat_model(model_name, temperature=temperature),)
+    return init_chat_model(model_name, temperature=temperature)
