@@ -6,9 +6,11 @@ when work is completed, reprioritized, or materially re-scoped.
 `ROADMAP.md` defines durable product direction. `AGENTS.md` defines development
 and repository rules.
 
-## 0. Fix `build_repair_model()` — completed
+## Completed in this PR
 
-`src/agentic_repair/config.py` must return the chat model object rather than a
+### Fix `build_repair_model()`
+
+`src/agentic_repair/config.py` now returns the chat model object rather than a
 one-element tuple.
 
 Acceptance:
