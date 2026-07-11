@@ -101,6 +101,9 @@ The product should mature in this order:
 4. Expand support source by source using real legacy-system output and measured
    failures.
 
+This is strategic sequencing, not a task-status list. `SPEC.md` records which
+step is active, completed, or blocked.
+
 Real invoice collection and evaluation run in parallel whenever data becomes
 available; they do not block development of the correctness, review, or KSeF
 paths.
