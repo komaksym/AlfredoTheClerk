@@ -59,6 +59,7 @@ from src.invoice_gen.domestic_vat_shell_summary import (
     summarize_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_xml_rendering import render_faktura_to_xml
+from src.invoice_gen.fa3_xsd_validation import XsdValidationResult
 from src.invoice_gen.template_registry import TEMPLATE_REGISTRY
 from src.invoice_gen.template_visibility import (
     NO_PDF_TEMPLATE_ID,
@@ -104,14 +105,6 @@ _XSD_VALIDATION_KEYS = frozenset(
 
 class BenchmarkCaseError(Exception):
     """One error raised while building, saving, or loading a case."""
-
-
-@dataclass(frozen=True, kw_only=True)
-class XsdValidationResult:
-    """Outcome of running local XSD validation on ``target.xml``."""
-
-    is_valid: bool
-    error: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
