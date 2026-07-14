@@ -54,25 +54,30 @@ def validate_xml_against_local_schema_bundle(xml: str) -> XsdValidationResult:
             "xmllint is required for local FA(3) validation"
         )
 
-    with tempfile.TemporaryDirectory() as tmp_dir_name:
-        tmp_dir = Path(tmp_dir_name)
-        schema_path = _build_local_schema_bundle(tmp_dir)
-        xml_path = tmp_dir / "candidate.xml"
-        xml_path.write_text(xml, encoding="utf-8")
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            tmp_dir = Path(tmp_dir_name)
+            schema_path = _build_local_schema_bundle(tmp_dir)
+            xml_path = tmp_dir / "candidate.xml"
+            xml_path.write_text(xml, encoding="utf-8")
 
-        result = subprocess.run(
-            [
-                xmllint_path,
-                "--nonet",
-                "--noout",
-                "--schema",
-                str(schema_path),
-                str(xml_path),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+            result = subprocess.run(
+                [
+                    xmllint_path,
+                    "--nonet",
+                    "--noout",
+                    "--schema",
+                    str(schema_path),
+                    str(xml_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+    except OSError as exc:
+        raise XsdValidationError(
+            f"local FA(3) validation failed: {exc}"
+        ) from exc
 
     if result.returncode == 0:
         return XsdValidationResult(is_valid=True)
