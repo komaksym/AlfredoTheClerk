@@ -18,9 +18,11 @@ Acceptance:
 - the existing model-configuration tests pass
 - the returned object can be passed directly into the repair workflow
 
-## 1. Post-repair correctness pipeline — next
+### Post-repair correctness pipeline
 
-Complete one shared correctness pipeline for every repaired invoice:
+`src/invoice_gen/invoice_correctness.py` now provides one shared correctness
+pipeline for every repaired invoice, and repair orchestration requires its
+successful result before returning a repaired shell:
 
 `repaired shell`
 
@@ -65,7 +67,7 @@ Acceptance:
 - the final XML passes the checked-in local FA(3) XSD bundle
 - failure states retain enough detail for review and debugging
 
-## 2. Human-review workflow
+## 1. Human-review workflow — next
 
 Build a review workflow for unresolved or blocking fields:
 
@@ -95,7 +97,7 @@ Acceptance:
   successful agent repairs
 - failed review attempts remain reviewable and auditable
 
-## 3. KSeF integration
+## 2. KSeF integration
 
 Add the remote KSeF path only for locally validated FA(3) XML:
 
@@ -126,7 +128,7 @@ Acceptance:
 - accepted invoices retain their KSeF number and UPO
 - retries do not silently create duplicate submissions
 
-## 4. Real legacy invoices — parallel when data is available
+## 3. Real legacy invoices — parallel when data is available
 
 Add real legacy-system invoices whenever they become available:
 
