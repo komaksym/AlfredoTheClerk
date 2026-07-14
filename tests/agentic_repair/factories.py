@@ -74,6 +74,7 @@ def make_validation_error(path: str) -> ShellValidationError:
 def make_repair_context(
     *,
     shell: DomesticVatInvoiceShell | None = None,
+    extracted_summary: DomesticVatInvoiceSummary | None = None,
     evidence: dict[str, FieldEvidence] | None = None,
     validation_errors: list[ShellValidationError] | None = None,
     diagnostics: ExtractionDiagnostics | None = None,
@@ -89,7 +90,7 @@ def make_repair_context(
 
     return RepairContext(
         shell=context_shell,
-        extracted_summary=make_summary(),
+        extracted_summary=extracted_summary or make_summary(),
         evidence=evidence or {},
         validation=ShellValidationResult(errors=validation_errors or []),
         diagnostics=diagnostics or ExtractionDiagnostics(fields={}),
