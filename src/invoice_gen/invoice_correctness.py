@@ -188,7 +188,7 @@ def _reconcile_totals(
                 TotalsMismatch(
                     path=path,
                     computed=None,
-                    extracted=None,
+                    extracted=extracted_bucket.gross_total,
                     reason="unexpected_extracted_bucket",
                 )
             )
@@ -198,7 +198,7 @@ def _reconcile_totals(
             mismatches.append(
                 TotalsMismatch(
                     path=path,
-                    computed=None,
+                    computed=computed_bucket.gross_total,
                     extracted=None,
                     reason="missing_extracted_bucket",
                 )

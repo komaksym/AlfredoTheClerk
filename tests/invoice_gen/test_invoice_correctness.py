@@ -107,6 +107,10 @@ def test_missing_extracted_vat_bucket_is_structured() -> None:
     assert result.mismatches[0].path == (
         f"summary.bucket_summaries[{missing_rate}]"
     )
+    assert result.mismatches[0].computed == (
+        extracted.bucket_summaries[missing_rate].gross_total
+    )
+    assert result.mismatches[0].extracted is None
     assert result.mismatches[0].reason == "missing_extracted_bucket"
 
 
@@ -129,6 +133,8 @@ def test_unexpected_extracted_vat_bucket_is_structured() -> None:
 
     assert result.status is CorrectnessStatus.TOTALS_MISMATCH
     assert result.mismatches[0].path == "summary.bucket_summaries[8]"
+    assert result.mismatches[0].computed is None
+    assert result.mismatches[0].extracted == Decimal("1.08")
     assert result.mismatches[0].reason == "unexpected_extracted_bucket"
 
 
