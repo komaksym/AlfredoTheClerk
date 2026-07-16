@@ -2,9 +2,28 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.invoice_gen import fa3_xsd_validation as xsd
+
+
+SCHEMA_FILES = {
+    "schemat.xsd",
+    "StrukturyDanych_v10-0E.xsd",
+    "ElementarneTypyDanych_v10-0E.xsd",
+    "KodyKrajow_v10-0E.xsd",
+}
+
+
+def test_bundle_contains_every_packaged_schema(tmp_path: Path) -> None:
+    """The runtime bundle should contain every packaged schema dependency."""
+
+    schema_path = xsd._build_local_schema_bundle(tmp_path)
+
+    assert schema_path.name == "schemat.xsd"
+    assert {path.name for path in schema_path.parent.iterdir()} == SCHEMA_FILES
 
 
 def test_invalid_xml_returns_first_local_schema_error() -> None:

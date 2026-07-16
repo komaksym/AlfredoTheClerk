@@ -27,6 +27,13 @@ pythonpath = ["."]
 [tool.ruff]
 line-length = 80
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src", "src.*"]
+
+[tool.setuptools.package-data]
+"src.invoice_gen.schemas" = ["*.xsd"]
+
 [dependency-groups]
 dev = [
     "detect-secrets>=1.5.0",

@@ -6,11 +6,11 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
 
 
-_ROOT_DIR = Path(__file__).resolve().parents[2]
-_SCHEMA_DIR = _ROOT_DIR / "data" / "schemas"
+_SCHEMA_DIR = files("src.invoice_gen.schemas")
 _SCHEMA_FILES = (
     "schemat.xsd",
     "StrukturyDanych_v10-0E.xsd",
@@ -88,15 +88,15 @@ def validate_xml_against_local_schema_bundle(xml: str) -> XsdValidationResult:
 
 
 def _build_local_schema_bundle(tmp_path: Path) -> Path:
-    """Copy checked-in schemas and replace remote dependency locations."""
+    """Copy packaged schemas and replace remote dependency locations."""
 
     bundle_dir = tmp_path / "schema-bundle"
     bundle_dir.mkdir()
 
     for schema_name in _SCHEMA_FILES:
-        source_path = _SCHEMA_DIR / schema_name
+        source = _SCHEMA_DIR.joinpath(schema_name)
         target_path = bundle_dir / schema_name
-        text = source_path.read_text(encoding="utf-8")
+        text = source.read_text(encoding="utf-8")
 
         for old, new in _SCHEMA_LOCATION_REWRITES.items():
             text = text.replace(old, new)
