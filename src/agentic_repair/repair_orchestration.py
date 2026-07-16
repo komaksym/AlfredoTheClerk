@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -24,6 +25,11 @@ from src.input_processing.invoice_text_field_extraction import (
 )
 from src.input_processing.parse_pdf import ParsedDocument
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
+from src.invoice_gen.invoice_correctness import (
+    CorrectnessResult,
+    CorrectnessStatus,
+    check_invoice_correctness,
+)
 
 
 class RepairWorkflowStatus(Enum):
@@ -42,8 +48,10 @@ class RepairWorkflowResult:
     status: RepairWorkflowStatus
     shell: DomesticVatInvoiceShell
     route: RepairRoute
+    context: RepairContext
     agent_result: AgentRepairResult | None = None
     reason: str | None = None
+    correctness: CorrectnessResult | None = None
 
 
 def run_shell_repair(
@@ -51,6 +59,7 @@ def run_shell_repair(
     model: Any,
     *,
     anchors: LabelAnchorSet = COMBINED_ANCHORS,
+    generated_at: datetime | None = None,
 ) -> RepairWorkflowResult:
     """Extract one document, route problems, and run agent repair if allowed."""
 
@@ -58,22 +67,24 @@ def run_shell_repair(
     route = route_repair_context(context)
 
     if route.status is RepairRouteStatus.NO_REPAIR_NEEDED:
-        return RepairWorkflowResult(
-            status=RepairWorkflowStatus.NO_REPAIR_NEEDED,
-            shell=context.shell,
+        return _finish_correctness(
+            context=context,
             route=route,
+            candidate_shell=context.shell,
+            success_status=RepairWorkflowStatus.NO_REPAIR_NEEDED,
             agent_result=None,
-            reason=None,
+            generated_at=generated_at,
         )
 
     if route.status is RepairRouteStatus.AGENT_REPAIR_AVAILABLE:
-        return _run_agent_repair(context, route, model)
+        return _run_agent_repair(context, route, model, generated_at)
 
     if route.status is RepairRouteStatus.MANUAL_REVIEW_REQUIRED:
         return RepairWorkflowResult(
             status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
             shell=context.shell,
             route=route,
+            context=context,
             agent_result=None,
             reason="blocking_fields",
         )
@@ -85,6 +96,7 @@ def _run_agent_repair(
     context: RepairContext,
     route: RepairRoute,
     model: Any,
+    generated_at: datetime | None,
 ) -> RepairWorkflowResult:
     """Run the agent branch and translate its output to workflow status."""
 
@@ -93,23 +105,25 @@ def _run_agent_repair(
     agent_result = runner(session, payload, model)
 
     return _agent_result_to_workflow_result(
-        original_shell=context.shell,
+        context=context,
         route=route,
         agent_result=agent_result,
+        generated_at=generated_at,
     )
 
 
 def _agent_result_to_workflow_result(
     *,
-    original_shell: DomesticVatInvoiceShell,
+    context: RepairContext,
     route: RepairRoute,
     agent_result: AgentRepairResult,
+    generated_at: datetime | None,
 ) -> RepairWorkflowResult:
     """Classify an agent run as repaired, failed, or manual-review needed."""
 
     if not agent_result.tool_called:
         return _agent_failed(
-            shell=original_shell,
+            context=context,
             route=route,
             agent_result=agent_result,
             reason="agent_no_tool_call",
@@ -118,33 +132,63 @@ def _agent_result_to_workflow_result(
     repair_result = agent_result.repair_result
     if repair_result is None:
         return _agent_failed(
-            shell=original_shell,
+            context=context,
             route=route,
             agent_result=agent_result,
             reason="repair_result_is_missing",
         )
 
-    if repair_result.validation.is_valid:
+    return _finish_correctness(
+        context=context,
+        route=route,
+        candidate_shell=repair_result.shell,
+        success_status=RepairWorkflowStatus.REPAIRED,
+        agent_result=agent_result,
+        generated_at=generated_at,
+    )
+
+
+def _finish_correctness(
+    *,
+    context: RepairContext,
+    route: RepairRoute,
+    candidate_shell: DomesticVatInvoiceShell,
+    success_status: RepairWorkflowStatus,
+    agent_result: AgentRepairResult | None,
+    generated_at: datetime | None,
+) -> RepairWorkflowResult:
+    """Accept a candidate only after the shared correctness boundary."""
+
+    correctness = check_invoice_correctness(
+        candidate_shell,
+        context.extracted_summary,
+        generated_at=generated_at,
+    )
+    if correctness.status is CorrectnessStatus.READY_FOR_KSEF:
         return RepairWorkflowResult(
-            status=RepairWorkflowStatus.REPAIRED,
-            shell=repair_result.shell,
+            status=success_status,
+            shell=candidate_shell,
             route=route,
+            context=context,
             agent_result=agent_result,
             reason=None,
+            correctness=correctness,
         )
 
     return RepairWorkflowResult(
         status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
-        shell=original_shell,
+        shell=context.shell,
         route=route,
+        context=context,
         agent_result=agent_result,
-        reason="agent_repair_validation_failed",
+        reason=correctness.status.value,
+        correctness=correctness,
     )
 
 
 def _agent_failed(
     *,
-    shell: DomesticVatInvoiceShell,
+    context: RepairContext,
     route: RepairRoute,
     agent_result: AgentRepairResult,
     reason: str,
@@ -153,8 +197,9 @@ def _agent_failed(
 
     return RepairWorkflowResult(
         status=RepairWorkflowStatus.AGENT_FAILED,
-        shell=shell,
+        shell=context.shell,
         route=route,
+        context=context,
         agent_result=agent_result,
         reason=reason,
     )

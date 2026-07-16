@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
-import subprocess
-import tempfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -13,13 +10,15 @@ from pathlib import Path
 
 from src.invoice_gen.benchmark_case import (
     BenchmarkCase,
-    XsdValidationResult,
     build_benchmark_case_from_shell,
     load_benchmark_case,
     save_benchmark_case,
 )
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell, LineItemShell
 from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
+from src.invoice_gen.fa3_xsd_validation import (
+    validate_xml_against_local_schema_bundle,
+)
 from src.invoice_gen.macos_dyld import (
     relaunch_module_with_homebrew_dyld_if_needed,
 )
@@ -35,28 +34,6 @@ HARD_CASES_ROOT = ROOT_DIR / "data" / "benchmark_cases" / "hard_cases"
 # fixture below carries one entry per registered template.
 HARD_CASE_TEMPLATE_ID = SELLER_BUYER_TEMPLATE_ID
 HARD_CASE_PDF_FILENAME = f"{HARD_CASE_TEMPLATE_ID}.pdf"
-
-_SCHEMA_DIR = ROOT_DIR / "data" / "schemas"
-_SCHEMA_FILES = (
-    "schemat.xsd",
-    "StrukturyDanych_v10-0E.xsd",
-    "ElementarneTypyDanych_v10-0E.xsd",
-    "KodyKrajow_v10-0E.xsd",
-)
-_SCHEMA_LOCATION_REWRITES = {
-    (
-        "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/"
-        "DefinicjeTypy/StrukturyDanych_v10-0E.xsd"
-    ): "StrukturyDanych_v10-0E.xsd",
-    (
-        "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/"
-        "DefinicjeTypy/ElementarneTypyDanych_v10-0E.xsd"
-    ): "ElementarneTypyDanych_v10-0E.xsd",
-    (
-        "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/"
-        "DefinicjeTypy/KodyKrajow_v10-0E.xsd"
-    ): "KodyKrajow_v10-0E.xsd",
-}
 
 _FIXED_GENERATED_AT = datetime(2026, 4, 23, 12, 0, 0, tzinfo=UTC)
 
@@ -166,62 +143,6 @@ def regenerate_hard_case_corpus(
         save_hard_case_fixture(case, pdfs, directory)
 
     return iter_hard_case_fixtures(root=root)
-
-
-def validate_xml_against_local_schema_bundle(xml: str) -> XsdValidationResult:
-    """Validate one FA(3) XML payload with the checked-in local XSD bundle."""
-
-    xmllint_path = shutil.which("xmllint")
-    if xmllint_path is None:
-        raise HardCaseCorpusError(
-            "xmllint is required to regenerate hard-case corpus artifacts"
-        )
-
-    with tempfile.TemporaryDirectory() as tmp_dir_name:
-        tmp_dir = Path(tmp_dir_name)
-        schema_path = _build_local_schema_bundle(tmp_dir)
-        xml_path = tmp_dir / "candidate.xml"
-        xml_path.write_text(xml, encoding="utf-8")
-
-        result = subprocess.run(
-            [
-                xmllint_path,
-                "--nonet",
-                "--noout",
-                "--schema",
-                str(schema_path),
-                str(xml_path),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-    if result.returncode == 0:
-        return XsdValidationResult(is_valid=True, error=None)
-
-    error_output = result.stderr.strip() or result.stdout.strip()
-    first_error_line = error_output.splitlines()[0] if error_output else ""
-    return XsdValidationResult(is_valid=False, error=first_error_line or None)
-
-
-def _build_local_schema_bundle(tmp_path: Path) -> Path:
-    """Copy the checked-in schemas and rewrite their dependency paths."""
-
-    bundle_dir = tmp_path / "schema-bundle"
-    bundle_dir.mkdir()
-
-    for schema_name in _SCHEMA_FILES:
-        source_path = _SCHEMA_DIR / schema_name
-        target_path = bundle_dir / schema_name
-        text = source_path.read_text(encoding="utf-8")
-
-        for old, new in _SCHEMA_LOCATION_REWRITES.items():
-            text = text.replace(old, new)
-
-        target_path.write_text(text, encoding="utf-8")
-
-    return bundle_dir / "schemat.xsd"
 
 
 def _blank_shell(invoice_number: str) -> DomesticVatInvoiceShell:
