@@ -21,10 +21,10 @@ Acceptance:
 ### Post-repair correctness pipeline
 
 `src/invoice_gen/invoice_correctness.py` now provides one shared correctness
-pipeline for every repaired invoice, and repair orchestration requires its
-successful result before returning a repaired shell:
+pipeline for every unchanged or repaired invoice, and repair orchestration
+requires its successful result before returning an accepted shell:
 
-`repaired shell`
+`unchanged or repaired shell`
 
 `-> full shell validation`
 
@@ -50,6 +50,12 @@ Requirements:
 - stop and return a structured failure or review outcome when reconciliation,
   mapping, serialization, or XSD validation fails
 - expose one reusable correctness function for both agent and human repairs
+- run the shared correctness function even when deterministic routing finds no
+  repair work
+- retain the original repair context, including extraction evidence and
+  diagnostics, on every workflow outcome
+- load the FA(3) schemas from installed package resources rather than the source
+  repository layout
 
 Expected result states:
 
@@ -62,10 +68,15 @@ Expected result states:
 
 Acceptance:
 
-- a repaired invoice is accepted only after the complete pipeline succeeds
+- unchanged and repaired invoices are accepted only after the same complete
+  pipeline succeeds
 - repaired line items and extracted invoice totals are explicitly reconciled
-- the final XML passes the checked-in local FA(3) XSD bundle
+- the final XML passes the packaged local FA(3) XSD bundle
 - failure states retain enough detail for review and debugging
+- manual-review outcomes retain their original extraction context without
+  re-extracting the source invoice
+- an isolated installed-wheel smoke test proves the production validator can
+  load every packaged XSD
 
 ## 1. Human-review workflow — next
 
