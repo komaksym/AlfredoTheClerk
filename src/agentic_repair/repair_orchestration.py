@@ -48,6 +48,7 @@ class RepairWorkflowResult:
     status: RepairWorkflowStatus
     shell: DomesticVatInvoiceShell
     route: RepairRoute
+    context: RepairContext
     agent_result: AgentRepairResult | None = None
     reason: str | None = None
     correctness: CorrectnessResult | None = None
@@ -70,6 +71,7 @@ def run_shell_repair(
             status=RepairWorkflowStatus.NO_REPAIR_NEEDED,
             shell=context.shell,
             route=route,
+            context=context,
             agent_result=None,
             reason=None,
         )
@@ -82,6 +84,7 @@ def run_shell_repair(
             status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
             shell=context.shell,
             route=route,
+            context=context,
             agent_result=None,
             reason="blocking_fields",
         )
@@ -120,7 +123,7 @@ def _agent_result_to_workflow_result(
 
     if not agent_result.tool_called:
         return _agent_failed(
-            shell=context.shell,
+            context=context,
             route=route,
             agent_result=agent_result,
             reason="agent_no_tool_call",
@@ -129,7 +132,7 @@ def _agent_result_to_workflow_result(
     repair_result = agent_result.repair_result
     if repair_result is None:
         return _agent_failed(
-            shell=context.shell,
+            context=context,
             route=route,
             agent_result=agent_result,
             reason="repair_result_is_missing",
@@ -145,6 +148,7 @@ def _agent_result_to_workflow_result(
             status=RepairWorkflowStatus.REPAIRED,
             shell=repair_result.shell,
             route=route,
+            context=context,
             agent_result=agent_result,
             reason=None,
             correctness=correctness,
@@ -154,6 +158,7 @@ def _agent_result_to_workflow_result(
         status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
         shell=context.shell,
         route=route,
+        context=context,
         agent_result=agent_result,
         reason=correctness.status.value,
         correctness=correctness,
@@ -162,7 +167,7 @@ def _agent_result_to_workflow_result(
 
 def _agent_failed(
     *,
-    shell: DomesticVatInvoiceShell,
+    context: RepairContext,
     route: RepairRoute,
     agent_result: AgentRepairResult,
     reason: str,
@@ -171,8 +176,9 @@ def _agent_failed(
 
     return RepairWorkflowResult(
         status=RepairWorkflowStatus.AGENT_FAILED,
-        shell=shell,
+        shell=context.shell,
         route=route,
+        context=context,
         agent_result=agent_result,
         reason=reason,
     )

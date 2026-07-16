@@ -136,6 +136,7 @@ def test_run_shell_repair_returns_no_repair_result_without_agent(
     result = run_shell_repair(_parsed_document(), model=object())
 
     assert result.status is RepairWorkflowStatus.NO_REPAIR_NEEDED
+    assert result.context is context
     assert result.shell is context.shell
     assert result.agent_result is None
     assert result.reason is None
@@ -180,6 +181,7 @@ def test_run_shell_repair_returns_repaired_shell_from_agent(
     )
 
     assert result.status is RepairWorkflowStatus.REPAIRED
+    assert result.context is context
     assert result.shell is repaired_shell
     assert result.shell.invoice_number == "FV/001"
     assert context.shell.invoice_number == "BAD"
@@ -228,6 +230,7 @@ def test_repaired_shell_passes_real_correctness_pipeline(
     )
 
     assert result.status is RepairWorkflowStatus.REPAIRED
+    assert result.context is context
     assert result.shell is repaired_shell
     assert result.correctness is not None
     assert result.correctness.status is CorrectnessStatus.READY_FOR_KSEF
@@ -256,6 +259,7 @@ def test_run_shell_repair_reports_agent_no_tool_call(
     result = run_shell_repair(_parsed_document(), model=object())
 
     assert result.status is RepairWorkflowStatus.AGENT_FAILED
+    assert result.context is context
     assert result.shell is context.shell
     assert result.agent_result is agent_result
     assert result.reason == "agent_no_tool_call"
@@ -282,6 +286,7 @@ def test_run_shell_repair_reports_missing_repair_result_after_tool_call(
     result = run_shell_repair(_parsed_document(), model=object())
 
     assert result.status is RepairWorkflowStatus.AGENT_FAILED
+    assert result.context is context
     assert result.shell is context.shell
     assert result.agent_result is agent_result
     assert result.reason == "repair_result_is_missing"
@@ -325,6 +330,7 @@ def test_run_shell_repair_routes_correctness_failure_to_manual_review(
     result = run_shell_repair(_parsed_document(), model=object())
 
     assert result.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
+    assert result.context is context
     assert result.shell is context.shell
     assert result.agent_result is agent_result
     assert result.correctness is correctness
@@ -350,6 +356,7 @@ def test_run_shell_repair_returns_manual_review_for_blocking_route(
     result = run_shell_repair(_parsed_document(), model=object())
 
     assert result.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
+    assert result.context is context
     assert result.shell is context.shell
     assert result.agent_result is None
     assert result.reason == "blocking_fields"
