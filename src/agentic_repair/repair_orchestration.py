@@ -67,13 +67,13 @@ def run_shell_repair(
     route = route_repair_context(context)
 
     if route.status is RepairRouteStatus.NO_REPAIR_NEEDED:
-        return RepairWorkflowResult(
-            status=RepairWorkflowStatus.NO_REPAIR_NEEDED,
-            shell=context.shell,
-            route=route,
+        return _finish_correctness(
             context=context,
+            route=route,
+            candidate_shell=context.shell,
+            success_status=RepairWorkflowStatus.NO_REPAIR_NEEDED,
             agent_result=None,
-            reason=None,
+            generated_at=generated_at,
         )
 
     if route.status is RepairRouteStatus.AGENT_REPAIR_AVAILABLE:
@@ -138,15 +138,36 @@ def _agent_result_to_workflow_result(
             reason="repair_result_is_missing",
         )
 
+    return _finish_correctness(
+        context=context,
+        route=route,
+        candidate_shell=repair_result.shell,
+        success_status=RepairWorkflowStatus.REPAIRED,
+        agent_result=agent_result,
+        generated_at=generated_at,
+    )
+
+
+def _finish_correctness(
+    *,
+    context: RepairContext,
+    route: RepairRoute,
+    candidate_shell: DomesticVatInvoiceShell,
+    success_status: RepairWorkflowStatus,
+    agent_result: AgentRepairResult | None,
+    generated_at: datetime | None,
+) -> RepairWorkflowResult:
+    """Accept a candidate only after the shared correctness boundary."""
+
     correctness = check_invoice_correctness(
-        repair_result.shell,
+        candidate_shell,
         context.extracted_summary,
         generated_at=generated_at,
     )
     if correctness.status is CorrectnessStatus.READY_FOR_KSEF:
         return RepairWorkflowResult(
-            status=RepairWorkflowStatus.REPAIRED,
-            shell=repair_result.shell,
+            status=success_status,
+            shell=candidate_shell,
             route=route,
             context=context,
             agent_result=agent_result,

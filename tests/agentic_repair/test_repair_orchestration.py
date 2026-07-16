@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -132,6 +134,11 @@ def test_run_shell_repair_returns_no_repair_result_without_agent(
         "src.agentic_repair.repair_orchestration.runner",
         fail_if_runner_called,
     )
+    correctness = _correctness_result(
+        context.shell,
+        CorrectnessStatus.READY_FOR_KSEF,
+    )
+    calls = _patch_correctness(monkeypatch, correctness)
 
     result = run_shell_repair(_parsed_document(), model=object())
 
@@ -140,7 +147,42 @@ def test_run_shell_repair_returns_no_repair_result_without_agent(
     assert result.shell is context.shell
     assert result.agent_result is None
     assert result.reason is None
-    assert result.correctness is None
+    assert result.correctness is correctness
+    assert calls == [(context.shell, context.extracted_summary, None)]
+
+
+def test_no_repair_route_runs_real_totals_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
+    extracted = replace(
+        summarize_domestic_vat_shell(shell),
+        invoice_gross_total=Decimal("999.00"),
+    )
+    context = make_repair_context(
+        shell=shell,
+        extracted_summary=extracted,
+    )
+    _patch_extraction(monkeypatch, context)
+
+    def fail_if_runner_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("agent runner should not run")
+
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_orchestration.runner",
+        fail_if_runner_called,
+    )
+
+    result = run_shell_repair(_parsed_document(), model=object())
+
+    assert result.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
+    assert result.context is context
+    assert result.correctness is not None
+    assert result.correctness.status is CorrectnessStatus.TOTALS_MISMATCH
+    assert [item.path for item in result.correctness.mismatches] == [
+        "summary.invoice_gross_total",
+    ]
+    assert result.reason == CorrectnessStatus.TOTALS_MISMATCH.value
 
 
 def test_run_shell_repair_returns_repaired_shell_from_agent(
@@ -237,6 +279,50 @@ def test_repaired_shell_passes_real_correctness_pipeline(
     assert result.correctness.xml is not None
     assert result.correctness.xsd_validation is not None
     assert result.correctness.xsd_validation.is_valid is True
+
+
+def test_repaired_shell_real_totals_failure_requires_manual_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repaired_shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
+    original_shell = copy.deepcopy(repaired_shell)
+    original_shell.invoice_number = "BAD"
+    extracted = replace(
+        summarize_domestic_vat_shell(repaired_shell),
+        invoice_gross_total=Decimal("999.00"),
+    )
+    context = make_repair_context(
+        shell=original_shell,
+        extracted_summary=extracted,
+        evidence={
+            "invoice_number": make_evidence_with_candidates(
+                "BAD",
+                repaired_shell.invoice_number,
+            ),
+        },
+        validation_errors=[make_validation_error("invoice_number")],
+    )
+    _patch_extraction(monkeypatch, context)
+    agent_result = _agent_result(
+        _repair_result(repaired_shell),
+        tool_called=True,
+    )
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_orchestration.runner",
+        lambda session, payload, model: agent_result,
+    )
+
+    result = run_shell_repair(_parsed_document(), model=object())
+
+    assert result.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
+    assert result.shell is original_shell
+    assert result.context is context
+    assert result.correctness is not None
+    assert result.correctness.shell is repaired_shell
+    assert result.correctness.status is CorrectnessStatus.TOTALS_MISMATCH
+    assert [item.path for item in result.correctness.mismatches] == [
+        "summary.invoice_gross_total",
+    ]
 
 
 def test_run_shell_repair_reports_agent_no_tool_call(

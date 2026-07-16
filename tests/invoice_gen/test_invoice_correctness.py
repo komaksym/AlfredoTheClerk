@@ -64,7 +64,11 @@ def test_invalid_shell_stops_before_summary() -> None:
     ("field", "value", "reason"),
     [
         ("invoice_net_total", None, "missing_extracted_value"),
+        ("invoice_net_total", Decimal("999.00"), "value_mismatch"),
+        ("invoice_vat_total", None, "missing_extracted_value"),
         ("invoice_vat_total", Decimal("999.00"), "value_mismatch"),
+        ("invoice_gross_total", None, "missing_extracted_value"),
+        ("invoice_gross_total", Decimal("999.00"), "value_mismatch"),
     ],
 )
 def test_invoice_total_failure_is_structured(
@@ -142,6 +146,10 @@ def test_unexpected_extracted_vat_bucket_is_structured() -> None:
     ("field", "value", "reason"),
     [
         ("net_total", None, "missing_extracted_value"),
+        ("net_total", Decimal("999.00"), "value_mismatch"),
+        ("vat_total", None, "missing_extracted_value"),
+        ("vat_total", Decimal("999.00"), "value_mismatch"),
+        ("gross_total", None, "missing_extracted_value"),
         ("gross_total", Decimal("999.00"), "value_mismatch"),
     ],
 )
