@@ -78,9 +78,11 @@ Acceptance:
 - an isolated installed-wheel smoke test proves the production validator can
   load every packaged XSD
 
-## 1. Human-review workflow — next
+### Human-review workflow
 
-Build a review workflow for unresolved or blocking fields:
+`src/agentic_repair/human_review.py` now builds complete review cases for
+unresolved or blocking fields, applies attributed human corrections atomically,
+retains failed attempts for retry, and resumes the shared correctness pipeline:
 
 `unresolved/blocking fields`
 
@@ -108,7 +110,7 @@ Acceptance:
   successful agent repairs
 - failed review attempts remain reviewable and auditable
 
-## 2. KSeF integration
+## 1. KSeF integration — next
 
 Add the remote KSeF path only for locally validated FA(3) XML:
 
@@ -139,7 +141,7 @@ Acceptance:
 - accepted invoices retain their KSeF number and UPO
 - retries do not silently create duplicate submissions
 
-## 3. Real legacy invoices — parallel when data is available
+## 2. Real legacy invoices — parallel when data is available
 
 Add real legacy-system invoices whenever they become available:
 
