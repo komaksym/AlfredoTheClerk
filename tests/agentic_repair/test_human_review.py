@@ -45,6 +45,7 @@ from src.invoice_gen.domain_shell import (
     build_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_shell_summary import (
+    DomesticVatBucketSummary,
     DomesticVatInvoiceSummary,
 )
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
@@ -53,6 +54,7 @@ from src.invoice_gen.invoice_correctness import (
     CorrectnessStatus,
 )
 from tests.agentic_repair.factories import (
+    make_candidate,
     make_evidence_with_candidates,
     make_repair_context,
     make_validation_error,
@@ -192,7 +194,7 @@ def test_build_case_uses_attempted_shell_and_complete_field_metadata() -> None:
     assert result.case is not None
     assert result.case.shell == attempted
     assert result.case.shell is not attempted
-    assert result.case.context is context
+    assert result.case.context is not context
     assert [field.path for field in result.case.fields] == [
         "buyer.nip",
         "seller.nip",
@@ -208,6 +210,53 @@ def test_build_case_uses_attempted_shell_and_complete_field_metadata() -> None:
     assert seller.candidates[0].rule == "nip_checksum"
     assert result.case.fields[0].blocking_reason == "missing_evidence"
     assert result.case.fields[0].diagnostic_status is FieldStatus.MISSING
+
+
+def test_build_case_snapshots_mutable_extraction_context() -> None:
+    workflow = _workflow_result()
+    source = workflow.context
+    source.evidence["buyer.nip"] = make_evidence_with_candidates("8637940261")
+    source.diagnostics.fields["buyer.nip"] = FieldDiagnostic(
+        path="buyer.nip",
+        status=FieldStatus.AMBIGUOUS,
+        raw_text="863-794-02-61",
+        message="multiple candidates",
+    )
+    result = build_human_review_case(workflow)
+    assert result.case is not None
+
+    source.evidence["buyer.nip"].candidates = (
+        make_candidate("changed-after-case-build"),
+    )
+    source.extracted_summary.bucket_summaries[Decimal("23")] = (
+        DomesticVatBucketSummary(
+            vat_rate=Decimal("23"),
+            net_total=Decimal("100.00"),
+            vat_total=Decimal("23.00"),
+            gross_total=Decimal("123.00"),
+        )
+    )
+    source.diagnostics.fields["buyer.nip"] = FieldDiagnostic(
+        path="buyer.nip",
+        status=FieldStatus.MISSING,
+        raw_text=None,
+        message="changed after case build",
+    )
+    source.validation.errors.append(make_validation_error("invoice_number"))
+
+    snapshot = result.case.context
+    candidates = snapshot.evidence["buyer.nip"].candidates
+    assert snapshot is not source
+    assert snapshot.evidence is not source.evidence
+    assert snapshot.extracted_summary is not source.extracted_summary
+    assert snapshot.diagnostics is not source.diagnostics
+    assert candidates is not None
+    assert [candidate.value for candidate in candidates] == ["8637940261"]
+    assert snapshot.extracted_summary.bucket_summaries == {}
+    assert snapshot.diagnostics.fields["buyer.nip"].status is (
+        FieldStatus.AMBIGUOUS
+    )
+    assert snapshot.validation.errors == [make_validation_error("buyer.nip")]
 
 
 def test_build_case_rejects_non_reviewable_workflow_result() -> None:

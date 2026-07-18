@@ -444,15 +444,16 @@ def build_human_review_case(
         if result.correctness is not None
         else result.shell
     )
+    context = copy.deepcopy(result.context)
     shell = copy.deepcopy(source_shell)
     fields = _build_review_fields(
         shell=shell,
-        context=result.context,
+        context=context,
         route=result.route,
         correctness=result.correctness,
     )
     case = HumanReviewCase(
-        context=result.context,
+        context=context,
         shell=shell,
         route=result.route,
         reason=result.reason,
