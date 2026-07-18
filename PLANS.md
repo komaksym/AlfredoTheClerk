@@ -1,8 +1,7 @@
 # Active Implementation Plan
 
 The current implementation slice is the review-feedback patch for the backend
-human-review workflow. Status: implementation complete; PR follow-up pending
-(2026-07-18).
+human-review workflow. Status: complete (2026-07-18).
 
 - Design: `docs/superpowers/specs/2026-07-17-human-review-workflow-design.md`
 - Completed feature plan:
@@ -18,7 +17,7 @@ human-review workflow. Status: implementation complete; PR follow-up pending
 1. [x] Reject path/type mismatches as atomic, audited review issues.
 2. [x] Snapshot mutable extraction context at review-case construction.
 3. [x] Clarify shell-path guards, review-field projection, and focused tests.
-4. [ ] Pass focused and repository gates, update docs and the PR system DAG,
+4. [x] Pass focused and repository gates, update docs and the PR system DAG,
    then reply to the addressed review threads with AI disclosure.
 
 The original human-review feature milestones remain complete in the completed

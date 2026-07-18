@@ -126,11 +126,11 @@ uv build --wheel
 uv run python tests/smoke_installed_xsd_validation.py dist/alfredotheclerk-*.whl
 ```
 
-- [ ] Inspect the PR range, commit docs, and push `codex/human-review-workflow`.
-- [ ] Add a small Mermaid DAG to PR #4 showing snapshot → atomic validation → correctness → ready/retry.
-- [ ] Reply with AI disclosure to the eight actionable threads; do not add noise to explanation-only threads.
-- [ ] Resolve the context-snapshot thread, re-fetch thread state, and keep the PR ready rather than draft.
-- [ ] Require green PR checks before marking `PLANS.md` and this plan complete.
+- [x] Inspect the PR range, commit docs, and push `codex/human-review-workflow`.
+- [x] Add a small Mermaid DAG to PR #4 showing snapshot → atomic validation → correctness → ready/retry.
+- [x] Reply with AI disclosure to the eight actionable threads; do not add noise to explanation-only threads.
+- [x] Resolve the context-snapshot thread, re-fetch thread state, and keep the PR ready rather than draft.
+- [x] Require green PR checks before marking `PLANS.md` and this plan complete.
 
 Final checks:
 
