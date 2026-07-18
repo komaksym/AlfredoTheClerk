@@ -21,7 +21,10 @@ from src.agentic_repair.shell_fields import (
 )
 from src.input_processing.extraction_comparison import RepairContext
 from src.input_processing.extraction_diagnostics import FieldStatus
-from src.input_processing.invoice_text_field_extraction import EvidenceSource
+from src.input_processing.invoice_text_field_extraction import (
+    EvidenceSource,
+    FieldEvidence,
+)
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationError
 from src.invoice_gen.invoice_correctness import (
@@ -473,72 +476,103 @@ def _build_review_fields(
     """Project deterministic extraction and correctness state for review."""
 
     routed = (*route.repairable_fields, *route.blocking_fields)
-    paths = {field.path for field in routed}
-    route_errors: dict[str, list[ShellValidationError]] = {}
-    for field in routed:
-        route_errors.setdefault(field.path, []).extend(field.validation_errors)
-
-    correctness_errors: tuple[ShellValidationError, ...] = ()
-    if correctness is not None:
-        correctness_errors = tuple(correctness.validation.errors)
-        paths.update(error.path for error in correctness_errors)
-
+    errors_by_path = _review_errors_by_path(route, correctness)
     blocking_reasons = {
         field.path: field.reason for field in route.blocking_fields
     }
     routed_statuses = {field.path: field.diagnostic_status for field in routed}
-    fields: list[HumanReviewField] = []
-    for path in sorted(paths):
-        evidence = context.evidence.get(path)
-        diagnostic = context.diagnostics.fields.get(path)
-        errors: list[ShellValidationError] = []
-        current_errors = (
-            route_errors.get(path, [])
-            if correctness is None
-            else [error for error in correctness_errors if error.path == path]
+    return tuple(
+        _build_review_field(
+            shell=shell,
+            context=context,
+            path=path,
+            validation_errors=errors_by_path.get(path, ()),
+            blocking_reason=blocking_reasons.get(path),
+            routed_status=routed_statuses.get(path),
         )
-        for error in current_errors:
-            if error not in errors:
-                errors.append(error)
+        for path in _review_paths(route, correctness)
+    )
 
-        if supports_shell_field(shell, path):
-            current_value = read_shell_field(shell, path)
-        elif evidence is not None:
-            current_value = evidence.value
-        else:
-            current_value = None
 
-        candidates: tuple[HumanReviewCandidate, ...] = ()
-        if evidence is not None and evidence.candidates:
-            candidates = tuple(
-                HumanReviewCandidate(
-                    index=index,
-                    value=candidate.value,
-                    source=candidate.source,
-                    confidence=candidate.confidence,
-                    bbox=candidate.bbox,
-                    raw_text=candidate.raw_text,
-                    same_line_text=candidate.same_line_text,
-                    rule=candidate.rule,
-                    rejected_by=candidate.rejected_by,
-                )
-                for index, candidate in enumerate(evidence.candidates)
-            )
+def _review_paths(
+    route: RepairRoute,
+    correctness: CorrectnessResult | None,
+) -> tuple[str, ...]:
+    routed = (*route.repairable_fields, *route.blocking_fields)
+    paths = {field.path for field in routed}
+    if correctness is not None:
+        paths.update(error.path for error in correctness.validation.errors)
+    return tuple(sorted(paths))
 
-        fields.append(
-            HumanReviewField(
-                path=path,
-                current_value=current_value,
-                diagnostic_status=(
-                    diagnostic.status
-                    if diagnostic is not None
-                    else routed_statuses.get(path)
-                ),
-                validation_errors=tuple(errors),
-                blocking_reason=blocking_reasons.get(path),
-                raw_text=evidence.raw_text if evidence is not None else None,
-                bbox=evidence.bbox if evidence is not None else None,
-                candidates=candidates,
-            )
+
+def _review_errors_by_path(
+    route: RepairRoute,
+    correctness: CorrectnessResult | None,
+) -> dict[str, tuple[ShellValidationError, ...]]:
+    routed = (*route.repairable_fields, *route.blocking_fields)
+    source = (
+        tuple(correctness.validation.errors)
+        if correctness is not None
+        else tuple(
+            error for field in routed for error in field.validation_errors
         )
-    return tuple(fields)
+    )
+    errors_by_path: dict[str, list[ShellValidationError]] = {}
+    for error in source:
+        errors = errors_by_path.setdefault(error.path, [])
+        if error not in errors:
+            errors.append(error)
+    return {path: tuple(errors) for path, errors in errors_by_path.items()}
+
+
+def _build_review_field(
+    *,
+    shell: DomesticVatInvoiceShell,
+    context: RepairContext,
+    path: str,
+    validation_errors: tuple[ShellValidationError, ...],
+    blocking_reason: str | None,
+    routed_status: FieldStatus | None,
+) -> HumanReviewField:
+    evidence = context.evidence.get(path)
+    diagnostic = context.diagnostics.fields.get(path)
+    if supports_shell_field(shell, path):
+        current_value = read_shell_field(shell, path)
+    elif evidence is not None:
+        current_value = evidence.value
+    else:
+        current_value = None
+
+    return HumanReviewField(
+        path=path,
+        current_value=current_value,
+        diagnostic_status=(
+            diagnostic.status if diagnostic is not None else routed_status
+        ),
+        validation_errors=validation_errors,
+        blocking_reason=blocking_reason,
+        raw_text=evidence.raw_text if evidence is not None else None,
+        bbox=evidence.bbox if evidence is not None else None,
+        candidates=_build_review_candidates(evidence),
+    )
+
+
+def _build_review_candidates(
+    evidence: FieldEvidence | None,
+) -> tuple[HumanReviewCandidate, ...]:
+    if evidence is None or not evidence.candidates:
+        return ()
+    return tuple(
+        HumanReviewCandidate(
+            index=index,
+            value=candidate.value,
+            source=candidate.source,
+            confidence=candidate.confidence,
+            bbox=candidate.bbox,
+            raw_text=candidate.raw_text,
+            same_line_text=candidate.same_line_text,
+            rule=candidate.rule,
+            rejected_by=candidate.rejected_by,
+        )
+        for index, candidate in enumerate(evidence.candidates)
+    )

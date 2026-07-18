@@ -85,7 +85,9 @@ def _workflow_result() -> RepairWorkflowResult:
     )
 
 
-def _review_case() -> HumanReviewCase:
+def _post_agent_manual_review_case() -> HumanReviewCase:
+    """Model agent-available routing followed by failed full correctness."""
+
     shell = build_domestic_vat_shell()
     shell.invoice_number = "BAD"
     shell.seller.name = "Old Seller"
@@ -109,19 +111,25 @@ def _review_case() -> HumanReviewCase:
         ),
         blocking_fields=(),
     )
+    correctness = CorrectnessResult(
+        status=CorrectnessStatus.INVALID_SHELL,
+        shell=shell,
+        validation=ShellValidationResult(errors=[error]),
+    )
     workflow = RepairWorkflowResult(
         status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
         shell=shell,
         route=route,
         context=context,
         reason=CorrectnessStatus.INVALID_SHELL.value,
+        correctness=correctness,
     )
     built = build_human_review_case(workflow)
     assert built.case is not None
     return built.case
 
 
-def test_build_case_uses_attempted_shell_and_complete_field_metadata() -> None:
+def _attempted_shell_workflow() -> RepairWorkflowResult:
     original = build_domestic_vat_shell()
     original.seller.nip = "original"
     attempted = copy.deepcopy(original)
@@ -179,7 +187,7 @@ def test_build_case_uses_attempted_shell_and_complete_field_metadata() -> None:
         shell=attempted,
         validation=ShellValidationResult(errors=[seller_error]),
     )
-    workflow = RepairWorkflowResult(
+    return RepairWorkflowResult(
         status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
         shell=original,
         route=route,
@@ -188,28 +196,55 @@ def test_build_case_uses_attempted_shell_and_complete_field_metadata() -> None:
         correctness=correctness,
     )
 
+
+def test_build_case_copies_latest_attempted_shell() -> None:
+    workflow = _attempted_shell_workflow()
+    assert workflow.correctness is not None
+
     result = build_human_review_case(workflow)
 
     assert result.issues == ()
     assert result.case is not None
-    assert result.case.shell == attempted
-    assert result.case.shell is not attempted
-    assert result.case.context is not context
+    assert result.case.shell.seller.nip == "attempted"
+    assert result.case.shell is not workflow.correctness.shell
+    assert result.case.shell.seller is not workflow.correctness.shell.seller
+
+
+def test_build_case_combines_route_and_correctness_paths() -> None:
+    result = build_human_review_case(_attempted_shell_workflow())
+
+    assert result.case is not None
     assert [field.path for field in result.case.fields] == [
         "buyer.nip",
         "seller.nip",
     ]
+    buyer = result.case.fields[0]
+    seller = result.case.fields[1]
+    assert buyer.validation_errors == ()
+    assert seller.validation_errors == (make_validation_error("seller.nip"),)
+
+
+def test_build_case_projects_evidence_and_candidate_metadata() -> None:
+    result = build_human_review_case(_attempted_shell_workflow())
+
+    assert result.case is not None
     seller = result.case.fields[1]
     assert seller.current_value == "attempted"
     assert seller.diagnostic_status is FieldStatus.AMBIGUOUS
-    assert seller.validation_errors == (seller_error,)
     assert seller.raw_text == "863-794-02-61"
     assert seller.bbox == (1.0, 2.0, 3.0, 4.0)
     assert seller.candidates[0].index == 0
     assert seller.candidates[0].source == "fuzzy"
     assert seller.candidates[0].rule == "nip_checksum"
-    assert result.case.fields[0].blocking_reason == "missing_evidence"
-    assert result.case.fields[0].diagnostic_status is FieldStatus.MISSING
+
+
+def test_build_case_preserves_blocking_metadata() -> None:
+    result = build_human_review_case(_attempted_shell_workflow())
+
+    assert result.case is not None
+    buyer = result.case.fields[0]
+    assert buyer.blocking_reason == "missing_evidence"
+    assert buyer.diagnostic_status is FieldStatus.MISSING
 
 
 def test_build_case_snapshots_mutable_extraction_context() -> None:
@@ -305,7 +340,7 @@ def test_build_case_preserves_case_level_correctness_diagnostics(
 def test_submit_applies_candidate_and_manual_commands_with_audit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    case = _review_case()
+    case = _post_agent_manual_review_case()
     correctness_calls: list[DomesticVatInvoiceShell] = []
 
     def fake_correctness(
@@ -367,7 +402,7 @@ def test_submit_applies_candidate_and_manual_commands_with_audit(
 def test_invalid_batch_applies_nothing_and_skips_correctness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    case = _review_case()
+    case = _post_agent_manual_review_case()
 
     def fail_correctness(*args: object, **kwargs: object) -> None:
         raise AssertionError("correctness must not run for an invalid batch")
@@ -455,7 +490,7 @@ def test_incompatible_value_type_rejects_the_batch_atomically(
     command: HumanReviewCommand,
     evidence: dict[str, FieldEvidence] | None,
 ) -> None:
-    case = _review_case()
+    case = _post_agent_manual_review_case()
     shell = copy.deepcopy(case.shell)
     shell.line_items = [LineItemShell(quantity=Decimal("1"))]
     context = (
@@ -531,7 +566,7 @@ def test_submission_metadata_failures_are_structured(
     code: HumanReviewIssueCode,
 ) -> None:
     outcome = submit_human_review(
-        _review_case(),
+        _post_agent_manual_review_case(),
         reviewer_id=reviewer_id,
         commands=commands,
     )
@@ -548,7 +583,7 @@ def test_duplicate_paths_are_rejected_once() -> None:
     )
 
     outcome = submit_human_review(
-        _review_case(),
+        _post_agent_manual_review_case(),
         reviewer_id="reviewer-17",
         commands=(command, command),
     )
@@ -632,7 +667,7 @@ def test_unsafe_commands_are_structured(
     evidence: dict[str, FieldEvidence],
     code: HumanReviewIssueCode,
 ) -> None:
-    case = _review_case()
+    case = _post_agent_manual_review_case()
     context = replace(case.context, evidence=evidence)
     case = replace(case, context=context)
 

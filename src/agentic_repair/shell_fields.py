@@ -108,8 +108,7 @@ def read_shell_field(
     if path.startswith("buyer."):
         return getattr(shell.buyer, path.removeprefix("buyer."))
 
-    match = _LINE_ITEM_PATH.fullmatch(path)
-    assert match is not None
+    match = _require_line_item_match(path)
     return getattr(shell.line_items[int(match.group(1))], match.group(2))
 
 
@@ -131,14 +130,20 @@ def write_shell_field(
         setattr(shell.buyer, path.removeprefix("buyer."), value)
         return
 
-    match = _LINE_ITEM_PATH.fullmatch(path)
-    assert match is not None
+    match = _require_line_item_match(path)
     setattr(shell.line_items[int(match.group(1))], match.group(2), value)
 
 
 def _require_supported(shell: DomesticVatInvoiceShell, path: str) -> None:
     if not supports_shell_field(shell, path):
         raise ShellFieldPathError(path=path)
+
+
+def _require_line_item_match(path: str) -> re.Match[str]:
+    match = _LINE_ITEM_PATH.fullmatch(path)
+    if match is None:
+        raise ShellFieldPathError(path=path)
+    return match
 
 
 def _expected_value_type(path: str) -> type[object]:
@@ -149,7 +154,5 @@ def _expected_value_type(path: str) -> type[object]:
     if path.startswith("buyer."):
         return _BUYER_VALUE_TYPES[path.removeprefix("buyer.")]
 
-    match = _LINE_ITEM_PATH.fullmatch(path)
-    if match is None:
-        raise ShellFieldPathError(path=path)
+    match = _require_line_item_match(path)
     return _LINE_ITEM_VALUE_TYPES[match.group(2)]
