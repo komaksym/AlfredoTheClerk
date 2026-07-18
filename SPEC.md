@@ -99,6 +99,11 @@ Requirements:
 - show the current value, validation error, extraction status, evidence region,
   and available candidates for each problem field
 - allow a reviewer to select an existing candidate or enter a corrected value
+- reject manual and candidate-selected values whose runtime type does not match
+  the target canonical shell path before applying any command
+- snapshot extraction evidence, diagnostics, validation, and extracted totals
+  when the review case is built so upstream mutation cannot change later review
+  decisions or reconciliation evidence
 - record every human change
 - resume the same deterministic correctness pipeline used after agent repair
 - do not create a separate, weaker validation path for human-reviewed invoices
@@ -109,6 +114,10 @@ Acceptance:
 - successful human repairs produce the same validated invoice artifact as
   successful agent repairs
 - failed review attempts remain reviewable and auditable
+- incompatible value types produce an audited `INVALID_VALUE_TYPE` issue,
+  apply no decisions, and do not call correctness
+- mutating the source workflow context after case construction cannot change
+  review candidates, diagnostics, validation, or extracted totals
 
 ## 1. KSeF integration — next
 
