@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import copy
 from dataclasses import replace
+from datetime import datetime
+from decimal import Decimal
 
 import pytest
 
 from src.agentic_repair.human_review import (
+    CandidateSelectionCommand,
+    HumanReviewCase,
+    HumanReviewCommand,
+    HumanReviewInputKind,
     HumanReviewIssueCode,
+    HumanReviewStatus,
+    ManualCorrectionCommand,
     build_human_review_case,
+    submit_human_review,
 )
 from src.agentic_repair.repair_orchestration import (
     RepairWorkflowResult,
@@ -17,6 +26,7 @@ from src.agentic_repair.repair_orchestration import (
 )
 from src.agentic_repair.repair_routing import (
     BlockingField,
+    RepairableField,
     RepairRoute,
     RepairRouteStatus,
 )
@@ -29,13 +39,20 @@ from src.input_processing.invoice_text_field_extraction import (
     Candidate,
     FieldEvidence,
 )
-from src.invoice_gen.domain_shell import build_domestic_vat_shell
+from src.invoice_gen.domain_shell import (
+    DomesticVatInvoiceShell,
+    build_domestic_vat_shell,
+)
+from src.invoice_gen.domestic_vat_shell_summary import (
+    DomesticVatInvoiceSummary,
+)
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
 from src.invoice_gen.invoice_correctness import (
     CorrectnessResult,
     CorrectnessStatus,
 )
 from tests.agentic_repair.factories import (
+    make_evidence_with_candidates,
     make_repair_context,
     make_validation_error,
 )
@@ -63,6 +80,42 @@ def _workflow_result() -> RepairWorkflowResult:
         context=context,
         reason="blocking_fields",
     )
+
+
+def _review_case() -> HumanReviewCase:
+    shell = build_domestic_vat_shell()
+    shell.invoice_number = "BAD"
+    shell.seller.name = "Old Seller"
+    error = make_validation_error("invoice_number")
+    evidence = make_evidence_with_candidates("BAD", "FV/001")
+    context = make_repair_context(
+        shell=shell,
+        evidence={"invoice_number": evidence},
+        validation_errors=[error],
+    )
+    route = RepairRoute(
+        status=RepairRouteStatus.AGENT_REPAIR_AVAILABLE,
+        repairable_fields=(
+            RepairableField(
+                path="invoice_number",
+                current_value="BAD",
+                diagnostic_status=FieldStatus.AMBIGUOUS,
+                validation_errors=(error,),
+                candidate_count=2,
+            ),
+        ),
+        blocking_fields=(),
+    )
+    workflow = RepairWorkflowResult(
+        status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+        shell=shell,
+        route=route,
+        context=context,
+        reason=CorrectnessStatus.INVALID_SHELL.value,
+    )
+    built = build_human_review_case(workflow)
+    assert built.case is not None
+    return built.case
 
 
 def test_build_case_uses_attempted_shell_and_complete_field_metadata() -> None:
@@ -197,3 +250,256 @@ def test_build_case_preserves_case_level_correctness_diagnostics(
     assert result.case is not None
     assert result.case.correctness is correctness
     assert result.case.correctness.status is status
+
+
+def test_submit_applies_candidate_and_manual_commands_with_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _review_case()
+    correctness_calls: list[DomesticVatInvoiceShell] = []
+
+    def fake_correctness(
+        shell: DomesticVatInvoiceShell,
+        extracted_summary: DomesticVatInvoiceSummary,
+        generated_at: datetime | None = None,
+    ) -> CorrectnessResult:
+        correctness_calls.append(shell)
+        return CorrectnessResult(
+            status=CorrectnessStatus.READY_FOR_KSEF,
+            shell=shell,
+            validation=ShellValidationResult(errors=[]),
+        )
+
+    monkeypatch.setattr(
+        "src.agentic_repair.human_review.check_invoice_correctness",
+        fake_correctness,
+    )
+    commands = (
+        CandidateSelectionCommand(
+            path="invoice_number",
+            candidate_index=1,
+            reason="visible invoice identifier",
+        ),
+        ManualCorrectionCommand(
+            path="seller.name",
+            value="Correct Seller",
+            reason="reviewed against the party block",
+        ),
+    )
+
+    outcome = submit_human_review(
+        case,
+        reviewer_id="reviewer-17",
+        commands=commands,
+    )
+
+    assert outcome.status is HumanReviewStatus.READY_FOR_KSEF
+    assert outcome.case.shell.invoice_number == "FV/001"
+    assert outcome.case.shell.seller.name == "Correct Seller"
+    assert case.shell.invoice_number != "FV/001"
+    assert case.shell.seller.name == "Old Seller"
+    assert correctness_calls == [outcome.case.shell]
+    attempt = outcome.case.attempts[-1]
+    assert attempt.issues == ()
+    assert attempt.correctness_status is CorrectnessStatus.READY_FOR_KSEF
+    assert [decision.input_kind for decision in attempt.decisions] == [
+        HumanReviewInputKind.CANDIDATE_SELECTION,
+        HumanReviewInputKind.MANUAL_CORRECTION,
+    ]
+    assert [decision.reviewer_id for decision in attempt.decisions] == [
+        "reviewer-17",
+        "reviewer-17",
+    ]
+    assert attempt.decisions[0].candidate_index == 1
+    assert attempt.decisions[1].candidate_index is None
+
+
+def test_invalid_batch_applies_nothing_and_skips_correctness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _review_case()
+
+    def fail_correctness(*args: object, **kwargs: object) -> None:
+        raise AssertionError("correctness must not run for an invalid batch")
+
+    monkeypatch.setattr(
+        "src.agentic_repair.human_review.check_invoice_correctness",
+        fail_correctness,
+    )
+
+    outcome = submit_human_review(
+        case,
+        reviewer_id="reviewer-17",
+        commands=(
+            ManualCorrectionCommand(
+                path="invoice_number",
+                value="FV/001",
+                reason="reviewed identifier",
+            ),
+            ManualCorrectionCommand(
+                path="summary.invoice_gross_total",
+                value=Decimal("999.00"),
+                reason="must remain evidence",
+            ),
+        ),
+    )
+
+    assert outcome.status is HumanReviewStatus.MANUAL_REVIEW_REQUIRED
+    assert outcome.case.shell == case.shell
+    assert outcome.case.shell.invoice_number == case.shell.invoice_number
+    attempt = outcome.case.attempts[-1]
+    assert attempt.decisions == ()
+    assert attempt.correctness_status is None
+    assert [issue.code for issue in attempt.issues] == [
+        HumanReviewIssueCode.IMMUTABLE_PATH,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("reviewer_id", "commands", "code"),
+    [
+        (
+            "",
+            (
+                ManualCorrectionCommand(
+                    path="invoice_number",
+                    value="FV/001",
+                    reason="reviewed identifier",
+                ),
+            ),
+            HumanReviewIssueCode.REVIEWER_ID_REQUIRED,
+        ),
+        ("reviewer-17", (), HumanReviewIssueCode.COMMANDS_REQUIRED),
+        (
+            "reviewer-17",
+            (
+                ManualCorrectionCommand(
+                    path="invoice_number",
+                    value="FV/001",
+                    reason="",
+                ),
+            ),
+            HumanReviewIssueCode.REASON_REQUIRED,
+        ),
+    ],
+)
+def test_submission_metadata_failures_are_structured(
+    reviewer_id: str,
+    commands: tuple[HumanReviewCommand, ...],
+    code: HumanReviewIssueCode,
+) -> None:
+    outcome = submit_human_review(
+        _review_case(),
+        reviewer_id=reviewer_id,
+        commands=commands,
+    )
+
+    assert outcome.status is HumanReviewStatus.MANUAL_REVIEW_REQUIRED
+    assert [issue.code for issue in outcome.case.attempts[-1].issues] == [code]
+
+
+def test_duplicate_paths_are_rejected_once() -> None:
+    command = ManualCorrectionCommand(
+        path="invoice_number",
+        value="FV/001",
+        reason="reviewed identifier",
+    )
+
+    outcome = submit_human_review(
+        _review_case(),
+        reviewer_id="reviewer-17",
+        commands=(command, command),
+    )
+
+    attempt = outcome.case.attempts[-1]
+    assert attempt.decisions == ()
+    assert [(issue.path, issue.code) for issue in attempt.issues] == [
+        ("invoice_number", HumanReviewIssueCode.DUPLICATE_PATH),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("command", "evidence", "code"),
+    [
+        (
+            ManualCorrectionCommand(
+                path="currency",
+                value="EUR",
+                reason="unsafe field",
+            ),
+            {},
+            HumanReviewIssueCode.UNSUPPORTED_PATH,
+        ),
+        (
+            CandidateSelectionCommand(
+                path="seller.nip",
+                candidate_index=0,
+                reason="selected source value",
+            ),
+            {},
+            HumanReviewIssueCode.MISSING_EVIDENCE,
+        ),
+        (
+            CandidateSelectionCommand(
+                path="seller.nip",
+                candidate_index=0,
+                reason="selected source value",
+            ),
+            {
+                "seller.nip": FieldEvidence(
+                    value=None,
+                    source="unresolved",
+                    confidence=0.0,
+                    bbox=None,
+                    candidates=(),
+                )
+            },
+            HumanReviewIssueCode.CANDIDATES_REQUIRED,
+        ),
+        (
+            CandidateSelectionCommand(
+                path="seller.nip",
+                candidate_index=-1,
+                reason="selected source value",
+            ),
+            {"seller.nip": make_evidence_with_candidates("8637940261")},
+            HumanReviewIssueCode.CANDIDATE_INDEX_OUT_OF_RANGE,
+        ),
+        (
+            CandidateSelectionCommand(
+                path="seller.nip",
+                candidate_index=1,
+                reason="selected source value",
+            ),
+            {"seller.nip": make_evidence_with_candidates("8637940261")},
+            HumanReviewIssueCode.CANDIDATE_INDEX_OUT_OF_RANGE,
+        ),
+        (
+            CandidateSelectionCommand(
+                path="seller.nip",
+                candidate_index=0,
+                reason="selected source value",
+            ),
+            {"seller.nip": make_evidence_with_candidates(None)},
+            HumanReviewIssueCode.CANDIDATE_VALUE_MISSING,
+        ),
+    ],
+)
+def test_unsafe_commands_are_structured(
+    command: HumanReviewCommand,
+    evidence: dict[str, FieldEvidence],
+    code: HumanReviewIssueCode,
+) -> None:
+    case = _review_case()
+    context = replace(case.context, evidence=evidence)
+    case = replace(case, context=context)
+
+    outcome = submit_human_review(
+        case,
+        reviewer_id="reviewer-17",
+        commands=(command,),
+    )
+
+    attempt = outcome.case.attempts[-1]
+    assert attempt.decisions == ()
+    assert [issue.code for issue in attempt.issues] == [code]

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -16,6 +16,7 @@ from src.agentic_repair.repair_routing import RepairRoute
 from src.agentic_repair.shell_fields import (
     read_shell_field,
     supports_shell_field,
+    write_shell_field,
 )
 from src.input_processing.extraction_comparison import RepairContext
 from src.input_processing.extraction_diagnostics import FieldStatus
@@ -25,6 +26,7 @@ from src.invoice_gen.domestic_vat_shell_validation import ShellValidationError
 from src.invoice_gen.invoice_correctness import (
     CorrectnessResult,
     CorrectnessStatus,
+    check_invoice_correctness,
 )
 
 
@@ -172,6 +174,232 @@ class HumanReviewOutcome:
     status: HumanReviewStatus
     case: HumanReviewCase
     correctness: CorrectnessResult | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ResolvedCommand:
+    command: HumanReviewCommand
+    new_value: CanonicalReviewValue
+    input_kind: HumanReviewInputKind
+    candidate_index: int | None
+
+
+def submit_human_review(
+    case: HumanReviewCase,
+    *,
+    reviewer_id: str,
+    commands: tuple[HumanReviewCommand, ...],
+    generated_at: datetime | None = None,
+) -> HumanReviewOutcome:
+    """Apply one attributed batch and rerun the shared correctness gate."""
+
+    resolved, issues = _validate_submission(
+        case,
+        reviewer_id=reviewer_id,
+        commands=commands,
+    )
+    if issues:
+        attempt = HumanReviewAttempt(
+            reviewer_id=reviewer_id,
+            commands=commands,
+            decisions=(),
+            issues=issues,
+            correctness_status=None,
+        )
+        updated = replace(case, attempts=(*case.attempts, attempt))
+        return HumanReviewOutcome(
+            status=HumanReviewStatus.MANUAL_REVIEW_REQUIRED,
+            case=updated,
+            correctness=case.correctness,
+        )
+
+    shell = copy.deepcopy(case.shell)
+    decisions: list[HumanReviewDecision] = []
+    for item in resolved:
+        old_value = read_shell_field(shell, item.command.path)
+        write_shell_field(shell, item.command.path, item.new_value)
+        decisions.append(
+            HumanReviewDecision(
+                reviewer_id=reviewer_id,
+                path=item.command.path,
+                old_value=old_value,
+                new_value=item.new_value,
+                input_kind=item.input_kind,
+                candidate_index=item.candidate_index,
+                reason=item.command.reason,
+            )
+        )
+
+    correctness = check_invoice_correctness(
+        shell,
+        case.context.extracted_summary,
+        generated_at=generated_at,
+    )
+    attempt = HumanReviewAttempt(
+        reviewer_id=reviewer_id,
+        commands=commands,
+        decisions=tuple(decisions),
+        issues=(),
+        correctness_status=correctness.status,
+    )
+    updated = replace(
+        case,
+        shell=shell,
+        correctness=correctness,
+        fields=_build_review_fields(
+            shell=shell,
+            context=case.context,
+            route=case.route,
+            correctness=correctness,
+        ),
+        attempts=(*case.attempts, attempt),
+    )
+    status = (
+        HumanReviewStatus.READY_FOR_KSEF
+        if correctness.status is CorrectnessStatus.READY_FOR_KSEF
+        else HumanReviewStatus.MANUAL_REVIEW_REQUIRED
+    )
+    return HumanReviewOutcome(
+        status=status,
+        case=updated,
+        correctness=correctness,
+    )
+
+
+def _validate_submission(
+    case: HumanReviewCase,
+    *,
+    reviewer_id: str,
+    commands: tuple[HumanReviewCommand, ...],
+) -> tuple[tuple[_ResolvedCommand, ...], tuple[HumanReviewIssue, ...]]:
+    issues: list[HumanReviewIssue] = []
+    if not reviewer_id.strip():
+        issues.append(
+            HumanReviewIssue(
+                path=None,
+                code=HumanReviewIssueCode.REVIEWER_ID_REQUIRED,
+                message="reviewer_id is required",
+            )
+        )
+    if not commands:
+        issues.append(
+            HumanReviewIssue(
+                path=None,
+                code=HumanReviewIssueCode.COMMANDS_REQUIRED,
+                message="at least one review command is required",
+            )
+        )
+    if issues:
+        return (), tuple(issues)
+
+    counts: dict[str, int] = {}
+    for command in commands:
+        counts[command.path] = counts.get(command.path, 0) + 1
+    duplicate_paths = {path for path, count in counts.items() if count > 1}
+    for path in sorted(duplicate_paths):
+        issues.append(
+            HumanReviewIssue(
+                path=path,
+                code=HumanReviewIssueCode.DUPLICATE_PATH,
+                message="one review batch may change a path only once",
+            )
+        )
+
+    resolved: list[_ResolvedCommand] = []
+    for command in commands:
+        path = command.path
+        if path in duplicate_paths:
+            continue
+        if not command.reason.strip():
+            issues.append(
+                HumanReviewIssue(
+                    path=path,
+                    code=HumanReviewIssueCode.REASON_REQUIRED,
+                    message="a reason is required for every human change",
+                )
+            )
+            continue
+        if path.startswith("summary."):
+            issues.append(
+                HumanReviewIssue(
+                    path=path,
+                    code=HumanReviewIssueCode.IMMUTABLE_PATH,
+                    message="extracted summary totals are immutable evidence",
+                )
+            )
+            continue
+        if not supports_shell_field(case.shell, path):
+            issues.append(
+                HumanReviewIssue(
+                    path=path,
+                    code=HumanReviewIssueCode.UNSUPPORTED_PATH,
+                    message="path is outside the human-review shell scope",
+                )
+            )
+            continue
+
+        if isinstance(command, ManualCorrectionCommand):
+            resolved.append(
+                _ResolvedCommand(
+                    command=command,
+                    new_value=command.value,
+                    input_kind=HumanReviewInputKind.MANUAL_CORRECTION,
+                    candidate_index=None,
+                )
+            )
+            continue
+
+        evidence = case.context.evidence.get(path)
+        if evidence is None:
+            issues.append(
+                HumanReviewIssue(
+                    path=path,
+                    code=HumanReviewIssueCode.MISSING_EVIDENCE,
+                    message="candidate selection requires field evidence",
+                )
+            )
+            continue
+        candidates = evidence.candidates or ()
+        if not candidates:
+            issues.append(
+                HumanReviewIssue(
+                    path=path,
+                    code=HumanReviewIssueCode.CANDIDATES_REQUIRED,
+                    message="candidate selection requires candidates",
+                )
+            )
+            continue
+        if not 0 <= command.candidate_index < len(candidates):
+            issues.append(
+                HumanReviewIssue(
+                    path=path,
+                    code=HumanReviewIssueCode.CANDIDATE_INDEX_OUT_OF_RANGE,
+                    message="candidate index is outside the evidence list",
+                )
+            )
+            continue
+        candidate = candidates[command.candidate_index]
+        if candidate.value is None:
+            issues.append(
+                HumanReviewIssue(
+                    path=path,
+                    code=HumanReviewIssueCode.CANDIDATE_VALUE_MISSING,
+                    message="selected candidate has no value",
+                )
+            )
+            continue
+        resolved.append(
+            _ResolvedCommand(
+                command=command,
+                new_value=candidate.value,
+                input_kind=HumanReviewInputKind.CANDIDATE_SELECTION,
+                candidate_index=command.candidate_index,
+            )
+        )
+
+    if issues:
+        return (), tuple(issues)
+    return tuple(resolved), ()
 
 
 def build_human_review_case(
