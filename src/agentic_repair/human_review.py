@@ -14,6 +14,7 @@ from src.agentic_repair.repair_orchestration import (
 )
 from src.agentic_repair.repair_routing import RepairRoute
 from src.agentic_repair.shell_fields import (
+    is_shell_field_value_compatible,
     read_shell_field,
     supports_shell_field,
     write_shell_field,
@@ -40,6 +41,7 @@ class HumanReviewIssueCode(Enum):
     DUPLICATE_PATH = "duplicate_path"
     IMMUTABLE_PATH = "immutable_path"
     UNSUPPORTED_PATH = "unsupported_path"
+    INVALID_VALUE_TYPE = "invalid_value_type"
     MISSING_EVIDENCE = "missing_evidence"
     CANDIDATES_REQUIRED = "candidates_required"
     CANDIDATE_INDEX_OUT_OF_RANGE = "candidate_index_out_of_range"
@@ -339,6 +341,13 @@ def _validate_submission(
             continue
 
         if isinstance(command, ManualCorrectionCommand):
+            if not is_shell_field_value_compatible(
+                case.shell,
+                path,
+                command.value,
+            ):
+                issues.append(_invalid_value_type_issue(path))
+                continue
             resolved.append(
                 _ResolvedCommand(
                     command=command,
@@ -388,6 +397,13 @@ def _validate_submission(
                 )
             )
             continue
+        if not is_shell_field_value_compatible(
+            case.shell,
+            path,
+            candidate.value,
+        ):
+            issues.append(_invalid_value_type_issue(path))
+            continue
         resolved.append(
             _ResolvedCommand(
                 command=command,
@@ -400,6 +416,14 @@ def _validate_submission(
     if issues:
         return (), tuple(issues)
     return tuple(resolved), ()
+
+
+def _invalid_value_type_issue(path: str) -> HumanReviewIssue:
+    return HumanReviewIssue(
+        path=path,
+        code=HumanReviewIssueCode.INVALID_VALUE_TYPE,
+        message="value type is incompatible with the target shell field",
+    )
 
 
 def build_human_review_case(

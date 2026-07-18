@@ -2,48 +2,47 @@
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
 import re
 
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
 
 
-TOP_LEVEL_MUTABLE = frozenset(
-    {
-        "invoice_number",
-        "issue_date",
-        "sale_date",
-        "issue_city",
-        "payment_form",
-        "payment_due_date",
-    }
-)
-SELLER_MUTABLE = frozenset(
-    {
-        "nip",
-        "name",
-        "address_line_1",
-        "address_line_2",
-        "bank_account",
-    }
-)
-BUYER_MUTABLE = frozenset(
-    {
-        "nip",
-        "name",
-        "address_line_1",
-        "address_line_2",
-    }
-)
-LINE_ITEM_MUTABLE = frozenset(
-    {
-        "description",
-        "unit",
-        "quantity",
-        "unit_price_net",
-        "discount",
-        "vat_rate",
-    }
-)
+_TOP_LEVEL_VALUE_TYPES: dict[str, type[object]] = {
+    "invoice_number": str,
+    "issue_date": date,
+    "sale_date": date,
+    "issue_city": str,
+    "payment_form": int,
+    "payment_due_date": date,
+}
+_SELLER_VALUE_TYPES: dict[str, type[object]] = {
+    "nip": str,
+    "name": str,
+    "address_line_1": str,
+    "address_line_2": str,
+    "bank_account": str,
+}
+_BUYER_VALUE_TYPES: dict[str, type[object]] = {
+    "nip": str,
+    "name": str,
+    "address_line_1": str,
+    "address_line_2": str,
+}
+_LINE_ITEM_VALUE_TYPES: dict[str, type[object]] = {
+    "description": str,
+    "unit": str,
+    "quantity": Decimal,
+    "unit_price_net": Decimal,
+    "discount": Decimal,
+    "vat_rate": Decimal,
+}
+
+TOP_LEVEL_MUTABLE = frozenset(_TOP_LEVEL_VALUE_TYPES)
+SELLER_MUTABLE = frozenset(_SELLER_VALUE_TYPES)
+BUYER_MUTABLE = frozenset(_BUYER_VALUE_TYPES)
+LINE_ITEM_MUTABLE = frozenset(_LINE_ITEM_VALUE_TYPES)
 _LINE_ITEM_PATH = re.compile(r"^line_items\[(\d+)\]\.([a-z_]+)$")
 
 
@@ -79,6 +78,20 @@ def supports_shell_field(
     index = int(match.group(1))
     field = match.group(2)
     return 0 <= index < len(shell.line_items) and field in LINE_ITEM_MUTABLE
+
+
+def is_shell_field_value_compatible(
+    shell: DomesticVatInvoiceShell,
+    path: str,
+    value: object,
+) -> bool:
+    """Return whether ``value`` has the canonical runtime type for ``path``."""
+
+    if not supports_shell_field(shell, path):
+        return False
+    if value is None:
+        return True
+    return type(value) is _expected_value_type(path)
 
 
 def read_shell_field(
@@ -126,3 +139,17 @@ def write_shell_field(
 def _require_supported(shell: DomesticVatInvoiceShell, path: str) -> None:
     if not supports_shell_field(shell, path):
         raise ShellFieldPathError(path=path)
+
+
+def _expected_value_type(path: str) -> type[object]:
+    if path in _TOP_LEVEL_VALUE_TYPES:
+        return _TOP_LEVEL_VALUE_TYPES[path]
+    if path.startswith("seller."):
+        return _SELLER_VALUE_TYPES[path.removeprefix("seller.")]
+    if path.startswith("buyer."):
+        return _BUYER_VALUE_TYPES[path.removeprefix("buyer.")]
+
+    match = _LINE_ITEM_PATH.fullmatch(path)
+    if match is None:
+        raise ShellFieldPathError(path=path)
+    return _LINE_ITEM_VALUE_TYPES[match.group(2)]

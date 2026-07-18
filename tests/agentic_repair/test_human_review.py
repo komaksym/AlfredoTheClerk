@@ -41,6 +41,7 @@ from src.input_processing.invoice_text_field_extraction import (
 )
 from src.invoice_gen.domain_shell import (
     DomesticVatInvoiceShell,
+    LineItemShell,
     build_domestic_vat_shell,
 )
 from src.invoice_gen.domestic_vat_shell_summary import (
@@ -352,6 +353,98 @@ def test_invalid_batch_applies_nothing_and_skips_correctness(
     assert attempt.correctness_status is None
     assert [issue.code for issue in attempt.issues] == [
         HumanReviewIssueCode.IMMUTABLE_PATH,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("command", "evidence"),
+    [
+        (
+            ManualCorrectionCommand(
+                path="invoice_number",
+                value=1,
+                reason="wrong runtime type",
+            ),
+            None,
+        ),
+        (
+            ManualCorrectionCommand(
+                path="issue_date",
+                value="2026-07-18",
+                reason="wrong runtime type",
+            ),
+            None,
+        ),
+        (
+            ManualCorrectionCommand(
+                path="payment_form",
+                value=True,
+                reason="bool must not pass as int",
+            ),
+            None,
+        ),
+        (
+            ManualCorrectionCommand(
+                path="line_items[0].quantity",
+                value="2",
+                reason="wrong runtime type",
+            ),
+            None,
+        ),
+        (
+            CandidateSelectionCommand(
+                path="invoice_number",
+                candidate_index=0,
+                reason="candidate has wrong runtime type",
+            ),
+            {"invoice_number": make_evidence_with_candidates(1)},
+        ),
+    ],
+)
+def test_incompatible_value_type_rejects_the_batch_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+    command: HumanReviewCommand,
+    evidence: dict[str, FieldEvidence] | None,
+) -> None:
+    case = _review_case()
+    shell = copy.deepcopy(case.shell)
+    shell.line_items = [LineItemShell(quantity=Decimal("1"))]
+    context = (
+        replace(case.context, evidence=evidence)
+        if evidence is not None
+        else case.context
+    )
+    case = replace(case, shell=shell, context=context)
+    original = copy.deepcopy(case.shell)
+
+    def fail_correctness(*args: object, **kwargs: object) -> None:
+        raise AssertionError("correctness must not run for an invalid batch")
+
+    monkeypatch.setattr(
+        "src.agentic_repair.human_review.check_invoice_correctness",
+        fail_correctness,
+    )
+
+    outcome = submit_human_review(
+        case,
+        reviewer_id="reviewer-17",
+        commands=(
+            ManualCorrectionCommand(
+                path="seller.name",
+                value="Would Be Applied First",
+                reason="valid command in the rejected batch",
+            ),
+            command,
+        ),
+    )
+
+    attempt = outcome.case.attempts[-1]
+    assert outcome.status is HumanReviewStatus.MANUAL_REVIEW_REQUIRED
+    assert outcome.case.shell == original
+    assert attempt.decisions == ()
+    assert attempt.correctness_status is None
+    assert [issue.code for issue in attempt.issues] == [
+        HumanReviewIssueCode.INVALID_VALUE_TYPE,
     ]
 
 
