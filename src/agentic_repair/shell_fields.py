@@ -43,7 +43,7 @@ TOP_LEVEL_MUTABLE = frozenset(_TOP_LEVEL_VALUE_TYPES)
 SELLER_MUTABLE = frozenset(_SELLER_VALUE_TYPES)
 BUYER_MUTABLE = frozenset(_BUYER_VALUE_TYPES)
 LINE_ITEM_MUTABLE = frozenset(_LINE_ITEM_VALUE_TYPES)
-_LINE_ITEM_PATH = re.compile(r"^line_items\[(\d+)\]\.([a-z_]+)$")
+_LINE_ITEM_PATH = re.compile(r"^line_items\[(0|[1-9][0-9]*)\]\.([a-z_]+)$")
 
 
 class ShellFieldPathError(ValueError):

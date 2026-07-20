@@ -101,9 +101,11 @@ Requirements:
 - allow a reviewer to select an existing candidate or enter a corrected value
 - reject manual and candidate-selected values whose runtime type does not match
   the target canonical shell path before applying any command
-- snapshot extraction evidence, diagnostics, validation, and extracted totals
-  when the review case is built so upstream mutation cannot change later review
-  decisions or reconciliation evidence
+- snapshot extraction evidence, diagnostics, validation, extracted totals,
+  routing, and correctness when the review case is built so upstream mutation
+  cannot change later review decisions or reconciliation evidence
+- accept only canonical ASCII line-item indices at repair and review boundaries
+  so path aliases cannot target one shell field more than once per batch
 - record every human change
 - resume the same deterministic correctness pipeline used after agent repair
 - do not create a separate, weaker validation path for human-reviewed invoices

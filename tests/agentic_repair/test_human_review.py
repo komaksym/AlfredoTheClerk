@@ -210,6 +210,26 @@ def test_build_case_copies_latest_attempted_shell() -> None:
     assert result.case.shell.seller is not workflow.correctness.shell.seller
 
 
+def test_build_case_snapshots_correctness_and_route() -> None:
+    workflow = _attempted_shell_workflow()
+    source = workflow.correctness
+    assert source is not None
+
+    result = build_human_review_case(workflow)
+    assert result.case is not None
+    assert result.case.correctness is not None
+
+    source.shell.seller.nip = "changed-after-case-build"
+    source.validation.errors.append(make_validation_error("invoice_number"))
+
+    snapshot = result.case.correctness
+    assert snapshot is not source
+    assert snapshot.shell is result.case.shell
+    assert snapshot.shell.seller.nip == "attempted"
+    assert snapshot.validation.errors == [make_validation_error("seller.nip")]
+    assert result.case.route is not workflow.route
+
+
 def test_build_case_combines_route_and_correctness_paths() -> None:
     result = build_human_review_case(_attempted_shell_workflow())
 
@@ -333,7 +353,9 @@ def test_build_case_preserves_case_level_correctness_diagnostics(
     result = build_human_review_case(workflow)
 
     assert result.case is not None
-    assert result.case.correctness is correctness
+    assert result.case.correctness is not correctness
+    assert result.case.correctness is not None
+    assert result.case.correctness.shell is result.case.shell
     assert result.case.correctness.status is status
 
 
@@ -592,6 +614,56 @@ def test_duplicate_paths_are_rejected_once() -> None:
     assert attempt.decisions == ()
     assert [(issue.path, issue.code) for issue in attempt.issues] == [
         ("invoice_number", HumanReviewIssueCode.DUPLICATE_PATH),
+    ]
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "line_items[00].quantity",
+        "line_items[01].quantity",
+        "line_items[٠].quantity",
+    ],
+)
+def test_noncanonical_line_item_path_rejects_batch_atomically(
+    alias: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _post_agent_manual_review_case()
+    shell = copy.deepcopy(case.shell)
+    shell.line_items = [LineItemShell(quantity=Decimal("1"))]
+    case = replace(case, shell=shell)
+
+    def fail_correctness(*args: object, **kwargs: object) -> None:
+        raise AssertionError("correctness must not run for an invalid batch")
+
+    monkeypatch.setattr(
+        "src.agentic_repair.human_review.check_invoice_correctness",
+        fail_correctness,
+    )
+
+    outcome = submit_human_review(
+        case,
+        reviewer_id="reviewer-17",
+        commands=(
+            ManualCorrectionCommand(
+                path="line_items[0].quantity",
+                value=Decimal("2"),
+                reason="canonical correction",
+            ),
+            ManualCorrectionCommand(
+                path=alias,
+                value=Decimal("3"),
+                reason="noncanonical alias",
+            ),
+        ),
+    )
+
+    attempt = outcome.case.attempts[-1]
+    assert outcome.case.shell.line_items[0].quantity == Decimal("1")
+    assert attempt.decisions == ()
+    assert [(issue.path, issue.code) for issue in attempt.issues] == [
+        (alias, HumanReviewIssueCode.UNSUPPORTED_PATH),
     ]
 
 

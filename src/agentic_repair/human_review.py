@@ -455,18 +455,22 @@ def build_human_review_case(
     )
     context = copy.deepcopy(result.context)
     shell = copy.deepcopy(source_shell)
+    route = copy.deepcopy(result.route)
+    correctness = copy.deepcopy(result.correctness)
+    if correctness is not None:
+        correctness = replace(correctness, shell=shell)
     fields = _build_review_fields(
         shell=shell,
         context=context,
-        route=result.route,
-        correctness=result.correctness,
+        route=route,
+        correctness=correctness,
     )
     case = HumanReviewCase(
         context=context,
         shell=shell,
-        route=result.route,
+        route=route,
         reason=result.reason,
-        correctness=result.correctness,
+        correctness=correctness,
         fields=fields,
     )
     return HumanReviewCaseBuildResult(case=case, issues=())
