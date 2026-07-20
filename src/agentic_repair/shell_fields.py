@@ -135,11 +135,15 @@ def write_shell_field(
 
 
 def _require_supported(shell: DomesticVatInvoiceShell, path: str) -> None:
+    """Raise when ``path`` is outside the mutable shell-field contract."""
+
     if not supports_shell_field(shell, path):
         raise ShellFieldPathError(path=path)
 
 
 def _require_line_item_match(path: str) -> re.Match[str]:
+    """Parse a line-item path or raise the package's stable path error."""
+
     match = _LINE_ITEM_PATH.fullmatch(path)
     if match is None:
         raise ShellFieldPathError(path=path)
@@ -147,6 +151,8 @@ def _require_line_item_match(path: str) -> re.Match[str]:
 
 
 def _expected_value_type(path: str) -> type[object]:
+    """Return the canonical runtime type assigned to a supported field path."""
+
     if path in _TOP_LEVEL_VALUE_TYPES:
         return _TOP_LEVEL_VALUE_TYPES[path]
     if path.startswith("seller."):
