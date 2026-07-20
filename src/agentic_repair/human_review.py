@@ -183,6 +183,8 @@ class HumanReviewOutcome:
 
 @dataclass(frozen=True, kw_only=True)
 class _ResolvedCommand:
+    """Validated command ready for atomic application to a shell copy."""
+
     command: HumanReviewCommand
     new_value: CanonicalReviewValue
     input_kind: HumanReviewInputKind
@@ -277,6 +279,8 @@ def _validate_submission(
     reviewer_id: str,
     commands: tuple[HumanReviewCommand, ...],
 ) -> tuple[tuple[_ResolvedCommand, ...], tuple[HumanReviewIssue, ...]]:
+    """Validate a review batch and resolve its canonical values atomically."""
+
     issues: list[HumanReviewIssue] = []
     if not reviewer_id.strip():
         issues.append(
@@ -422,6 +426,8 @@ def _validate_submission(
 
 
 def _invalid_value_type_issue(path: str) -> HumanReviewIssue:
+    """Build the stable issue for an incompatible canonical field value."""
+
     return HumanReviewIssue(
         path=path,
         code=HumanReviewIssueCode.INVALID_VALUE_TYPE,
@@ -498,6 +504,8 @@ def _review_paths(
     route: RepairRoute,
     correctness: CorrectnessResult | None,
 ) -> tuple[str, ...]:
+    """Return the stable union of routed and correctness-error field paths."""
+
     routed = (*route.repairable_fields, *route.blocking_fields)
     paths = {field.path for field in routed}
     if correctness is not None:
@@ -509,6 +517,8 @@ def _review_errors_by_path(
     route: RepairRoute,
     correctness: CorrectnessResult | None,
 ) -> dict[str, tuple[ShellValidationError, ...]]:
+    """Group review-relevant validation errors by canonical field path."""
+
     routed = (*route.repairable_fields, *route.blocking_fields)
     source = (
         tuple(correctness.validation.errors)
@@ -534,6 +544,8 @@ def _build_review_field(
     blocking_reason: str | None,
     routed_status: FieldStatus | None,
 ) -> HumanReviewField:
+    """Project one canonical path into the human-review field payload."""
+
     evidence = context.evidence.get(path)
     diagnostic = context.diagnostics.fields.get(path)
     if supports_shell_field(shell, path):
@@ -560,6 +572,8 @@ def _build_review_field(
 def _build_review_candidates(
     evidence: FieldEvidence | None,
 ) -> tuple[HumanReviewCandidate, ...]:
+    """Project evidence candidates into stable indexed review choices."""
+
     if evidence is None or not evidence.candidates:
         return ()
     return tuple(
