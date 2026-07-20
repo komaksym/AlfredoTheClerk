@@ -1,3 +1,5 @@
+"""Agent-facing projections of deterministic repair routing state."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,11 +14,15 @@ from src.invoice_gen.domestic_vat_shell_validation import (
 
 @dataclass(frozen=True, kw_only=True)
 class AgentRepairPayload:
+    """Complete compact payload supplied to the repair agent."""
+
     payload: tuple[AgentRepairField, ...]
 
 
 @dataclass(frozen=True, kw_only=True)
 class AgentRepairField:
+    """One routed shell field and its evidence-backed repair choices."""
+
     path: str
     current_value: object
     diagnostic_status: FieldStatus | None
@@ -26,6 +32,8 @@ class AgentRepairField:
 
 @dataclass(frozen=True, kw_only=True)
 class AgentRepairCandidate:
+    """One candidate the agent may select for a repairable field."""
+
     index: int
     value: object
     confidence: float
