@@ -20,12 +20,10 @@ class KsefTransportError(RuntimeError):
         code: str,
         *,
         http_status: int | None = None,
-        description: str | None = None,
         retry_after: float | None = None,
     ) -> None:
         self.code = code
         self.http_status = http_status
-        self.description = description
         self.retry_after = retry_after
         super().__init__(self._message())
 
@@ -248,44 +246,33 @@ class KsefTransport:
         except httpx.HTTPError as exc:
             raise KsefTransportError("TRANSPORT_ERROR") from exc
         if response.status_code != expected:
-            code, description = _safe_error(response)
             raise KsefTransportError(
-                code,
+                _error_code(response),
                 http_status=response.status_code,
-                description=description,
                 retry_after=_retry_after(response),
             )
         return response
 
 
-def _safe_error(response: httpx.Response) -> tuple[str, str | None]:
+def _error_code(response: httpx.Response) -> str:
     try:
         payload = response.json()
     except ValueError:
-        return "HTTP_ERROR", None
+        return "HTTP_ERROR"
     if not isinstance(payload, dict):
-        return "HTTP_ERROR", None
+        return "HTTP_ERROR"
 
     code = _simple_code(payload.get("reasonCode")) or _simple_code(payload.get("code"))
-    description = _simple_text(payload.get("detail")) or _simple_text(payload.get("title"))
-
     errors = payload.get("errors")
-    if isinstance(errors, list) and errors and isinstance(errors[0], dict):
-        first = errors[0]
-        code = code or _simple_code(first.get("code"))
-        description = description or _simple_text(first.get("description"))
-
-    return code or "HTTP_ERROR", description
+    if code is None and isinstance(errors, list) and errors and isinstance(errors[0], dict):
+        code = _simple_code(errors[0].get("code"))
+    return code or "HTTP_ERROR"
 
 
 def _simple_code(value: Any) -> str | None:
     if isinstance(value, (str, int)) and not isinstance(value, bool):
         return str(value)
     return None
-
-
-def _simple_text(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
 
 
 def _retry_after(response: httpx.Response) -> float | None:
