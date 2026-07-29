@@ -65,15 +65,6 @@ class KsefAuthInit:
 
 
 @dataclass(frozen=True, kw_only=True)
-class KsefAccessTokens:
-    access_token: str
-    refresh_token: str
-
-    def __repr__(self) -> str:
-        return "KsefAccessTokens(access_token=<redacted>, refresh_token=<redacted>)"
-
-
-@dataclass(frozen=True, kw_only=True)
 class KsefSubmissionResult:
     """Safe structured result for one TEST invoice submission attempt."""
 
