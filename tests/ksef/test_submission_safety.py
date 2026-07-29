@@ -26,6 +26,7 @@ class FakeKsef:
         self.redeem_timeout = False
         self.send_timeout = False
         self.reconcile_match = False
+        self.reconcile_error_status: int | None = None
         self.invoice_pending = False
         self.malformed_invoice_status = False
         self.close_error = False
@@ -117,6 +118,15 @@ class FakeKsef:
             return httpx.Response(202, json={"referenceNumber": "INVOICE"})
         if path == "/sessions/SESSION/invoices":
             self.list_calls += 1
+            if self.reconcile_error_status is not None:
+                return httpx.Response(
+                    self.reconcile_error_status,
+                    json={
+                        "title": "Unauthorized",
+                        "status": self.reconcile_error_status,
+                        "detail": "session list unavailable",
+                    },
+                )
             invoices: list[dict[str, str]] = []
             if self.reconcile_match:
                 request_hash = _original_hash()
@@ -274,6 +284,28 @@ def test_unresolved_ambiguous_send_returns_pending_without_resubmission() -> Non
     assert result.error_code == "SUBMISSION_UNKNOWN"
     assert result.session_reference == "SESSION"
     assert result.invoice_hash == _original_hash()
+    assert fake.send_calls == 1
+    assert fake.list_calls == 1
+    assert fake.close_calls == 1
+
+
+def test_non_retryable_reconciliation_error_preserves_uncertainty() -> None:
+    fake = FakeKsef()
+    fake.send_timeout = True
+    fake.reconcile_error_status = 401
+
+    result = submit_ready_invoice(
+        ready_result(),
+        config=config(),
+        http_transport=httpx.MockTransport(fake),
+    )
+
+    assert result.status is KsefSubmissionStatus.PENDING
+    assert result.failure_stage is KsefFailureStage.SUBMIT
+    assert result.error_code == "RECONCILIATION_FAILED"
+    assert result.session_reference == "SESSION"
+    assert result.invoice_hash == _original_hash()
+    assert "401" in (result.diagnostic or "")
     assert fake.send_calls == 1
     assert fake.list_calls == 1
     assert fake.close_calls == 1
