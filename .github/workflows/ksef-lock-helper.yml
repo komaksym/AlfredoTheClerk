@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/ksef-test-submission-proof
+  pull_request:
 
 permissions:
   contents: read
