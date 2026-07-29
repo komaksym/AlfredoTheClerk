@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -236,7 +237,10 @@ class KsefTransport:
         try:
             return response.json()
         except ValueError as exc:
-            raise KsefTransportError("MALFORMED_JSON", http_status=response.status_code) from exc
+            raise KsefTransportError(
+                "MALFORMED_JSON",
+                http_status=response.status_code,
+            ) from exc
 
     def _request(
         self,
@@ -256,12 +260,11 @@ class KsefTransport:
             raise KsefTransportError("TRANSPORT_ERROR") from exc
         if response.status_code != expected:
             code, description = _safe_error(response)
-            retry_after = _retry_after(response)
             raise KsefTransportError(
                 code,
                 http_status=response.status_code,
                 description=description,
-                retry_after=retry_after,
+                retry_after=_retry_after(response),
             )
         return response
 
@@ -273,9 +276,50 @@ def _safe_error(response: httpx.Response) -> tuple[str, str | None]:
         return "HTTP_ERROR", None
     if not isinstance(payload, dict):
         return "HTTP_ERROR", None
-    code = payload.get("exceptionCode") or payload.get("code") or payload.get("status")
-    description = payload.get("exceptionDescription") or payload.get("detail") or payload.get("title")
-    return str(code or "HTTP_ERROR"), str(description) if description else None
+
+    code = _find_error_code(payload)
+    description = _find_error_description(payload)
+    return code or "HTTP_ERROR", description
+
+
+def _find_error_code(payload: dict[str, Any]) -> str | None:
+    for name in ("exceptionCode", "code", "reasonCode"):
+        value = payload.get(name)
+        if isinstance(value, (str, int)) and not isinstance(value, bool):
+            return str(value)
+    for name in ("errors", "details"):
+        value = payload.get(name)
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    code = _find_error_code(item)
+                    if code:
+                        return code
+        elif isinstance(value, dict):
+            code = _find_error_code(value)
+            if code:
+                return code
+    return None
+
+
+def _find_error_description(payload: dict[str, Any]) -> str | None:
+    for name in ("title", "detail", "exceptionDescription", "description"):
+        value = payload.get(name)
+        if isinstance(value, str) and value:
+            return value
+    for name in ("errors", "details"):
+        value = payload.get(name)
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    description = _find_error_description(item)
+                    if description:
+                        return description
+        elif isinstance(value, dict):
+            description = _find_error_description(value)
+            if description:
+                return description
+    return None
 
 
 def _retry_after(response: httpx.Response) -> float | None:
@@ -285,6 +329,16 @@ def _retry_after(response: httpx.Response) -> float | None:
     try:
         return max(0.0, float(value))
     except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(value)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max(
+            0.0,
+            (retry_at - datetime.now(timezone.utc)).total_seconds(),
+        )
+    except (TypeError, ValueError):
         return None
 
 
