@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -13,7 +16,7 @@ from src.invoice_gen.domain_shell import build_domestic_vat_shell
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
 from src.invoice_gen.fa3_xsd_validation import XsdValidationResult
 from src.invoice_gen.invoice_correctness import CorrectnessResult, CorrectnessStatus
-from src.ksef.config import KsefTestConfig
+from src.ksef.config import KSEF_TEST_BASE_URL, KsefTestConfig
 
 
 def ready_result(nip: str = "5265877635") -> CorrectnessResult:
@@ -75,3 +78,199 @@ def certificate_payload(
             "usage": list(usage),
         }
     ]
+
+
+def original_hash() -> str:
+    return base64.b64encode(
+        hashlib.sha256(b"<Faktura>synthetic</Faktura>").digest()
+    ).decode()
+
+
+class FakeKsef:
+    """Scriptable HTTP fake shared by orchestration tests."""
+
+    def __init__(self) -> None:
+        self.certificate_calls = 0
+        self.auth_init_calls = 0
+        self.auth_status_calls = 0
+        self.redeem_calls = 0
+        self.session_open_calls = 0
+        self.send_calls = 0
+        self.invoice_status_calls = 0
+        self.list_calls = 0
+        self.close_calls = 0
+
+        self.auth_rotate_once = False
+        self.session_rotate_once = False
+        self.auth_rate_limit_once = False
+        self.auth_pending_once = False
+        self.redeem_timeout = False
+        self.send_timeout = False
+        self.reconcile_match = False
+        self.reconcile_error_status: int | None = None
+        self.invoice_pending_once = False
+        self.invoice_pending = False
+        self.invoice_rejection_code: int | None = None
+        self.malformed_invoice_status = False
+        self.close_error = False
+        self.auth_error_description: str | None = None
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        assert str(request.url).startswith(KSEF_TEST_BASE_URL)
+        path = request.url.path.removeprefix("/v2")
+
+        if path == "/security/public-key-certificates":
+            self.certificate_calls += 1
+            return httpx.Response(
+                200,
+                json=certificate_payload(
+                    public_key_id=f"key-{self.certificate_calls}"
+                ),
+            )
+        if path == "/auth/challenge":
+            return httpx.Response(
+                200,
+                json={"challenge": "challenge", "timestampMs": 1234},
+            )
+        if path == "/auth/ksef-token":
+            return self._start_auth(request)
+        if path == "/auth/AUTH":
+            return self._auth_status()
+        if path == "/auth/token/redeem":
+            self.redeem_calls += 1
+            if self.redeem_timeout:
+                raise httpx.ReadTimeout("lost response", request=request)
+            return httpx.Response(
+                200,
+                json={"accessToken": {"token": "access-secret"}},
+            )
+        if path == "/sessions/online":
+            return self._open_session(request)
+        if path == "/sessions/online/SESSION/invoices":
+            self.send_calls += 1
+            if self.send_timeout:
+                raise httpx.ReadTimeout("lost response", request=request)
+            return httpx.Response(202, json={"referenceNumber": "INVOICE"})
+        if path == "/sessions/SESSION/invoices":
+            return self._list_invoices()
+        if path in {
+            "/sessions/SESSION/invoices/INVOICE",
+            "/sessions/SESSION/invoices/RECOVERED",
+        }:
+            return self._invoice_status()
+        if path == "/sessions/online/SESSION/close":
+            self.close_calls += 1
+            if self.close_error:
+                return httpx.Response(500, json={"code": "CLOSE_FAILED"})
+            return httpx.Response(204)
+        raise AssertionError(f"unexpected request {request.method} {path}")
+
+    def _start_auth(self, request: httpx.Request) -> httpx.Response:
+        self.auth_init_calls += 1
+        if self.auth_error_description is not None:
+            return httpx.Response(
+                400,
+                json={
+                    "errors": [
+                        {
+                            "code": 29999,
+                            "description": self.auth_error_description,
+                        }
+                    ]
+                },
+            )
+        if self.auth_rotate_once and self.auth_init_calls == 1:
+            return httpx.Response(
+                400,
+                json={
+                    "errors": [
+                        {"code": 21470, "description": "key rotated"}
+                    ]
+                },
+            )
+        body = json.loads(request.content)
+        expected_key = "key-2" if self.auth_rotate_once else "key-1"
+        assert body["publicKeyId"] == expected_key
+        assert "test-secret-token" not in request.content.decode()
+        return httpx.Response(
+            202,
+            json={
+                "referenceNumber": "AUTH",
+                "authenticationToken": {"token": "auth-secret"},
+            },
+        )
+
+    def _auth_status(self) -> httpx.Response:
+        self.auth_status_calls += 1
+        if self.auth_rate_limit_once and self.auth_status_calls == 1:
+            return httpx.Response(
+                429,
+                headers={"Retry-After": "0"},
+                json={"code": 429, "detail": "slow down"},
+            )
+        code = 100 if self.auth_pending_once and self.auth_status_calls == 1 else 200
+        return httpx.Response(200, json={"status": {"code": code}})
+
+    def _open_session(self, request: httpx.Request) -> httpx.Response:
+        self.session_open_calls += 1
+        if self.session_rotate_once and self.session_open_calls == 1:
+            return httpx.Response(
+                400,
+                json={"errors": [{"code": 21470, "description": "rotated"}]},
+            )
+        body = json.loads(request.content)
+        expected_key = "key-2" if self.session_rotate_once else "key-1"
+        assert body["encryption"]["publicKeyId"] == expected_key
+        assert request.headers["Authorization"] == "Bearer access-secret"
+        return httpx.Response(201, json={"referenceNumber": "SESSION"})
+
+    def _list_invoices(self) -> httpx.Response:
+        self.list_calls += 1
+        if self.reconcile_error_status is not None:
+            return httpx.Response(
+                self.reconcile_error_status,
+                json={
+                    "title": "Unauthorized",
+                    "status": self.reconcile_error_status,
+                    "detail": "session list unavailable",
+                },
+            )
+        invoices: list[dict[str, str]] = []
+        if self.reconcile_match:
+            invoices.append(
+                {
+                    "invoiceNumber": "TEST/2026/0001",
+                    "invoiceHash": original_hash(),
+                    "referenceNumber": "RECOVERED",
+                }
+            )
+        return httpx.Response(200, json={"invoices": invoices})
+
+    def _invoice_status(self) -> httpx.Response:
+        self.invoice_status_calls += 1
+        if self.malformed_invoice_status:
+            return httpx.Response(200, json={"status": {"description": "bad"}})
+        if self.invoice_pending or (
+            self.invoice_pending_once and self.invoice_status_calls == 1
+        ):
+            return httpx.Response(
+                200,
+                json={"status": {"code": 150, "description": "processing"}},
+            )
+        if self.invoice_rejection_code is not None:
+            return httpx.Response(
+                200,
+                json={
+                    "status": {
+                        "code": self.invoice_rejection_code,
+                        "description": "rejected",
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "status": {"code": 200, "description": "accepted"},
+                "ksefNumber": "KSEF-TEST-1",
+            },
+        )
