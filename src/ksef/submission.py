@@ -181,7 +181,10 @@ def _validate_preconditions(
     if not config.token:
         return _failed(KsefFailureStage.PRECONDITION, code="KSEF_TEST_TOKEN_REQUIRED")
     if not config.context_nip:
-        return _failed(KsefFailureStage.PRECONDITION, code="KSEF_TEST_CONTEXT_NIP_REQUIRED")
+        return _failed(
+            KsefFailureStage.PRECONDITION,
+            code="KSEF_TEST_CONTEXT_NIP_REQUIRED",
+        )
     if correctness.shell.seller.nip != config.context_nip:
         return _failed(KsefFailureStage.PRECONDITION, code="SELLER_CONTEXT_MISMATCH")
     return None
@@ -228,8 +231,13 @@ def _poll_auth(
 ) -> None:
     deadline = time.monotonic() + config.poll_timeout_seconds
     while True:
-        payload = transport.get_auth_status(reference, auth_token)
-        code, description = _status(payload)
+        try:
+            payload = transport.get_auth_status(reference, auth_token)
+            code, description = _status(payload)
+        except KsefTransportError as exc:
+            if _retry_poll_error(exc) and _wait(config, deadline, exc.retry_after):
+                continue
+            raise
         if code == 200:
             return
         if code >= 400:
@@ -237,9 +245,8 @@ def _poll_auth(
                 "AUTH_REJECTED",
                 description=description or f"status {code}",
             )
-        if time.monotonic() >= deadline:
+        if not _wait(config, deadline):
             raise KsefTransportError("AUTH_TIMEOUT")
-        _sleep(config.poll_interval_seconds)
 
 
 def _open_session(
@@ -289,7 +296,17 @@ def _poll_invoice(
                 session_reference=session_reference,
                 invoice_reference=invoice_reference,
             )
+            code, description = _status(payload)
         except KsefTransportError as exc:
+            if _retry_poll_error(exc):
+                if _wait(config, deadline, exc.retry_after):
+                    continue
+                return _pending_poll_timeout(
+                    session_reference=session_reference,
+                    invoice_reference=invoice_reference,
+                    invoice_hash=invoice_hash,
+                    invoice_number=invoice_number,
+                )
             return _failed(
                 KsefFailureStage.POLL,
                 exc,
@@ -298,7 +315,6 @@ def _poll_invoice(
                 invoice_hash=invoice_hash,
                 invoice_number=invoice_number,
             )
-        code, description = _status(payload)
         if code == 200:
             ksef_number = payload.get("ksefNumber")
             if not isinstance(ksef_number, str) or not ksef_number:
@@ -330,19 +346,15 @@ def _poll_invoice(
                 remote_status_code=code,
                 remote_status_description=description,
             )
-        if time.monotonic() >= deadline:
-            return KsefSubmissionResult(
-                status=KsefSubmissionStatus.PENDING,
+        if not _wait(config, deadline):
+            return _pending_poll_timeout(
                 session_reference=session_reference,
                 invoice_reference=invoice_reference,
                 invoice_hash=invoice_hash,
                 invoice_number=invoice_number,
                 remote_status_code=code,
                 remote_status_description=description,
-                failure_stage=KsefFailureStage.POLL,
-                error_code="POLL_TIMEOUT",
             )
-        _sleep(config.poll_interval_seconds)
 
 
 def _reconcile_submission(
@@ -361,8 +373,12 @@ def _reconcile_submission(
                 access_token=access_token,
                 session_reference=session_reference,
             )
-        except KsefTransportError:
+        except KsefTransportError as exc:
             invoices = ()
+            if _retry_poll_error(exc):
+                if not _wait(config, deadline, exc.retry_after):
+                    return None
+                continue
         matches = [
             item
             for item in invoices
@@ -372,9 +388,8 @@ def _reconcile_submission(
         ]
         if len(matches) == 1:
             return str(matches[0]["referenceNumber"])
-        if time.monotonic() >= deadline:
+        if not _wait(config, deadline):
             return None
-        _sleep(config.poll_interval_seconds)
 
 
 def _status(payload: dict[str, Any]) -> tuple[int, str | None]:
@@ -386,6 +401,28 @@ def _status(payload: dict[str, Any]) -> tuple[int, str | None]:
     if not isinstance(code, int) or isinstance(code, bool):
         raise KsefTransportError("MALFORMED_STATUS_CODE")
     return code, str(description) if description is not None else None
+
+
+def _pending_poll_timeout(
+    *,
+    session_reference: str,
+    invoice_reference: str,
+    invoice_hash: str,
+    invoice_number: str,
+    remote_status_code: int | None = None,
+    remote_status_description: str | None = None,
+) -> KsefSubmissionResult:
+    return KsefSubmissionResult(
+        status=KsefSubmissionStatus.PENDING,
+        session_reference=session_reference,
+        invoice_reference=invoice_reference,
+        invoice_hash=invoice_hash,
+        invoice_number=invoice_number,
+        remote_status_code=remote_status_code,
+        remote_status_description=remote_status_description,
+        failure_stage=KsefFailureStage.POLL,
+        error_code="POLL_TIMEOUT",
+    )
 
 
 def _failed(
@@ -407,8 +444,33 @@ def _failed(
         invoice_number=invoice_number,
         failure_stage=stage,
         error_code=code or (error.code if error else "KSEF_FAILURE"),
-        diagnostic=diagnostic or (str(error) if error else None),
+        diagnostic=diagnostic or _safe_error_diagnostic(error),
     )
+
+
+def _safe_error_diagnostic(error: KsefTransportError | None) -> str | None:
+    if error is None:
+        return None
+    if error.http_status is None:
+        return error.code
+    return f"{error.code}: http={error.http_status}"
+
+
+def _retry_poll_error(error: KsefTransportError) -> bool:
+    return error.code == "TRANSPORT_ERROR" or error.http_status == 429
+
+
+def _wait(
+    config: KsefTestConfig,
+    deadline: float,
+    retry_after: float | None = None,
+) -> bool:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return False
+    delay = config.poll_interval_seconds if retry_after is None else retry_after
+    _sleep(min(max(0.0, delay), remaining))
+    return time.monotonic() < deadline
 
 
 def _sleep(seconds: float) -> None:
