@@ -138,14 +138,25 @@ def _submit_and_poll(
                 invoice_hash=invoice_hash,
                 invoice_number=invoice_number,
             )
-        invoice_reference = _reconcile_submission(
-            transport,
-            config=config,
-            access_token=access_token,
-            session_reference=session_reference,
-            invoice_hash=invoice_hash,
-            invoice_number=invoice_number,
-        )
+        try:
+            invoice_reference = _reconcile_submission(
+                transport,
+                config=config,
+                access_token=access_token,
+                session_reference=session_reference,
+                invoice_hash=invoice_hash,
+                invoice_number=invoice_number,
+            )
+        except KsefTransportError as reconcile_error:
+            return KsefSubmissionResult(
+                status=KsefSubmissionStatus.PENDING,
+                session_reference=session_reference,
+                invoice_hash=invoice_hash,
+                invoice_number=invoice_number,
+                failure_stage=KsefFailureStage.SUBMIT,
+                error_code="RECONCILIATION_FAILED",
+                diagnostic=_safe_error_diagnostic(reconcile_error),
+            )
         if invoice_reference is None:
             return KsefSubmissionResult(
                 status=KsefSubmissionStatus.PENDING,
@@ -374,11 +385,11 @@ def _reconcile_submission(
                 session_reference=session_reference,
             )
         except KsefTransportError as exc:
-            invoices = ()
-            if _retry_poll_error(exc):
-                if not _wait(config, deadline, exc.retry_after):
-                    return None
-                continue
+            if not _retry_poll_error(exc):
+                raise
+            if not _wait(config, deadline, exc.retry_after):
+                return None
+            continue
         matches = [
             item
             for item in invoices
