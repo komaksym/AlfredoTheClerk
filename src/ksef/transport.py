@@ -33,8 +33,6 @@ class KsefTransportError(RuntimeError):
         parts = [self.code]
         if self.http_status is not None:
             parts.append(f"http={self.http_status}")
-        if self.description:
-            parts.append(self.description)
         return ": ".join(parts)
 
 
