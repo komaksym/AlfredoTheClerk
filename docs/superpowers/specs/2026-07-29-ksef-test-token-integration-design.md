@@ -102,6 +102,25 @@ Requirements:
 A future production slice must add its own explicit design and review rather
 than turning this TEST client into production through configuration alone.
 
+## KSeF public-key selection
+
+Do not hard-code one KSeF RSA public key.
+
+Before operations that encrypt data for KSeF, fetch the published KSeF public
+certificates from `GET /security/public-key-certificates`, select the current
+certificate intended for encryption according to the API response, decode the
+Base64 DER certificate, and use its public key for RSA-OAEP.
+
+Keep the selected certificate's identifier together with the parsed public key.
+The current KSeF contract requires `publicKeyId` on operations that depend on
+client-side encryption, including `POST /auth/ksef-token` and
+`POST /sessions/online`. The same selected key/id pair must therefore be used
+consistently for the request being built.
+
+Public-key publication and rotation are protocol concerns, not configuration.
+Tests must prove that a changed published key can be selected without changing
+application code.
+
 ## Authentication flow
 
 Use KSeF token authentication, not XAdES.
@@ -109,15 +128,18 @@ Use KSeF token authentication, not XAdES.
 The flow is:
 
 1. `POST /auth/challenge` and read the returned challenge and timestamp.
-2. Build the UTF-8 byte string `{ksefToken}|{timestampMs}`, where `timestampMs`
+2. Fetch/select the current KSeF encryption certificate if no usable key has
+   already been selected for the operation.
+3. Build the UTF-8 byte string `{ksefToken}|{timestampMs}`, where `timestampMs`
    is the challenge timestamp expressed as Unix milliseconds.
-3. Encrypt that byte string with the KSeF public key using RSA-OAEP with
-   SHA-256/MGF1-SHA-256, then Base64-encode the ciphertext.
-4. `POST /auth/ksef-token` with the challenge, NIP context, and encrypted token.
-5. Receive `authenticationToken` and `referenceNumber`.
-6. Poll `GET /auth/{referenceNumber}` using the temporary authentication token
+4. Encrypt that byte string with the selected KSeF public key using RSA-OAEP
+   with SHA-256/MGF1-SHA-256, then Base64-encode the ciphertext.
+5. `POST /auth/ksef-token` with the challenge, NIP context, encrypted token, and
+   the selected `publicKeyId`.
+6. Receive `authenticationToken` and `referenceNumber`.
+7. Poll `GET /auth/{referenceNumber}` using the temporary authentication token
    until authentication reaches a terminal state or a bounded timeout expires.
-7. On success, call `POST /auth/token/redeem` once and obtain `accessToken` and
+8. On success, call `POST /auth/token/redeem` once and obtain `accessToken` and
    `refreshToken`.
 
 Only the `accessToken` is needed by the rest of this slice. The returned
@@ -135,10 +157,11 @@ After authentication succeeds:
 1. Generate one random 256-bit AES key and one random 128-bit IV for the online
    session.
 2. Encrypt the FA(3) XML with AES-256-CBC and PKCS#7 padding.
-3. Encrypt the AES key with the KSeF public key using RSA-OAEP with
-   SHA-256/MGF1-SHA-256.
-4. Open one online session for the FA(3) form using the access token and the
-   encrypted session-key material required by the current KSeF TEST contract.
+3. Encrypt the AES key with a currently published KSeF encryption public key
+   using RSA-OAEP with SHA-256/MGF1-SHA-256.
+4. Open one online session for the FA(3) form using the access token, encrypted
+   session-key material, and matching `publicKeyId` required by the current KSeF
+   TEST contract.
 5. Submit exactly one encrypted invoice to that session, including the required
    plaintext/ciphertext sizes and hashes from the current API contract.
 6. Poll the invoice/session status with bounded polling until the invoice is
@@ -180,6 +203,7 @@ Fail closed for:
 - input not in `READY_FOR_KSEF`
 - missing KSeF TEST token
 - missing authentication NIP/context
+- no usable published KSeF encryption certificate
 - authentication rejection
 - session-open failure
 - invoice submission rejection
@@ -203,10 +227,12 @@ Use three layers.
 
 Cover deterministic pieces without network access:
 
+- published-certificate parsing and current-key selection
 - token + timestamp plaintext construction
 - RSA-OAEP wrapper behavior using test keys
 - AES-256-CBC encryption/padding and required metadata
 - request/response parsing
+- `publicKeyId` consistency between selected key and encrypted request
 - rejection of non-`READY_FOR_KSEF` inputs before transport
 - redaction of secrets from errors
 
@@ -214,6 +240,7 @@ Cover deterministic pieces without network access:
 
 Use mocked HTTP responses to cover the complete orchestration path:
 
+- public-key publication/rotation response handling
 - successful token authentication, polling, and redeem
 - successful session open and one-invoice submission
 - accepted and rejected invoice outcomes
@@ -282,6 +309,8 @@ This slice is done when all of the following are true:
 
 - only `READY_FOR_KSEF` invoices can enter remote submission
 - KSeF token authentication works against the real KSeF TEST environment
+- published KSeF key rotation is handled without a hard-coded certificate
+- the correct `publicKeyId` accompanies encrypted auth/session requests
 - one online FA(3) session can be opened
 - one synthetic FA(3) invoice can be encrypted and submitted
 - asynchronous processing is polled with bounded timeouts
