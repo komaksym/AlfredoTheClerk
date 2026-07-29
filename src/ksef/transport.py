@@ -9,12 +9,7 @@ from typing import Any
 import httpx
 
 from src.ksef.config import KSEF_TEST_BASE_URL
-from src.ksef.models import (
-    KsefAccessTokens,
-    KsefAuthInit,
-    KsefChallenge,
-    KsefPublicCertificate,
-)
+from src.ksef.models import KsefAuthInit, KsefChallenge, KsefPublicCertificate
 
 
 class KsefTransportError(RuntimeError):
@@ -121,7 +116,7 @@ class KsefTransport:
             bearer=auth_token,
         )
 
-    def redeem(self, auth_token: str) -> KsefAccessTokens:
+    def redeem(self, auth_token: str) -> str:
         payload = self._json(
             "POST",
             "/auth/token/redeem",
@@ -129,11 +124,7 @@ class KsefTransport:
             bearer=auth_token,
         )
         access = _required_dict(payload, "accessToken")
-        refresh = _required_dict(payload, "refreshToken")
-        return KsefAccessTokens(
-            access_token=_required_str(access, "token"),
-            refresh_token=_required_str(refresh, "token"),
-        )
+        return _required_str(access, "token")
 
     def open_online_session(
         self,
@@ -277,49 +268,26 @@ def _safe_error(response: httpx.Response) -> tuple[str, str | None]:
     if not isinstance(payload, dict):
         return "HTTP_ERROR", None
 
-    code = _find_error_code(payload)
-    description = _find_error_description(payload)
+    code = _simple_code(payload.get("reasonCode")) or _simple_code(payload.get("code"))
+    description = _simple_text(payload.get("detail")) or _simple_text(payload.get("title"))
+
+    errors = payload.get("errors")
+    if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+        first = errors[0]
+        code = code or _simple_code(first.get("code"))
+        description = description or _simple_text(first.get("description"))
+
     return code or "HTTP_ERROR", description
 
 
-def _find_error_code(payload: dict[str, Any]) -> str | None:
-    for name in ("exceptionCode", "code", "reasonCode"):
-        value = payload.get(name)
-        if isinstance(value, (str, int)) and not isinstance(value, bool):
-            return str(value)
-    for name in ("errors", "details"):
-        value = payload.get(name)
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    code = _find_error_code(item)
-                    if code:
-                        return code
-        elif isinstance(value, dict):
-            code = _find_error_code(value)
-            if code:
-                return code
+def _simple_code(value: Any) -> str | None:
+    if isinstance(value, (str, int)) and not isinstance(value, bool):
+        return str(value)
     return None
 
 
-def _find_error_description(payload: dict[str, Any]) -> str | None:
-    for name in ("title", "detail", "exceptionDescription", "description"):
-        value = payload.get(name)
-        if isinstance(value, str) and value:
-            return value
-    for name in ("errors", "details"):
-        value = payload.get(name)
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    description = _find_error_description(item)
-                    if description:
-                        return description
-        elif isinstance(value, dict):
-            description = _find_error_description(value)
-            if description:
-                return description
-    return None
+def _simple_text(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def _retry_after(response: httpx.Response) -> float | None:
