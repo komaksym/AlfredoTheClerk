@@ -53,6 +53,9 @@ jobs:
           uv run python tests/smoke_installed_xsd_validation.py
           dist/alfredotheclerk-*.whl
 
+  # Manual-only proof. Configure KSEF_TEST_TOKEN and KSEF_TEST_CONTEXT_NIP as
+  # repository secrets, dispatch this workflow on the feature branch, and set
+  # run_ksef_live=true. Push and pull-request events always skip this job.
   ksef-live:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ksef_live }}
     runs-on: ubuntu-latest
