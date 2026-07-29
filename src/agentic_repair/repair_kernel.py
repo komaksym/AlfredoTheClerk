@@ -8,52 +8,20 @@ applies the selected evidence-backed value, and reruns scoped validation.
 from __future__ import annotations
 
 import copy
-import re
 from dataclasses import dataclass
 
+from src.agentic_repair.shell_fields import (
+    ShellFieldPathError,
+    read_shell_field,
+    supports_shell_field,
+    write_shell_field,
+)
 from src.input_processing.extraction_comparison import RepairContext
 from src.input_processing.invoice_text_field_extraction import Candidate
 from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
 from src.invoice_gen.domestic_vat_shell_validation import (
     ShellValidationResult,
     validate_pdf_extracted_shell,
-)
-
-TOP_LEVEL_REPAIRABLE: set[str] = {
-    "invoice_number",
-    "issue_date",
-    "sale_date",
-    "issue_city",
-    "payment_form",
-    "payment_due_date",
-}
-
-SELLER_REPAIRABLE: set[str] = {
-    "nip",
-    "name",
-    "address_line_1",
-    "address_line_2",
-    "bank_account",
-}
-
-BUYER_REPAIRABLE: set[str] = {
-    "nip",
-    "name",
-    "address_line_1",
-    "address_line_2",
-}
-
-LINE_ITEM_REPAIRABLE: set[str] = {
-    "description",
-    "unit",
-    "quantity",
-    "unit_price_net",
-    "discount",
-    "vat_rate",
-}
-
-_LINE_ITEM_PATH_PATTERN: re.Pattern[str] = re.compile(
-    r"^line_items\[(\d+)\]\.([a-z_]+)$"
 )
 
 
@@ -129,23 +97,13 @@ class RepairSession:
     ) -> object:
         """Read a supported repair path from ``shell``."""
 
-        if path in TOP_LEVEL_REPAIRABLE:
-            return getattr(shell, path)
-
-        if path.startswith("seller."):
-            field = path.removeprefix("seller.")
-            return getattr(shell.seller, field)
-
-        if path.startswith("buyer."):
-            field = path.removeprefix("buyer.")
-            return getattr(shell.buyer, field)
-
-        if match := _LINE_ITEM_PATH_PATTERN.match(path):
-            index = int(match.group(1))
-            field = match.group(2)
-            return getattr(shell.line_items[index], field)
-
-        raise RepairKernelError(path=path, reason="unsupported_path")
+        try:
+            return read_shell_field(shell, path)
+        except ShellFieldPathError as exc:
+            raise RepairKernelError(
+                path=exc.path,
+                reason=exc.reason,
+            ) from exc
 
     def set_shell_value(
         self,
@@ -155,56 +113,18 @@ class RepairSession:
     ) -> None:
         """Write ``new_value`` into a supported repair path on ``shell``."""
 
-        if path in TOP_LEVEL_REPAIRABLE:
-            setattr(shell, path, new_value)
-            return
-
-        if path.startswith("seller."):
-            field = path.removeprefix("seller.")
-            setattr(shell.seller, field, new_value)
-            return
-
-        if path.startswith("buyer."):
-            field = path.removeprefix("buyer.")
-            setattr(shell.buyer, field, new_value)
-            return
-
-        if match := _LINE_ITEM_PATH_PATTERN.match(path):
-            index = int(match.group(1))
-            field = match.group(2)
-            setattr(shell.line_items[index], field, new_value)
-            return
-
-        raise RepairKernelError(path=path, reason="unsupported_path")
+        try:
+            write_shell_field(shell, path, new_value)
+        except ShellFieldPathError as exc:
+            raise RepairKernelError(
+                path=exc.path,
+                reason=exc.reason,
+            ) from exc
 
     def validate_path_support(self, path: str) -> bool:
         """Return whether ``path`` names a shell field repair can mutate."""
 
-        if path in TOP_LEVEL_REPAIRABLE:
-            return True
-
-        if "." not in path:
-            return False
-
-        prefix, suffix = path.split(".", maxsplit=1)
-        if prefix == "seller" and suffix in SELLER_REPAIRABLE:
-            return True
-
-        if prefix == "buyer" and suffix in BUYER_REPAIRABLE:
-            return True
-
-        match = _LINE_ITEM_PATH_PATTERN.match(path)
-        if match is not None:
-            index = int(match.group(1))
-            field = match.group(2)
-
-            if (
-                0 <= index < len(self.shell.line_items)
-                and field in LINE_ITEM_REPAIRABLE
-            ):
-                return True
-
-        return False
+        return supports_shell_field(self.shell, path)
 
     def validate_command(self, command: RepairCommand) -> Candidate:
         """Validate an agent command and return its selected candidate."""

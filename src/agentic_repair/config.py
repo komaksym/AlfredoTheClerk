@@ -1,3 +1,5 @@
+"""Configuration and model construction for agentic invoice repair."""
+
 import getpass
 import os
 

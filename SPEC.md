@@ -78,9 +78,11 @@ Acceptance:
 - an isolated installed-wheel smoke test proves the production validator can
   load every packaged XSD
 
-## 1. Human-review workflow — next
+### Human-review workflow
 
-Build a review workflow for unresolved or blocking fields:
+`src/agentic_repair/human_review.py` now builds complete review cases for
+unresolved or blocking fields, applies attributed human corrections atomically,
+retains failed attempts for retry, and resumes the shared correctness pipeline:
 
 `unresolved/blocking fields`
 
@@ -97,6 +99,13 @@ Requirements:
 - show the current value, validation error, extraction status, evidence region,
   and available candidates for each problem field
 - allow a reviewer to select an existing candidate or enter a corrected value
+- reject manual and candidate-selected values whose runtime type does not match
+  the target canonical shell path before applying any command
+- snapshot extraction evidence, diagnostics, validation, extracted totals,
+  routing, and correctness when the review case is built so upstream mutation
+  cannot change later review decisions or reconciliation evidence
+- accept only canonical ASCII line-item indices at repair and review boundaries
+  so path aliases cannot target one shell field more than once per batch
 - record every human change
 - resume the same deterministic correctness pipeline used after agent repair
 - do not create a separate, weaker validation path for human-reviewed invoices
@@ -107,8 +116,12 @@ Acceptance:
 - successful human repairs produce the same validated invoice artifact as
   successful agent repairs
 - failed review attempts remain reviewable and auditable
+- incompatible value types produce an audited `INVALID_VALUE_TYPE` issue,
+  apply no decisions, and do not call correctness
+- mutating the source workflow context after case construction cannot change
+  review candidates, diagnostics, validation, or extracted totals
 
-## 2. KSeF integration
+## 1. KSeF integration — next
 
 Add the remote KSeF path only for locally validated FA(3) XML:
 
@@ -139,7 +152,7 @@ Acceptance:
 - accepted invoices retain their KSeF number and UPO
 - retries do not silently create duplicate submissions
 
-## 3. Real legacy invoices — parallel when data is available
+## 2. Real legacy invoices — parallel when data is available
 
 Add real legacy-system invoices whenever they become available:
 
