@@ -20,6 +20,7 @@ class KsefTransportError(RuntimeError):
         code: str,
         *,
         http_status: int | None = None,
+        description: str | None = None,
         retry_after: float | None = None,
     ) -> None:
         self.code = code
