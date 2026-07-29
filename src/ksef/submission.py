@@ -46,10 +46,13 @@ def submit_ready_invoice(
     transport = KsefTransport(transport=http_transport)
     access_token: str | None = None
     session_reference: str | None = None
-    result: KsefSubmissionResult | None = None
     try:
         try:
             certificates = transport.get_public_certificates()
+        except KsefTransportError as exc:
+            return _failed(KsefFailureStage.KEY_DISCOVERY, exc)
+
+        try:
             access_token = _authenticate(transport, config, certificates)
         except KsefTransportError as exc:
             return _failed(KsefFailureStage.AUTH, exc)
@@ -82,68 +85,87 @@ def submit_ready_invoice(
                 diagnostic=str(exc),
             )
 
-        invoice_reference: str | None
+        result = _submit_and_poll(
+            transport,
+            config=config,
+            access_token=access_token,
+            session_reference=session_reference,
+            invoice_hash=encrypted.original_hash_b64,
+            invoice_size=encrypted.original_size,
+            encrypted_hash=encrypted.encrypted_hash_b64,
+            encrypted_size=encrypted.encrypted_size,
+            encrypted_content=encrypted.content_b64,
+            invoice_number=invoice_number,
+        )
         try:
-            invoice_reference = transport.send_invoice(
-                access_token=access_token,
-                session_reference=session_reference,
-                invoice_hash=encrypted.original_hash_b64,
-                invoice_size=encrypted.original_size,
-                encrypted_hash=encrypted.encrypted_hash_b64,
-                encrypted_size=encrypted.encrypted_size,
-                encrypted_content=encrypted.content_b64,
-            )
+            transport.close_online_session(access_token, session_reference)
         except KsefTransportError as exc:
-            if exc.code != "TRANSPORT_ERROR":
-                result = _failed(
-                    KsefFailureStage.SUBMIT,
-                    exc,
-                    session_reference=session_reference,
-                    invoice_hash=encrypted.original_hash_b64,
-                    invoice_number=invoice_number,
-                )
-            else:
-                invoice_reference = _reconcile_submission(
-                    transport,
-                    config=config,
-                    access_token=access_token,
-                    session_reference=session_reference,
-                    invoice_hash=encrypted.original_hash_b64,
-                    invoice_number=invoice_number,
-                )
-                if invoice_reference is None:
-                    result = KsefSubmissionResult(
-                        status=KsefSubmissionStatus.PENDING,
-                        session_reference=session_reference,
-                        invoice_hash=encrypted.original_hash_b64,
-                        invoice_number=invoice_number,
-                        failure_stage=KsefFailureStage.SUBMIT,
-                        error_code="SUBMISSION_UNKNOWN",
-                        diagnostic="invoice submission outcome could not be reconciled",
-                    )
-
-        if result is None:
-            assert invoice_reference is not None
-            result = _poll_invoice(
-                transport,
-                config=config,
-                access_token=access_token,
-                session_reference=session_reference,
-                invoice_reference=invoice_reference,
-                invoice_hash=encrypted.original_hash_b64,
-                invoice_number=invoice_number,
-            )
+            result = replace(result, cleanup_error_code=exc.code)
         return result
     finally:
-        cleanup_code: str | None = None
-        if access_token and session_reference:
-            try:
-                transport.close_online_session(access_token, session_reference)
-            except KsefTransportError as exc:
-                cleanup_code = exc.code
         transport.close()
-        if cleanup_code and result is not None:
-            result = replace(result, cleanup_error_code=cleanup_code)
+
+
+def _submit_and_poll(
+    transport: KsefTransport,
+    *,
+    config: KsefTestConfig,
+    access_token: str,
+    session_reference: str,
+    invoice_hash: str,
+    invoice_size: int,
+    encrypted_hash: str,
+    encrypted_size: int,
+    encrypted_content: str,
+    invoice_number: str,
+) -> KsefSubmissionResult:
+    try:
+        invoice_reference = transport.send_invoice(
+            access_token=access_token,
+            session_reference=session_reference,
+            invoice_hash=invoice_hash,
+            invoice_size=invoice_size,
+            encrypted_hash=encrypted_hash,
+            encrypted_size=encrypted_size,
+            encrypted_content=encrypted_content,
+        )
+    except KsefTransportError as exc:
+        if exc.code != "TRANSPORT_ERROR":
+            return _failed(
+                KsefFailureStage.SUBMIT,
+                exc,
+                session_reference=session_reference,
+                invoice_hash=invoice_hash,
+                invoice_number=invoice_number,
+            )
+        invoice_reference = _reconcile_submission(
+            transport,
+            config=config,
+            access_token=access_token,
+            session_reference=session_reference,
+            invoice_hash=invoice_hash,
+            invoice_number=invoice_number,
+        )
+        if invoice_reference is None:
+            return KsefSubmissionResult(
+                status=KsefSubmissionStatus.PENDING,
+                session_reference=session_reference,
+                invoice_hash=invoice_hash,
+                invoice_number=invoice_number,
+                failure_stage=KsefFailureStage.SUBMIT,
+                error_code="SUBMISSION_UNKNOWN",
+                diagnostic="invoice submission outcome could not be reconciled",
+            )
+
+    return _poll_invoice(
+        transport,
+        config=config,
+        access_token=access_token,
+        session_reference=session_reference,
+        invoice_reference=invoice_reference,
+        invoice_hash=invoice_hash,
+        invoice_number=invoice_number,
+    )
 
 
 def _validate_preconditions(
