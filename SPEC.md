@@ -121,38 +121,134 @@ Acceptance:
 - mutating the source workflow context after case construction cannot change
   review candidates, diagnostics, validation, or extracted totals
 
-## 1. KSeF integration — next
+## 1. KSeF TEST submission proof — next
 
-Add the remote KSeF path only for locally validated FA(3) XML:
+Prove one unique synthetic invoice can cross the real remote boundary:
+
+`synthetic domestic VAT shell`
+
+`-> existing correctness pipeline`
+
+`-> READY_FOR_KSEF`
+
+`-> KSeF TEST token authentication`
+
+`-> encrypted online session`
+
+`-> submit one FA(3)`
+
+`-> poll status`
+
+`-> ACCEPTED + KSeF number`
+
+This is a vertical protocol proof, not completed KSeF integration. The detailed
+design is in
+`docs/superpowers/specs/2026-07-29-ksef-test-submission-proof-design.md`.
+
+Requirements:
+
+- accept only a complete `CorrectnessResult` whose status is
+  `READY_FOR_KSEF`, whose XML is non-empty, and whose local XSD validation
+  succeeded
+- keep all KSeF HTTP, authentication, cryptography, response parsing, polling,
+  and cleanup behavior behind a dedicated `src/ksef/` boundary
+- use only the fixed `https://api-test.ksef.mf.gov.pl/v2` origin; expose no
+  configurable base URL and include no production endpoint
+- load the pre-created TEST token and TEST context NIP from configuration
+  without exposing them in errors, logs, result representations, or tests
+- fetch KSeF public certificates dynamically and select currently valid keys
+  independently for `KsefTokenEncryption` and `SymmetricKeyEncryption`
+- on KSeF error `21470`, refetch certificates, re-encrypt, and retry the
+  affected pre-submission operation once
+- authenticate with the KSeF token challenge flow, poll authentication, and
+  redeem each temporary authentication token at most once
+- generate one AES-256-CBC key and IV per online session, encrypt the FA(3) XML,
+  and send the required original and encrypted hashes and sizes
+- distinguish `ACCEPTED`, `REJECTED`, `PENDING`, and `FAILED`, with structured
+  stages for precondition, key discovery, authentication, session opening,
+  submission, polling, and session closing
+- treat polling deadlines and ambiguous submission responses as `PENDING`, not
+  confirmed rejection
+- never retry the invoice-submission POST blindly; reconcile an ambiguous
+  response through the session invoice list using the unique invoice number
+  and original invoice hash
+- preserve accepted or rejected invoice truth if best-effort session cleanup
+  fails
+
+Testing:
+
+- focused unit tests decrypt generated RSA and AES ciphertext and verify exact
+  plaintext, padding, hashes, byte sizes, key selection, result invariants, and
+  secret-safe representations
+- `httpx.MockTransport` tests run the complete real orchestrator against
+  scripted KSeF responses, including success, rejection, timeout, malformed
+  responses, `21470`, one-shot redemption, ambiguous submission reconciliation,
+  and cleanup failure
+- one live test is marked `ksef_live` and skips unless
+  `RUN_KSEF_LIVE=1`, the TEST token, and the TEST context are configured; run
+  it explicitly with `pytest -m ksef_live`
+- the live test generates a unique invoice number, runs the real correctness
+  pipeline, uses real cryptography and KSeF TEST HTTP, and asserts
+  `ACCEPTED` with session reference, invoice reference, and KSeF number
+- ordinary CI and `uv run pytest` without the explicit live-test environment
+  cannot make a KSeF submission
+
+Acceptance:
+
+- non-ready local results fail before authentication
+- fake-HTTP tests prove the complete orchestration and failure semantics
+- one explicitly enabled synthetic FA(3) is accepted by real KSeF TEST and
+  returns a KSeF number
+- no production endpoint, real taxpayer data, or secret is committed
+- Ruff, pytest, compileall, and package build pass
+- completing this slice marks only the TEST protocol proof complete
+
+Explicitly out of scope:
+
+- DEMO or production
+- XAdES and batch sessions
+- multiple invoices per session
+- UPO handling
+- access-token refresh
+- persistent submission history and process-restart recovery
+- automatic resubmission or a general idempotency system
+- UI and a general-purpose KSeF SDK
+
+## 2. Durable KSeF integration — after the TEST proof
+
+Turn the proven TEST protocol boundary into a recoverable product workflow:
 
 `validated FA(3) XML`
 
-`-> authenticate`
+`-> durable submission intent`
 
-`-> submit`
+`-> submit or reconcile`
 
-`-> poll status`
+`-> persist every status transition`
 
 `-> store KSeF number and UPO`
 
 Requirements:
 
-- keep KSeF access behind a dedicated client interface
-- support authentication and session lifecycle
-- submit invoices idempotently where possible
-- poll and persist remote status
-- distinguish local validation success from remote rejection or acceptance
-- store the KSeF invoice number and UPO when available
-- preserve request, response, and status history for debugging and audit
+- persist submission identity, session and invoice references, request metadata,
+  remote statuses, and redacted failure history
+- resume polling and ambiguous-submission reconciliation after process restarts
+- prevent duplicate submissions through durable identity and explicit operator
+  recovery
+- refresh access tokens safely
+- download, validate, and store the invoice or session UPO
+- preserve local correctness separately from remote rejection or acceptance
+- introduce DEMO or production only through an explicit rollout decision and
+  environment enum with internally mapped official origins
 
 Acceptance:
 
-- the system can distinguish locally valid, remotely rejected, and remotely
-  accepted invoices
-- accepted invoices retain their KSeF number and UPO
-- retries do not silently create duplicate submissions
+- remotely pending work survives process restart
+- accepted invoices retain their KSeF number and verified UPO
+- retries and recovery cannot silently create duplicate submissions
+- submission and status history remains auditable without exposing secrets
 
-## 2. Real legacy invoices — parallel when data is available
+## 3. Real legacy invoices — parallel when data is available
 
 Add real legacy-system invoices whenever they become available:
 
