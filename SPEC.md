@@ -121,38 +121,87 @@ Acceptance:
 - mutating the source workflow context after case construction cannot change
   review candidates, diagnostics, validation, or extracted totals
 
-## 1. KSeF integration — next
+## 1. KSeF TEST token integration — next
 
-Add the remote KSeF path only for locally validated FA(3) XML:
+Implement the smallest remote KSeF slice for one locally validated synthetic
+FA(3) invoice:
 
-`validated FA(3) XML`
+`READY_FOR_KSEF`
 
-`-> authenticate`
+`-> authenticate to KSeF TEST with a pre-created KSeF token`
 
-`-> submit`
+`-> open one FA(3) online session`
 
-`-> poll status`
+`-> encrypt and send one invoice`
 
-`-> store KSeF number and UPO`
+`-> poll remote status`
+
+`-> ACCEPTED + KSeF number`
+
+Detailed design:
+`docs/superpowers/specs/2026-07-29-ksef-test-token-integration-design.md`.
 
 Requirements:
 
-- keep KSeF access behind a dedicated client interface
-- support authentication and session lifecycle
-- submit invoices idempotently where possible
-- poll and persist remote status
-- distinguish local validation success from remote rejection or acceptance
-- store the KSeF invoice number and UPO when available
-- preserve request, response, and status history for debugging and audit
+- support KSeF TEST only; do not expose DEMO or production as runtime options
+- keep remote KSeF access behind a dedicated integration boundary
+- add `httpx` for HTTP transport and `cryptography` for KSeF-required RSA/AES
+  operations
+- accept only locally generated `READY_FOR_KSEF` results; reject every other
+  local correctness state before any network call
+- authenticate using a pre-created KSeF token supplied at runtime, never stored
+  in the repository
+- obtain an auth challenge, encrypt `{ksefToken}|{timestampMs}` with KSeF's
+  public key using RSA-OAEP/SHA-256, submit token authentication, poll the
+  asynchronous auth operation, and redeem the access token once
+- use the resulting access token to open one FA(3) online session
+- generate a 256-bit AES key and 128-bit IV, encrypt the invoice using
+  AES-256-CBC with PKCS#7 padding, and protect the session key according to the
+  current KSeF TEST contract
+- submit exactly one invoice in the session and poll remote processing with a
+  bounded timeout
+- distinguish remote `ACCEPTED`, `REJECTED`, timeout, and protocol/auth/session
+  failure outcomes from local correctness states
+- return the KSeF number for an accepted invoice
+- redact KSeF tokens and all bearer credentials from logs, errors, fixtures, and
+  snapshots
+- do not automatically resubmit after an ambiguous send failure without durable
+  idempotency state
+
+Explicitly out of scope:
+
+- XAdES
+- DEMO or production
+- batch or multi-invoice sessions
+- UPO retrieval or storage
+- access-token refresh lifecycle
+- durable KSeF submission persistence or audit history
+- general retry/idempotency infrastructure
+- UI
 
 Acceptance:
 
-- the system can distinguish locally valid, remotely rejected, and remotely
-  accepted invoices
-- accepted invoices retain their KSeF number and UPO
-- retries do not silently create duplicate submissions
+- unit tests cover cryptographic/request boundaries and local fail-closed gates
+- mocked HTTP tests cover successful auth/session/submission plus rejection,
+  malformed responses, and bounded polling timeouts
+- one explicit opt-in live smoke test sends a synthetic locally validated FA(3)
+  invoice to real KSeF TEST and reaches remote acceptance
+- the live smoke test returns a KSeF number and has no route to production
+- normal tests do not require live credentials
+- Ruff, pytest, compileall, and build pass
+- the implementation PR includes a high-level DAG for the completed slice
 
-## 2. Real legacy invoices — parallel when data is available
+## 2. Later KSeF slices
+
+After the TEST single-invoice path is proven, treat production readiness as
+separate reviewed slices. Candidate follow-ups include UPO handling, durable
+submission state, safe idempotent recovery, refresh-token/session lifecycle,
+additional authentication methods, and DEMO/production enablement.
+
+Do not pull these concerns into the first TEST integration merely because the
+remote API exposes them.
+
+## 3. Real legacy invoices — parallel when data is available
 
 Add real legacy-system invoices whenever they become available:
 
@@ -195,6 +244,7 @@ For each implementation change:
 - run `uv run ruff check src tests`
 - run `uv run pytest`
 - run `uv run python -m compileall src tests`
+- run `uv build` when package metadata, dependencies, or package contents change
 
 For product readiness:
 
