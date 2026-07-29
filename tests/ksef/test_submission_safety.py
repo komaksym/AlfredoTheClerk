@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from src.ksef.models import KsefFailureStage, KsefSubmissionStatus
 from src.ksef.submission import submit_ready_invoice
+from src.ksef.transport import KsefTransport, KsefTransportError
 from tests.ksef.support import FakeKsef, config, original_hash, ready_result
 
 
@@ -174,3 +176,24 @@ def test_remote_error_diagnostics_do_not_echo_ksef_token() -> None:
     assert result.failure_stage is KsefFailureStage.AUTH
     assert "test-secret-token" not in rendered
     assert "test-secret-token" not in (result.diagnostic or "")
+
+
+def test_transport_exception_does_not_echo_remote_description() -> None:
+    secret = "test-secret-token must never escape"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={"errors": [{"code": 29999, "description": secret}]},
+        )
+
+    transport = KsefTransport(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(KsefTransportError) as raised:
+            transport.get_challenge()
+    finally:
+        transport.close()
+
+    assert secret not in str(raised.value)
+    assert raised.value.code == "29999"
+    assert raised.value.http_status == 400
