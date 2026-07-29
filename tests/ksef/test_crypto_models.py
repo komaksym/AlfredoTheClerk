@@ -19,6 +19,7 @@ from src.ksef.crypto import (
     select_certificate,
 )
 from src.ksef.models import (
+    KsefFailureStage,
     KsefKeyUsage,
     KsefPublicCertificate,
     KsefSubmissionResult,
@@ -69,6 +70,17 @@ def test_select_certificate_uses_latest_valid_matching_usage():
     assert selected is newer
 
 
+def test_select_certificate_rejects_missing_eligible_key():
+    now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+    wrong, _ = _certificate(
+        valid_from=now - timedelta(days=1),
+        usage=(KsefKeyUsage.SYMMETRIC.value,),
+    )
+
+    with pytest.raises(ValueError, match="KsefTokenEncryption"):
+        select_certificate((wrong,), KsefKeyUsage.TOKEN, now=now)
+
+
 def test_encrypt_token_uses_exact_token_timestamp_plaintext():
     now = datetime.now(timezone.utc) - timedelta(days=1)
     cert, private_key = _certificate(
@@ -112,6 +124,17 @@ def test_encrypt_invoice_round_trips_and_reports_hashes():
 def test_accepted_result_requires_remote_references():
     with pytest.raises(ValueError):
         KsefSubmissionResult(status=KsefSubmissionStatus.ACCEPTED)
+
+
+def test_submission_status_and_failure_stage_are_separate():
+    result = KsefSubmissionResult(
+        status=KsefSubmissionStatus.PENDING,
+        failure_stage=KsefFailureStage.POLL,
+        error_code="POLL_TIMEOUT",
+    )
+
+    assert result.status is KsefSubmissionStatus.PENDING
+    assert result.failure_stage is KsefFailureStage.POLL
 
 
 def test_config_repr_redacts_token():
