@@ -231,7 +231,7 @@ def _authenticate(
         raise KsefTransportError("AUTH_INIT_FAILED")
 
     _poll_auth(transport, config, init.reference_number, init.authentication_token)
-    return transport.redeem(init.authentication_token).access_token
+    return transport.redeem(init.authentication_token)
 
 
 def _poll_auth(
