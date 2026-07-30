@@ -1,3 +1,5 @@
+"""Safety regression tests for KSeF retries, ambiguity, cleanup, and secret handling."""
+
 from __future__ import annotations
 
 import httpx
@@ -10,6 +12,8 @@ from tests.ksef.support import FakeKsef, config, original_hash, ready_result
 
 
 def test_auth_key_rotation_refetches_and_retries_once() -> None:
+    """Refresh the token-encryption certificate once after KSeF reports key rotation."""
+
     fake = FakeKsef()
     fake.auth_rotate_once = True
 
@@ -26,6 +30,8 @@ def test_auth_key_rotation_refetches_and_retries_once() -> None:
 
 
 def test_session_key_rotation_refetches_and_retries_once() -> None:
+    """Refresh the session-encryption certificate once before invoice submission."""
+
     fake = FakeKsef()
     fake.session_rotate_once = True
 
@@ -42,6 +48,8 @@ def test_session_key_rotation_refetches_and_retries_once() -> None:
 
 
 def test_auth_poll_respects_retry_after_and_still_redeems_once() -> None:
+    """Honor Retry-After during auth polling without redeeming the token twice."""
+
     fake = FakeKsef()
     fake.auth_rate_limit_once = True
 
@@ -57,6 +65,8 @@ def test_auth_poll_respects_retry_after_and_still_redeems_once() -> None:
 
 
 def test_lost_redeem_response_is_not_retried() -> None:
+    """Avoid retrying the one-shot token redemption after an ambiguous timeout."""
+
     fake = FakeKsef()
     fake.redeem_timeout = True
 
@@ -73,6 +83,8 @@ def test_lost_redeem_response_is_not_retried() -> None:
 
 
 def test_poll_deadline_returns_pending_and_still_closes_session() -> None:
+    """Return PENDING at the poll deadline and still attempt session cleanup."""
+
     fake = FakeKsef()
     fake.invoice_pending = True
 
@@ -89,6 +101,8 @@ def test_poll_deadline_returns_pending_and_still_closes_session() -> None:
 
 
 def test_malformed_invoice_status_is_structured_poll_failure() -> None:
+    """Convert a malformed invoice status payload into a structured polling failure."""
+
     fake = FakeKsef()
     fake.malformed_invoice_status = True
 
@@ -105,6 +119,8 @@ def test_malformed_invoice_status_is_structured_poll_failure() -> None:
 
 
 def test_unresolved_ambiguous_send_returns_pending_without_resubmission() -> None:
+    """Keep unresolved ambiguous invoice submission as PENDING without a second POST."""
+
     fake = FakeKsef()
     fake.send_timeout = True
 
@@ -125,6 +141,8 @@ def test_unresolved_ambiguous_send_returns_pending_without_resubmission() -> Non
 
 
 def test_non_retryable_reconciliation_error_preserves_uncertainty() -> None:
+    """Preserve uncertain remote truth when reconciliation fails non-retryably."""
+
     fake = FakeKsef()
     fake.send_timeout = True
     fake.reconcile_error_status = 401
@@ -147,6 +165,8 @@ def test_non_retryable_reconciliation_error_preserves_uncertainty() -> None:
 
 
 def test_close_failure_preserves_accepted_invoice_truth() -> None:
+    """Keep an accepted invoice result even when best-effort session close fails."""
+
     fake = FakeKsef()
     fake.close_error = True
 
@@ -162,6 +182,8 @@ def test_close_failure_preserves_accepted_invoice_truth() -> None:
 
 
 def test_remote_error_diagnostics_do_not_echo_ksef_token() -> None:
+    """Prevent remote error descriptions from leaking the configured KSeF token."""
+
     fake = FakeKsef()
     fake.auth_error_description = "test-secret-token must never escape"
 
@@ -179,9 +201,13 @@ def test_remote_error_diagnostics_do_not_echo_ksef_token() -> None:
 
 
 def test_transport_exception_does_not_echo_remote_description() -> None:
+    """Keep server-provided descriptions out of transport exception messages."""
+
     secret = "test-secret-token must never escape"
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Return an error payload containing secret-like remote text for redaction testing."""
+
         return httpx.Response(
             400,
             json={"errors": [{"code": 29999, "description": secret}]},
