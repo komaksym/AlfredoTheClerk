@@ -106,4 +106,6 @@ def encrypt_invoice(xml: str, key: bytes, iv: bytes) -> EncryptedInvoice:
 
 
 def _sha256_b64(value: bytes) -> str:
+    """Return the Base64-encoded SHA-256 digest required by KSeF metadata."""
+
     return base64.b64encode(hashlib.sha256(value).digest()).decode()
