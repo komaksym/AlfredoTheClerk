@@ -11,6 +11,33 @@ from src.ksef.transport import KsefTransport, KsefTransportError
 from tests.ksef.support import FakeKsef, config, original_hash, ready_result
 
 
+def _transport_with_invoice_status_error(
+    fake: FakeKsef,
+    *,
+    status_code: int,
+    once: bool,
+) -> httpx.MockTransport:
+    """Wrap the shared fake with a scripted HTTP error on invoice-status reads."""
+
+    error_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Return the scripted status-read error before delegating other requests."""
+
+        nonlocal error_calls
+        path = request.url.path.removeprefix("/v2")
+        is_invoice_status = path in {
+            "/sessions/SESSION/invoices/INVOICE",
+            "/sessions/SESSION/invoices/RECOVERED",
+        }
+        if is_invoice_status and (not once or error_calls == 0):
+            error_calls += 1
+            return httpx.Response(status_code, json={"code": status_code})
+        return fake(request)
+
+    return httpx.MockTransport(handler)
+
+
 def test_auth_key_rotation_refetches_and_retries_once() -> None:
     """Refresh the token-encryption certificate once after KSeF reports key rotation."""
 
@@ -97,6 +124,51 @@ def test_poll_deadline_returns_pending_and_still_closes_session() -> None:
     assert result.status is KsefSubmissionStatus.PENDING
     assert result.failure_stage is KsefFailureStage.POLL
     assert result.error_code == "POLL_TIMEOUT"
+    assert fake.close_calls == 1
+
+
+def test_transient_status_5xx_is_retried_without_resubmission() -> None:
+    """Retry a transient 5xx status read and preserve the one-shot invoice POST."""
+
+    fake = FakeKsef()
+
+    result = submit_ready_invoice(
+        ready_result(),
+        config=config(),
+        http_transport=_transport_with_invoice_status_error(
+            fake,
+            status_code=503,
+            once=True,
+        ),
+    )
+
+    assert result.status is KsefSubmissionStatus.ACCEPTED
+    assert result.invoice_reference == "INVOICE"
+    assert fake.send_calls == 1
+    assert fake.invoice_status_calls == 1
+
+
+def test_persistent_status_5xx_returns_pending_at_deadline() -> None:
+    """Keep remote truth pending when status GETs remain unavailable through the deadline."""
+
+    fake = FakeKsef()
+
+    result = submit_ready_invoice(
+        ready_result(),
+        config=config(poll_timeout_seconds=0),
+        http_transport=_transport_with_invoice_status_error(
+            fake,
+            status_code=503,
+            once=False,
+        ),
+    )
+
+    assert result.status is KsefSubmissionStatus.PENDING
+    assert result.failure_stage is KsefFailureStage.POLL
+    assert result.error_code == "POLL_TIMEOUT"
+    assert result.session_reference == "SESSION"
+    assert result.invoice_reference == "INVOICE"
+    assert fake.send_calls == 1
     assert fake.close_calls == 1
 
 
