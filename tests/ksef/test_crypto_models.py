@@ -1,3 +1,5 @@
+"""Unit tests for KSeF cryptographic helpers, models, and secret-safe config."""
+
 from __future__ import annotations
 
 import base64
@@ -28,6 +30,8 @@ from src.ksef.models import (
 
 
 def _certificate(*, valid_from: datetime, usage: tuple[str, ...]):
+    """Build a synthetic RSA certificate model and matching private key."""
+
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")])
     cert = (
@@ -51,6 +55,8 @@ def _certificate(*, valid_from: datetime, usage: tuple[str, ...]):
 
 
 def test_select_certificate_uses_latest_valid_matching_usage():
+    """Select the newest currently valid certificate matching the requested usage."""
+
     now = datetime(2026, 7, 29, tzinfo=timezone.utc)
     older, _ = _certificate(
         valid_from=now - timedelta(days=10),
@@ -71,6 +77,8 @@ def test_select_certificate_uses_latest_valid_matching_usage():
 
 
 def test_select_certificate_rejects_missing_eligible_key():
+    """Reject certificate sets with no valid key for the requested usage."""
+
     now = datetime(2026, 7, 29, tzinfo=timezone.utc)
     wrong, _ = _certificate(
         valid_from=now - timedelta(days=1),
@@ -82,6 +90,8 @@ def test_select_certificate_rejects_missing_eligible_key():
 
 
 def test_encrypt_token_uses_exact_token_timestamp_plaintext():
+    """Encrypt exactly the token and timestamp plaintext required by KSeF auth."""
+
     now = datetime.now(timezone.utc) - timedelta(days=1)
     cert, private_key = _certificate(
         valid_from=now,
@@ -104,6 +114,8 @@ def test_encrypt_token_uses_exact_token_timestamp_plaintext():
 
 
 def test_encrypt_invoice_round_trips_and_reports_hashes():
+    """Round-trip encrypted invoice bytes and verify required size/hash metadata."""
+
     xml = "<Faktura>zażółć</Faktura>"
     key = bytes(range(32))
     iv = bytes(range(16))
@@ -122,11 +134,15 @@ def test_encrypt_invoice_round_trips_and_reports_hashes():
 
 
 def test_accepted_result_requires_remote_references():
+    """Require session, invoice, and KSeF references for accepted results."""
+
     with pytest.raises(ValueError):
         KsefSubmissionResult(status=KsefSubmissionStatus.ACCEPTED)
 
 
 def test_submission_status_and_failure_stage_are_separate():
+    """Keep remote submission truth separate from the local failure stage."""
+
     result = KsefSubmissionResult(
         status=KsefSubmissionStatus.PENDING,
         failure_stage=KsefFailureStage.POLL,
@@ -138,6 +154,8 @@ def test_submission_status_and_failure_stage_are_separate():
 
 
 def test_config_repr_redacts_token():
+    """Redact the KSeF token from configuration representations."""
+
     config = KsefTestConfig(token="super-secret", context_nip="1234567890")
 
     assert "super-secret" not in repr(config)
