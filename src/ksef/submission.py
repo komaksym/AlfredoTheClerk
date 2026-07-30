@@ -492,7 +492,11 @@ def _safe_error_diagnostic(error: KsefTransportError | None) -> str | None:
 def _retry_poll_error(error: KsefTransportError) -> bool:
     """Return whether a polling error may be retried without changing remote truth."""
 
-    return error.code == "TRANSPORT_ERROR" or error.http_status == 429
+    return (
+        error.code == "TRANSPORT_ERROR"
+        or error.http_status == 429
+        or (error.http_status is not None and 500 <= error.http_status < 600)
+    )
 
 
 def _wait(
