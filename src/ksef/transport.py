@@ -23,12 +23,16 @@ class KsefTransportError(RuntimeError):
         description: str | None = None,
         retry_after: float | None = None,
     ) -> None:
+        """Store safe transport metadata while intentionally discarding remote text."""
+
         self.code = code
         self.http_status = http_status
         self.retry_after = retry_after
         super().__init__(self._message())
 
     def _message(self) -> str:
+        """Build the secret-safe exception message from code and HTTP status only."""
+
         parts = [self.code]
         if self.http_status is not None:
             parts.append(f"http={self.http_status}")
@@ -44,6 +48,8 @@ class KsefTransport:
         transport: httpx.BaseTransport | None = None,
         timeout_seconds: float = 10.0,
     ) -> None:
+        """Create an HTTP client fixed to the KSeF TEST origin."""
+
         self._client = httpx.Client(
             base_url=KSEF_TEST_BASE_URL,
             transport=transport,
@@ -243,6 +249,8 @@ class KsefTransport:
         )
 
     def _json(self, method: str, path: str, *, expected: int, **kwargs: Any) -> Any:
+        """Execute one request and decode its response body as JSON."""
+
         response = self._request(method, path, expected=expected, **kwargs)
         try:
             return response.json()
@@ -261,6 +269,8 @@ class KsefTransport:
         bearer: str | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
+        """Send one HTTP request and normalize transport or protocol failures."""
+
         headers = dict(kwargs.pop("headers", {}))
         if bearer:
             headers["Authorization"] = f"Bearer {bearer}"
@@ -278,6 +288,8 @@ class KsefTransport:
 
 
 def _error_code(response: httpx.Response) -> str:
+    """Extract a documented KSeF error code with a conservative HTTP fallback."""
+
     try:
         payload = response.json()
     except ValueError:
@@ -293,12 +305,16 @@ def _error_code(response: httpx.Response) -> str:
 
 
 def _simple_code(value: Any) -> str | None:
+    """Normalize a scalar error code to text while rejecting booleans."""
+
     if isinstance(value, (str, int)) and not isinstance(value, bool):
         return str(value)
     return None
 
 
 def _retry_after(response: httpx.Response) -> float | None:
+    """Parse Retry-After as seconds or an HTTP date and return a nonnegative delay."""
+
     value = response.headers.get("Retry-After")
     if value is None:
         return None
@@ -319,12 +335,16 @@ def _retry_after(response: httpx.Response) -> float | None:
 
 
 def _required_dict(payload: Any, name: str) -> dict[str, Any]:
+    """Return one required object-valued field or raise a structured protocol error."""
+
     if not isinstance(payload, dict) or not isinstance(payload.get(name), dict):
         raise KsefTransportError(f"MISSING_{name.upper()}")
     return payload[name]
 
 
 def _required_str(payload: Any, name: str) -> str:
+    """Return one required nonempty string field or raise a protocol error."""
+
     if not isinstance(payload, dict):
         raise KsefTransportError(f"MISSING_{name.upper()}")
     value = payload.get(name)
@@ -334,6 +354,8 @@ def _required_str(payload: Any, name: str) -> str:
 
 
 def _required_int(payload: Any, name: str) -> int:
+    """Return one required integer field while rejecting booleans and malformed data."""
+
     if not isinstance(payload, dict):
         raise KsefTransportError(f"MISSING_{name.upper()}")
     value = payload.get(name)
@@ -343,6 +365,8 @@ def _required_int(payload: Any, name: str) -> int:
 
 
 def _required_str_tuple(payload: dict[str, Any], name: str) -> tuple[str, ...]:
+    """Return one required list-of-strings field as an immutable tuple."""
+
     value = payload.get(name)
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise KsefTransportError(f"MISSING_{name.upper()}")
@@ -350,6 +374,8 @@ def _required_str_tuple(payload: dict[str, Any], name: str) -> tuple[str, ...]:
 
 
 def _parse_datetime(value: str) -> datetime:
+    """Parse an ISO-8601 KSeF timestamp into a timezone-aware datetime when supplied."""
+
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
