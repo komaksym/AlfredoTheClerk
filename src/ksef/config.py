@@ -27,6 +27,8 @@ class KsefTestConfig:
         )
 
     def __repr__(self) -> str:
+        """Return a representation that redacts the KSeF token."""
+
         return (
             "KsefTestConfig(token=<redacted>, "
             f"context_nip={self.context_nip!r}, "
