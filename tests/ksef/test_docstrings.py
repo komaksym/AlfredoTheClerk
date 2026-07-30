@@ -11,9 +11,9 @@ _KSEF_MODULE_DIRS = (_REPO_ROOT / "src" / "ksef", _REPO_ROOT / "tests" / "ksef")
 
 
 def _python_modules() -> tuple[Path, ...]:
-    """Return every Python module in the KSeF source and test directories."""
+    """Return every Python module recursively under the KSeF source and test trees."""
 
-    modules = [path for directory in _KSEF_MODULE_DIRS for path in directory.glob("*.py")]
+    modules = [path for directory in _KSEF_MODULE_DIRS for path in directory.rglob("*.py")]
     return tuple(sorted(modules))
 
 
