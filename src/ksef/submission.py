@@ -119,6 +119,8 @@ def _submit_and_poll(
     encrypted_content: str,
     invoice_number: str,
 ) -> KsefSubmissionResult:
+    """Submit one invoice, reconcile an ambiguous send, then poll remote truth."""
+
     try:
         invoice_reference = transport.send_invoice(
             access_token=access_token,
@@ -183,6 +185,8 @@ def _validate_preconditions(
     correctness: CorrectnessResult,
     config: KsefTestConfig,
 ) -> KsefSubmissionResult | None:
+    """Return a structured local failure when submission preconditions are unmet."""
+
     if correctness.status is not CorrectnessStatus.READY_FOR_KSEF:
         return _failed(KsefFailureStage.PRECONDITION, code="NOT_READY_FOR_KSEF")
     if not correctness.xml:
@@ -206,6 +210,8 @@ def _authenticate(
     config: KsefTestConfig,
     certificates: tuple[KsefPublicCertificate, ...],
 ) -> str:
+    """Complete token authentication and return the one access token used by this run."""
+
     challenge = transport.get_challenge()
     current = certificates
     for attempt in range(2):
@@ -240,6 +246,8 @@ def _poll_auth(
     reference: str,
     auth_token: str,
 ) -> None:
+    """Poll asynchronous authentication until success, rejection, or timeout."""
+
     deadline = time.monotonic() + config.poll_timeout_seconds
     while True:
         try:
@@ -268,6 +276,8 @@ def _open_session(
     iv: bytes,
     certificates: tuple[KsefPublicCertificate, ...],
 ) -> str:
+    """Open one encrypted online session, refreshing a rotated key once if needed."""
+
     current = certificates
     for attempt in range(2):
         cert = select_certificate(current, KsefKeyUsage.SYMMETRIC)
@@ -299,6 +309,8 @@ def _poll_invoice(
     invoice_hash: str,
     invoice_number: str,
 ) -> KsefSubmissionResult:
+    """Poll one submitted invoice until terminal truth or the polling deadline."""
+
     deadline = time.monotonic() + config.poll_timeout_seconds
     while True:
         try:
@@ -377,6 +389,8 @@ def _reconcile_submission(
     invoice_hash: str,
     invoice_number: str,
 ) -> str | None:
+    """Find a possibly accepted ambiguous submission by exact hash and invoice number."""
+
     deadline = time.monotonic() + config.poll_timeout_seconds
     while True:
         try:
@@ -404,6 +418,8 @@ def _reconcile_submission(
 
 
 def _status(payload: dict[str, Any]) -> tuple[int, str | None]:
+    """Extract and validate the KSeF status code and optional description."""
+
     raw = payload.get("status")
     if not isinstance(raw, dict):
         raise KsefTransportError("MALFORMED_STATUS")
@@ -423,6 +439,8 @@ def _pending_poll_timeout(
     remote_status_code: int | None = None,
     remote_status_description: str | None = None,
 ) -> KsefSubmissionResult:
+    """Build the structured pending result used when invoice polling times out."""
+
     return KsefSubmissionResult(
         status=KsefSubmissionStatus.PENDING,
         session_reference=session_reference,
@@ -447,6 +465,8 @@ def _failed(
     invoice_hash: str | None = None,
     invoice_number: str | None = None,
 ) -> KsefSubmissionResult:
+    """Build a structured failed result without exposing sensitive transport data."""
+
     return KsefSubmissionResult(
         status=KsefSubmissionStatus.FAILED,
         session_reference=session_reference,
@@ -460,6 +480,8 @@ def _failed(
 
 
 def _safe_error_diagnostic(error: KsefTransportError | None) -> str | None:
+    """Render only safe transport metadata for structured diagnostics."""
+
     if error is None:
         return None
     if error.http_status is None:
@@ -468,6 +490,8 @@ def _safe_error_diagnostic(error: KsefTransportError | None) -> str | None:
 
 
 def _retry_poll_error(error: KsefTransportError) -> bool:
+    """Return whether a polling error may be retried without changing remote truth."""
+
     return error.code == "TRANSPORT_ERROR" or error.http_status == 429
 
 
@@ -476,6 +500,8 @@ def _wait(
     deadline: float,
     retry_after: float | None = None,
 ) -> bool:
+    """Sleep within the polling deadline and report whether time remains."""
+
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return False
@@ -485,5 +511,7 @@ def _wait(
 
 
 def _sleep(seconds: float) -> None:
+    """Sleep only for positive durations to keep zero-delay tests deterministic."""
+
     if seconds > 0:
         time.sleep(seconds)
