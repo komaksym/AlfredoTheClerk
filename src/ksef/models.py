@@ -62,6 +62,8 @@ class KsefAuthInit:
     authentication_token: str
 
     def __repr__(self) -> str:
+        """Return a representation that redacts the temporary authentication token."""
+
         return (
             "KsefAuthInit(reference_number="
             f"{self.reference_number!r}, authentication_token=<redacted>)"
@@ -86,6 +88,8 @@ class KsefSubmissionResult:
     cleanup_error_code: str | None = None
 
     def __post_init__(self) -> None:
+        """Enforce fields required for a terminal accepted submission result."""
+
         if self.status is KsefSubmissionStatus.ACCEPTED:
             required = (
                 self.session_reference,
