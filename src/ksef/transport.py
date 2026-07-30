@@ -52,9 +52,13 @@ class KsefTransport:
         )
 
     def close(self) -> None:
+        """Close the underlying HTTP client and release its resources."""
+
         self._client.close()
 
     def get_public_certificates(self) -> tuple[KsefPublicCertificate, ...]:
+        """Fetch and parse the public encryption certificates published by KSeF."""
+
         payload = self._json("GET", "/security/public-key-certificates", expected=200)
         if not isinstance(payload, list):
             raise KsefTransportError("MALFORMED_CERTIFICATES")
@@ -74,6 +78,8 @@ class KsefTransport:
         return tuple(items)
 
     def get_challenge(self) -> KsefChallenge:
+        """Request a fresh KSeF authentication challenge and timestamp."""
+
         payload = self._json("POST", "/auth/challenge", expected=200)
         return KsefChallenge(
             challenge=_required_str(payload, "challenge"),
@@ -88,6 +94,8 @@ class KsefTransport:
         encrypted_token: str,
         public_key_id: str,
     ) -> KsefAuthInit:
+        """Start token authentication for one NIP context using encrypted credentials."""
+
         payload = self._json(
             "POST",
             "/auth/ksef-token",
@@ -106,6 +114,8 @@ class KsefTransport:
         )
 
     def get_auth_status(self, reference: str, auth_token: str) -> dict[str, Any]:
+        """Fetch the current status of an asynchronous authentication request."""
+
         return self._json(
             "GET",
             f"/auth/{reference}",
@@ -114,6 +124,8 @@ class KsefTransport:
         )
 
     def redeem(self, auth_token: str) -> str:
+        """Redeem a temporary authentication token once and return its access token."""
+
         payload = self._json(
             "POST",
             "/auth/token/redeem",
@@ -131,6 +143,8 @@ class KsefTransport:
         iv_b64: str,
         public_key_id: str,
     ) -> str:
+        """Open an encrypted online FA(3) session and return its reference number."""
+
         payload = self._json(
             "POST",
             "/sessions/online",
@@ -162,6 +176,8 @@ class KsefTransport:
         encrypted_size: int,
         encrypted_content: str,
     ) -> str:
+        """Submit one encrypted invoice to an online session and return its reference."""
+
         payload = self._json(
             "POST",
             f"/sessions/online/{session_reference}/invoices",
@@ -185,6 +201,8 @@ class KsefTransport:
         session_reference: str,
         invoice_reference: str,
     ) -> dict[str, Any]:
+        """Fetch the remote processing status for one submitted invoice."""
+
         return self._json(
             "GET",
             f"/sessions/{session_reference}/invoices/{invoice_reference}",
@@ -198,6 +216,8 @@ class KsefTransport:
         access_token: str,
         session_reference: str,
     ) -> tuple[dict[str, Any], ...]:
+        """List invoices in a session for ambiguity-safe submission reconciliation."""
+
         payload = self._json(
             "GET",
             f"/sessions/{session_reference}/invoices",
@@ -213,6 +233,8 @@ class KsefTransport:
         return tuple(raw)
 
     def close_online_session(self, access_token: str, session_reference: str) -> None:
+        """Best-effort close one KSeF online session after submission processing."""
+
         self._request(
             "POST",
             f"/sessions/online/{session_reference}/close",
