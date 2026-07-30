@@ -48,12 +48,16 @@ class KsefPublicCertificate:
 
 @dataclass(frozen=True, kw_only=True)
 class KsefChallenge:
+    """Authentication challenge and server timestamp returned by KSeF."""
+
     challenge: str
     timestamp_ms: int
 
 
 @dataclass(frozen=True, kw_only=True)
 class KsefAuthInit:
+    """Reference and one-shot temporary token for an authentication attempt."""
+
     reference_number: str
     authentication_token: str
 
