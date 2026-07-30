@@ -121,38 +121,82 @@ Acceptance:
 - mutating the source workflow context after case construction cannot change
   review candidates, diagnostics, validation, or extracted totals
 
-## 1. KSeF integration — next
+## 1. KSeF TEST submission proof — live proof pending
 
-Add the remote KSeF path only for locally validated FA(3) XML:
+The TEST-only implementation now covers:
+
+`READY_FOR_KSEF -> token auth -> encrypted online session -> one FA(3)`
+
+`-> poll or reconcile -> ACCEPTED / REJECTED / PENDING / FAILED`
+
+Implemented contracts:
+
+- only complete locally XSD-valid `READY_FOR_KSEF` results may submit
+- KSeF HTTP, authentication, cryptography, polling, and cleanup stay under
+  `src/ksef/`
+- only the fixed KSeF TEST origin exists; no production URL is configurable
+- public encryption certificates are discovered dynamically by usage; `21470`
+  refreshes the affected key once before submission
+- temporary authentication tokens are redeemed at most once; only the access
+  token needed by this slice is consumed
+- FA(3) XML uses AES-256-CBC with the session key encrypted by the matching KSeF
+  RSA certificate
+- invoice submission is never blindly retried after an ambiguous response;
+  reconciliation matches both invoice hash and invoice number
+- ambiguous remote truth stays `PENDING`, including reconciliation failures;
+  accepted/rejected truth survives best-effort session-close failure
+- secrets are excluded from result representations, diagnostics, and transport
+  exception messages
+- shared fake-HTTP coverage exercises success, rejection, key rotation,
+  one-shot redemption, polling deadlines, malformed responses, reconciliation,
+  and cleanup failure
+- the `ksef_live` test is explicitly opt-in and ordinary CI cannot submit
+  remotely
+
+Remaining acceptance gate:
+
+- run one real synthetic invoice through KSeF TEST and record
+  `ACCEPTED + KSeF number`
+- Ruff, pytest, compileall, and package build pass for the final revision
+
+Detailed protocol and design rationale:
+`docs/superpowers/specs/2026-07-29-ksef-test-submission-proof-design.md`.
+
+## 2. Durable KSeF integration — after the TEST proof
+
+Turn the proven TEST protocol boundary into a recoverable product workflow:
 
 `validated FA(3) XML`
 
-`-> authenticate`
+`-> durable submission intent`
 
-`-> submit`
+`-> submit or reconcile`
 
-`-> poll status`
+`-> persist every status transition`
 
 `-> store KSeF number and UPO`
 
 Requirements:
 
-- keep KSeF access behind a dedicated client interface
-- support authentication and session lifecycle
-- submit invoices idempotently where possible
-- poll and persist remote status
-- distinguish local validation success from remote rejection or acceptance
-- store the KSeF invoice number and UPO when available
-- preserve request, response, and status history for debugging and audit
+- persist submission identity, session and invoice references, request metadata,
+  remote statuses, and redacted failure history
+- resume polling and ambiguous-submission reconciliation after process restarts
+- prevent duplicate submissions through durable identity and explicit operator
+  recovery
+- refresh access tokens safely
+- download, validate, and store the invoice or session UPO
+- preserve local correctness separately from remote rejection or acceptance
+- introduce DEMO or production only through an explicit rollout decision and
+  environment enum with internally mapped official origins
 
 Acceptance:
 
-- the system can distinguish locally valid, remotely rejected, and remotely
-  accepted invoices
-- accepted invoices retain their KSeF number and UPO
-- retries do not silently create duplicate submissions
+- remotely pending work survives process restart
+- accepted invoices retain their KSeF number and verified UPO
+- retries and recovery cannot silently create duplicate submissions
+- submission and status history remains auditable without exposing secrets
 
-## 2. Real legacy invoices — parallel when data is available
+## 3. Real legacy invoices — parallel when data is available
 
 Add real legacy-system invoices whenever they become available:
 

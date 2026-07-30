@@ -4,6 +4,12 @@ on:
   pull_request:
   push:
   workflow_dispatch:
+    inputs:
+      run_ksef_live:
+        description: "Run the real KSeF TEST submission proof"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -46,3 +52,52 @@ jobs:
         run: >-
           uv run python tests/smoke_installed_xsd_validation.py
           dist/alfredotheclerk-*.whl
+
+  # Manual-only proof. Configure KSEF_TEST_TOKEN and KSEF_TEST_CONTEXT_NIP as
+  # repository secrets, dispatch this workflow on the feature branch, and set
+  # run_ksef_live=true. Push and pull-request events always skip this job.
+  ksef-live:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ksef_live }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUN_KSEF_LIVE: "1"
+      KSEF_TEST_TOKEN: ${{ secrets.KSEF_TEST_TOKEN }}
+      KSEF_TEST_CONTEXT_NIP: ${{ secrets.KSEF_TEST_CONTEXT_NIP }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.0"
+
+      - name: Install xmllint
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Require KSeF TEST credentials
+        run: |
+          test -n "$KSEF_TEST_TOKEN" || {
+            echo "::error::KSEF_TEST_TOKEN repository secret is not configured"
+            exit 1
+          }
+          test -n "$KSEF_TEST_CONTEXT_NIP" || {
+            echo "::error::KSEF_TEST_CONTEXT_NIP repository secret is not configured"
+            exit 1
+          }
+
+      - name: Compile Python sources
+        run: uv run python -m compileall src tests
+
+      - name: Run live KSeF TEST proof
+        run: uv run pytest -m ksef_live -q
