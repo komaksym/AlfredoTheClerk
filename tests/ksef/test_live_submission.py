@@ -1,3 +1,5 @@
+"""Credential-gated integration test proving one synthetic invoice reaches KSeF TEST."""
+
 from __future__ import annotations
 
 import os
@@ -17,6 +19,8 @@ from src.ksef.submission import submit_ready_invoice
 
 @pytest.mark.ksef_live
 def test_synthetic_invoice_is_accepted_by_ksef_test() -> None:
+    """Submit one unique locally valid synthetic FA(3) invoice to real KSeF TEST."""
+
     if os.getenv("RUN_KSEF_LIVE") != "1":
         pytest.skip("set RUN_KSEF_LIVE=1 to enable the KSeF TEST proof")
 
