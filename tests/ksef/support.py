@@ -1,3 +1,5 @@
+"""Shared fixtures and scripted HTTP fake used by KSeF integration tests."""
+
 from __future__ import annotations
 
 import base64
@@ -20,6 +22,8 @@ from src.ksef.config import KSEF_TEST_BASE_URL, KsefTestConfig
 
 
 def ready_result(nip: str = "5265877635") -> CorrectnessResult:
+    """Build a minimal locally ready correctness result for submission tests."""
+
     shell = build_domestic_vat_shell()
     shell.seller.nip = nip
     shell.invoice_number = "TEST/2026/0001"
@@ -33,6 +37,8 @@ def ready_result(nip: str = "5265877635") -> CorrectnessResult:
 
 
 def config(**changes: object) -> KsefTestConfig:
+    """Build deterministic TEST configuration with optional field overrides."""
+
     values = {
         "token": "test-secret-token",
         "context_nip": "5265877635",
@@ -51,6 +57,8 @@ def certificate_payload(
         "SymmetricKeyEncryption",
     ),
 ) -> list[dict[str, object]]:
+    """Create one valid synthetic KSeF certificate response payload."""
+
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     now = datetime.now(timezone.utc)
     subject = issuer = x509.Name(
@@ -81,6 +89,8 @@ def certificate_payload(
 
 
 def original_hash() -> str:
+    """Return the Base64 SHA-256 hash of the shared synthetic XML fixture."""
+
     return base64.b64encode(
         hashlib.sha256(b"<Faktura>synthetic</Faktura>").digest()
     ).decode()
@@ -90,6 +100,8 @@ class FakeKsef:
     """Scriptable HTTP fake shared by orchestration tests."""
 
     def __init__(self) -> None:
+        """Initialize call counters and behavior switches for the fake API."""
+
         self.certificate_calls = 0
         self.auth_init_calls = 0
         self.auth_status_calls = 0
@@ -116,6 +128,8 @@ class FakeKsef:
         self.auth_error_description: str | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        """Route one mocked HTTP request to the matching scripted KSeF behavior."""
+
         assert str(request.url).startswith(KSEF_TEST_BASE_URL)
         path = request.url.path.removeprefix("/v2")
 
@@ -166,6 +180,8 @@ class FakeKsef:
         raise AssertionError(f"unexpected request {request.method} {path}")
 
     def _start_auth(self, request: httpx.Request) -> httpx.Response:
+        """Handle token-auth initialization including optional key rotation or errors."""
+
         self.auth_init_calls += 1
         if self.auth_error_description is not None:
             return httpx.Response(
@@ -201,6 +217,8 @@ class FakeKsef:
         )
 
     def _auth_status(self) -> httpx.Response:
+        """Return the scripted asynchronous authentication status response."""
+
         self.auth_status_calls += 1
         if self.auth_rate_limit_once and self.auth_status_calls == 1:
             return httpx.Response(
@@ -212,6 +230,8 @@ class FakeKsef:
         return httpx.Response(200, json={"status": {"code": code}})
 
     def _open_session(self, request: httpx.Request) -> httpx.Response:
+        """Handle encrypted online-session creation and optional key rotation."""
+
         self.session_open_calls += 1
         if self.session_rotate_once and self.session_open_calls == 1:
             return httpx.Response(
@@ -225,6 +245,8 @@ class FakeKsef:
         return httpx.Response(201, json={"referenceNumber": "SESSION"})
 
     def _list_invoices(self) -> httpx.Response:
+        """Return scripted session invoice listings for ambiguity reconciliation."""
+
         self.list_calls += 1
         if self.reconcile_error_status is not None:
             return httpx.Response(
@@ -247,6 +269,8 @@ class FakeKsef:
         return httpx.Response(200, json={"invoices": invoices})
 
     def _invoice_status(self) -> httpx.Response:
+        """Return the scripted processing, rejection, malformed, or acceptance status."""
+
         self.invoice_status_calls += 1
         if self.malformed_invoice_status:
             return httpx.Response(200, json={"status": {"description": "bad"}})
