@@ -16,25 +16,22 @@ migrate arbitrary historical invoice archives. Its core value is diagnosing and
 repairing incomplete, ambiguous, or invalid current invoice drafts while keeping
 every change evidence-backed and deterministically verified.
 
-## Product flow
+## Core product flow
 
-`legacy-system invoice draft or output`
+```text
+legacy-system invoice draft or output
+-> deterministic parsing and extraction
+-> canonical domestic VAT shell + evidence + diagnostics
+-> deterministic validation and repair routing
+-> evidence-constrained agent repair when legal
+-> human review for residual problems
+-> one shared deterministic correctness pipeline
+-> locally XSD-valid FA(3) XML
+```
 
-`-> deterministic parsing and extraction`
-
-`-> canonical domestic VAT shell + evidence + diagnostics`
-
-`-> deterministic validation and repair routing`
-
-`-> evidence-constrained agentic repair when safe`
-
-`-> human review when automation cannot resolve the case safely`
-
-`-> one shared deterministic correctness pipeline`
-
-`-> FA(3) XML`
-
-`-> KSeF submission and status tracking`
+A validated `READY_FOR_KSEF` invoice is the minimal product completion boundary.
+Remote KSeF submission is a separate downstream capability rather than a
+prerequisite for the review product.
 
 ## Durable product principles
 
@@ -50,28 +47,35 @@ every change evidence-backed and deterministically verified.
 - The agent may diagnose failures and select evidence-backed candidates.
 - The agent must not invent unsupported values, bypass the shell, or emit XML as
   its primary repair output.
+- If no usable evidence-backed candidate exists, the agent has no legal repair
+  action and the field falls back to human review.
 - Agent and human repairs must pass the same deterministic correctness pipeline.
 
 ### Deterministic acceptance
 
 An invoice is not ready merely because individual shell fields are structurally
-valid. Acceptance requires the complete correctness path to succeed:
+valid. `READY_FOR_KSEF` requires:
 
-- full shell validation
-- deterministic monetary summary computation
-- reconciliation with extracted source totals
-- FA(3) mapping
-- XML serialization
-- local XSD validation
+- full shell validation;
+- deterministic monetary summary computation;
+- reconciliation with extracted source totals;
+- FA(3) mapping;
+- XML serialization;
+- local XSD validation.
 
-Remote KSeF acceptance is tracked separately from local correctness.
+Remote KSeF acceptance, rejection, and pending status remain separate from local
+correctness.
 
 ### Reviewability and auditability
 
 - Every automated or human correction must be attributable and reviewable.
 - Evidence, candidates, validation failures, repair decisions, human changes,
-  generated artifacts, and remote KSeF outcomes must remain traceable.
-- Unsafe or unsupported cases must stop for review rather than silently degrade.
+  and generated artifacts must remain traceable within the workflow that owns
+  them.
+- Unsupported cases must stop for review rather than silently degrade.
+
+The minimal local product does not require durable history storage; persistence
+may be added later when multi-session or remote-submission workflows justify it.
 
 ## Data strategy
 
@@ -94,51 +98,67 @@ evaluation set.
 
 The product should mature in this order:
 
-1. Complete the end-to-end correctness boundary around repaired invoices.
-2. Add a human-review path that resumes through the same correctness boundary.
-3. Integrate validated FA(3) invoices with KSeF submission, polling, and UPO
-   storage.
-4. Expand support source by source using real legacy-system output and measured
+1. Complete the shared deterministic correctness boundary.
+2. Make agent-first repair and human fallback usable through a minimal local
+   review interface.
+3. Expand supported sources using real legacy-system invoices and measured
    failures.
+4. Optionally productize the already-proven KSeF protocol boundary with durable
+   submission identity, restart recovery, status history, KSeF number/UPO
+   storage, and explicit DEMO/production rollout.
 
-This is strategic sequencing, not a task-status list. `SPEC.md` records which
-step is active, completed, or blocked.
+The repository already contains a TEST-only KSeF submission proof. That proof is
+kept as a demonstrated downstream integration boundary, while durable remote
+orchestration is intentionally not required by the minimal review product.
 
 Real invoice collection and evaluation run in parallel whenever data becomes
-available; they do not block development of the correctness, review, or KSeF
-paths.
+available.
 
 ## Initial scope
 
-The initial product scope remains:
+The minimal product scope is:
 
-- ordinary Polish domestic VAT invoices
-- native, text-based PDF output from legacy or vertical software
-- deterministic extraction with evidence and diagnostics
-- evidence-constrained repair and manual escalation
-- FA(3) generation and KSeF submission
+- ordinary Polish domestic VAT invoices;
+- native, text-based PDF output from supported legacy or vertical software;
+- deterministic extraction with evidence and diagnostics;
+- evidence-constrained agent repair;
+- safe human-review fallback;
+- deterministic FA(3) generation and local XSD validation;
+- explicit FA(3) XML output for downstream use.
+
+KSeF TEST submission exists separately and may be invoked explicitly outside the
+local review UI.
 
 ## Out of scope for now
 
-- scanned PDFs and OCR-first extraction
-- photographs of invoices
-- non-domestic invoices
-- correction invoices
-- advance invoices
-- claims of arbitrary-PDF reliability without source-specific real evaluation
+- scanned PDFs and OCR-first extraction;
+- photographs of invoices;
+- multi-page invoice extraction in the local review slice;
+- non-domestic invoices;
+- correction invoices;
+- advance invoices;
+- claims of arbitrary-PDF reliability without source-specific real evaluation;
+- persistent multi-user review infrastructure;
+- durable KSeF recovery/UPO tracking unless explicitly promoted into a later
+  product slice.
 
 These boundaries may change only through an explicit product-direction update to
 this file.
 
 ## Product success
 
-The product succeeds when a supported legacy-system invoice can move from source
-document to KSeF with:
+The minimal product succeeds when a supported legacy-system invoice can move
+from source document to locally validated FA(3) with:
 
-- no unsupported invented values
-- explicit evidence and diagnostics for uncertain fields
-- a reviewable repair diff
-- deterministic monetary and compliance validation
-- a safe human-review fallback
-- stored KSeF status, number, and UPO
-- measured performance on named real source systems
+- no unsupported invented values;
+- explicit evidence and diagnostics for uncertain fields;
+- agent repair before human fallback wherever usable candidates exist;
+- a reviewable automated-repair diff;
+- deterministic monetary and compliance validation;
+- a usable human-review path for residual problems;
+- downloadable `READY_FOR_KSEF` FA(3) XML;
+- measured performance on named real source systems as those evaluation sets
+  become available.
+
+Durable KSeF status, KSeF-number, and UPO persistence are optional later
+productization goals, not minimal-product success criteria.
