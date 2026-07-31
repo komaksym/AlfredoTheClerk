@@ -6,7 +6,7 @@ on:
       - feat/human-review-ui
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lock:
@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: feat/human-review-ui
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
@@ -22,8 +24,13 @@ jobs:
       - name: Regenerate lock
         run: uv lock
 
-      - name: Emit lock for feature-branch synchronization
+      - name: Commit lock when it changed
         run: |
-          printf 'UV_LOCK_BASE64='
-          base64 -w0 uv.lock
-          printf '\n'
+          if git diff --quiet -- uv.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "build: refresh uv lock for review UI"
+          git push origin HEAD:feat/human-review-ui
