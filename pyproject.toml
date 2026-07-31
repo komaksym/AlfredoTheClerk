@@ -7,10 +7,15 @@ requires-python = ">=3.13.0"
 dependencies = [
     "cryptography",
     "dotenv>=0.9.9",
+    "fastapi",
     "httpx",
+    "jinja2",
     "langchain>=1.3.2",
     "langchain-deepseek>=1.0.1",
+    "pdfplumber>=0.11.9",
+    "python-multipart",
     "rapidfuzz>=3.0",
+    "uvicorn",
     "weasyprint>=68.1",
     "xsdata[cli]>=26.2",
 ]
@@ -38,11 +43,11 @@ include = ["src", "src.*"]
 
 [tool.setuptools.package-data]
 "src.invoice_gen.schemas" = ["*.xsd"]
+"src.review_ui" = ["templates/*.html", "static/*.css", "static/*.js"]
 
 [dependency-groups]
 dev = [
     "detect-secrets>=1.5.0",
-    "pdfplumber>=0.11.9",
     "pytest>=9.0.2",
     "ruff>=0.15.8",
 ]
