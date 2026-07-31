@@ -86,7 +86,7 @@ def build_review_presentation(
 ) -> ReviewPresentation:
     """Build audit, residual-field, and mismatch views for one review case."""
 
-    agent_changes = _agent_changes(workflow)
+    agent_changes = build_agent_change_views(workflow)
     change_paths = {change.path for change in agent_changes}
     fields = tuple(
         _field_view(field, case, page)
@@ -111,6 +111,38 @@ def build_review_presentation(
         fields=fields,
         mismatches=mismatches,
     )
+
+
+def build_agent_change_views(
+    workflow: RepairWorkflowResult,
+) -> tuple[AgentChangeView, ...]:
+    """Read accepted agent decisions and enrich them with candidate confidence."""
+
+    if workflow.agent_result is None:
+        return ()
+    repair_result = workflow.agent_result.repair_result
+    if repair_result is None:
+        return ()
+
+    changes: list[AgentChangeView] = []
+    for decision in repair_result.decisions:
+        confidence = None
+        evidence = workflow.context.evidence.get(decision.path)
+        if evidence is not None and evidence.candidates is not None:
+            candidates = evidence.candidates
+            if 0 <= decision.candidate_index < len(candidates):
+                confidence = candidates[decision.candidate_index].confidence
+        changes.append(
+            AgentChangeView(
+                path=decision.path,
+                label=field_label(decision.path),
+                old_value=decision.old_value,
+                new_value=decision.new_value,
+                candidate_index=decision.candidate_index,
+                confidence=confidence,
+            )
+        )
+    return tuple(changes)
 
 
 def field_label(path: str) -> str:
@@ -177,38 +209,6 @@ def _field_view(
         overlay=overlay,
         no_source_evidence=field.path not in case.context.evidence,
     )
-
-
-def _agent_changes(
-    workflow: RepairWorkflowResult,
-) -> tuple[AgentChangeView, ...]:
-    """Read accepted agent decisions and enrich them with candidate confidence."""
-
-    if workflow.agent_result is None:
-        return ()
-    repair_result = workflow.agent_result.repair_result
-    if repair_result is None:
-        return ()
-
-    changes: list[AgentChangeView] = []
-    for decision in repair_result.decisions:
-        confidence = None
-        evidence = workflow.context.evidence.get(decision.path)
-        if evidence is not None and evidence.candidates is not None:
-            candidates = evidence.candidates
-            if 0 <= decision.candidate_index < len(candidates):
-                confidence = candidates[decision.candidate_index].confidence
-        changes.append(
-            AgentChangeView(
-                path=decision.path,
-                label=field_label(decision.path),
-                old_value=decision.old_value,
-                new_value=decision.new_value,
-                candidate_index=decision.candidate_index,
-                confidence=confidence,
-            )
-        )
-    return tuple(changes)
 
 
 def _is_resolved_agent_field(
