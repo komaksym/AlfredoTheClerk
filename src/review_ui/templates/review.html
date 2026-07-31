@@ -13,6 +13,9 @@
 {% if session.agent_warning %}
 <div class="alert alert-warning" role="status">{{ session.agent_warning }}</div>
 {% endif %}
+{% if correctness_notice %}
+<div class="alert alert-warning" role="status">{{ correctness_notice }}</div>
+{% endif %}
 
 <div class="review-layout">
   <section class="document-pane" aria-label="Original invoice">
