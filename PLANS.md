@@ -1,24 +1,36 @@
 # Active Implementation Plan
 
-The current implementation slice is the review-feedback patch for the backend
-human-review workflow. Status: complete (2026-07-18).
+The current slice is the local agent-first human-review UI.
 
-- Design: `docs/superpowers/specs/2026-07-17-human-review-workflow-design.md`
-- Completed feature plan:
-  `docs/superpowers/plans/2026-07-18-human-review-workflow.md`
-- Review patch plan:
-  `docs/superpowers/plans/2026-07-18-human-review-pr-feedback.md`
-- Pull request: `https://github.com/komaksym/AlfredoTheClerk/pull/4`
-- Branch: `codex/human-review-workflow`
-- Base: `codex/post-repair-correctness`
+- Design: `docs/superpowers/specs/2026-07-31-human-review-ui-design.md`
+- Implementation plan: `docs/superpowers/plans/2026-07-31-human-review-ui.md`
+- Pull request: `https://github.com/komaksym/AlfredoTheClerk/pull/7`
+- Branch: `feat/human-review-ui`
+- Base: `main`
 
 ## Milestones
 
-1. [x] Reject path/type mismatches as atomic, audited review issues.
-2. [x] Snapshot mutable extraction context at review-case construction.
-3. [x] Clarify shell-path guards, review-field projection, and focused tests.
-4. [x] Pass focused and repository gates, update docs and the PR system DAG,
-   then reply to the addressed review threads with AI disclosure.
+1. [x] Add the narrow FastAPI/Jinja/vanilla-JS runtime and package assets.
+2. [x] Reuse canonical shell types for browser-to-review value parsing.
+3. [x] Contain technical agent failures for human fallback.
+4. [x] Add single-page PDF rendering and evidence-overlay geometry.
+5. [x] Add one-invoice in-memory workflow/session and presentation adapters.
+6. [x] Add upload, review, PDF-resource, READY result, and XML routes.
+7. [x] Build the approved side-by-side review UI and agent-change audit view.
+8. [x] Add integration regressions across ready, agent, mixed, human, and failure
+   paths.
+9. [x] Update README, current spec, and durable roadmap for the minimal-product
+   pivot.
+10. [ ] Run final compile/package resource validation, inspect the UI workflow,
+    complete the three-pass docstring audit, and independently review the PR diff.
+11. [ ] Fix every valid final-review finding, rerun all gates on the final head,
+    and update PR validation evidence before requesting merge approval.
 
-The original human-review feature milestones remain complete in the completed
-feature plan linked above.
+## Scope boundary
+
+This slice ends at locally validated `READY_FOR_KSEF` FA(3) XML. It intentionally
+does not add durable review persistence, multi-user infrastructure, multi-page or
+OCR extraction, or automatic KSeF submission/status/UPO management.
+
+Durable KSeF productization remains optional later work. Real legacy-invoice
+evaluation continues in parallel when data is available.
