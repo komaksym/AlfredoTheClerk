@@ -45,10 +45,13 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+      - name: Compile Python sources
+        run: uv run python -m compileall src tests
+
       - name: Build wheel
         run: uv build --wheel
 
-      - name: Smoke-test installed XSD validation
+      - name: Smoke-test installed package resources
         run: >-
           uv run python tests/smoke_installed_xsd_validation.py
           dist/alfredotheclerk-*.whl
