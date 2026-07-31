@@ -1,0 +1,29 @@
+name: Lock preview
+
+on:
+  push:
+    branches:
+      - feat/human-review-ui
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Regenerate lock
+        run: uv lock
+
+      - name: Emit lock for feature-branch synchronization
+        run: |
+          printf 'UV_LOCK_BASE64='
+          base64 -w0 uv.lock
+          printf '\n'
