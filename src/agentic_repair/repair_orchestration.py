@@ -102,7 +102,15 @@ def _run_agent_repair(
 
     session = RepairSession.from_context(context)
     payload = build_agent_repair_payload(context, route)
-    agent_result = runner(session, payload, model)
+    try:
+        agent_result = runner(session, payload, model)
+    except Exception:
+        return _agent_failed(
+            context=context,
+            route=route,
+            agent_result=None,
+            reason="agent_exception",
+        )
 
     return _agent_result_to_workflow_result(
         context=context,
@@ -190,7 +198,7 @@ def _agent_failed(
     *,
     context: RepairContext,
     route: RepairRoute,
-    agent_result: AgentRepairResult,
+    agent_result: AgentRepairResult | None,
     reason: str,
 ) -> RepairWorkflowResult:
     """Build a failed agent workflow result with a stable reason code."""
