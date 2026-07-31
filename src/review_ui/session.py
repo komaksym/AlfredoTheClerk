@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -43,6 +43,10 @@ class ReviewSession:
     correctness: CorrectnessResult | None = None
     agent_warning: str | None = None
     reviewer_id: str = ""
+    form_values: dict[str, str] = field(default_factory=dict)
+    form_modes: dict[str, str] = field(default_factory=dict)
+    form_errors: dict[str, str] = field(default_factory=dict)
+    global_errors: tuple[str, ...] = ()
 
     @property
     def is_ready(self) -> bool:
@@ -63,6 +67,10 @@ class ReviewSession:
         self.case = None
         self.correctness = None
         self.agent_warning = None
+        self.form_values.clear()
+        self.form_modes.clear()
+        self.form_errors.clear()
+        self.global_errors = ()
 
     def process_upload(self, filename: str, pdf_bytes: bytes) -> None:
         """Prepare one PDF, run repair, and choose result or human-review state."""
