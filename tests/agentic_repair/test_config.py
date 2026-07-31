@@ -56,7 +56,11 @@ def test_setup_keys_does_not_prompt_for_existing_keys(monkeypatch) -> None:
     assert os.environ["LANGSMITH_TRACING"] == "true"
 
 
-def test_build_repair_model_uses_default_deepseek_model(monkeypatch) -> None:
+def test_build_repair_model_uses_supported_non_thinking_deepseek_model(
+    monkeypatch,
+) -> None:
+    """Default repair calls must use current V4 Flash without thinking mode."""
+
     calls: list[tuple[str, dict[str, Any]]] = []
     model = object()
 
@@ -71,7 +75,15 @@ def test_build_repair_model_uses_default_deepseek_model(monkeypatch) -> None:
     result = config.build_repair_model()
 
     assert result is model
-    assert calls == [(config.REPAIR_MODEL_NAME, {"temperature": 0.0})]
+    assert calls == [
+        (
+            "deepseek:deepseek-v4-flash",
+            {
+                "temperature": 0.0,
+                "extra_body": {"thinking": {"type": "disabled"}},
+            },
+        )
+    ]
 
 
 def test_build_repair_model_accepts_model_overrides(monkeypatch) -> None:
@@ -87,9 +99,17 @@ def test_build_repair_model_accepts_model_overrides(monkeypatch) -> None:
     monkeypatch.setattr(config, "init_chat_model", fake_init_chat_model)
 
     result = config.build_repair_model(
-        model_name="deepseek:deepseek-reasoner",
+        model_name="deepseek:deepseek-v4-pro",
         temperature=0.2,
     )
 
     assert result is model
-    assert calls == [("deepseek:deepseek-reasoner", {"temperature": 0.2})]
+    assert calls == [
+        (
+            "deepseek:deepseek-v4-pro",
+            {
+                "temperature": 0.2,
+                "extra_body": {"thinking": {"type": "disabled"}},
+            },
+        )
+    ]
