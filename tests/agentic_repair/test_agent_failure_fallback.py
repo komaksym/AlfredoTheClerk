@@ -1,4 +1,4 @@
-"""Regression tests for handing failed agent repair to human review."""
+"""Regression tests for containing technical agent repair failures."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-from src.agentic_repair.human_review import build_human_review_case
 from src.agentic_repair.repair_orchestration import (
     RepairWorkflowStatus,
     run_shell_repair,
@@ -47,10 +46,10 @@ def _patch_extraction(
     )
 
 
-def test_agent_exception_returns_reviewable_failure(
+def test_agent_exception_returns_structured_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A model/runtime exception must fall back to a usable review case."""
+    """A model/runtime exception must preserve context for UI fallback."""
 
     context = make_repair_context(
         evidence={
@@ -78,8 +77,3 @@ def test_agent_exception_returns_reviewable_failure(
     assert result.agent_result is None
     assert result.reason == "agent_exception"
     assert result.correctness is None
-
-    built = build_human_review_case(result)
-    assert built.issues == ()
-    assert built.case is not None
-    assert [field.path for field in built.case.fields] == ["invoice_number"]
