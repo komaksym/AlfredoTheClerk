@@ -38,6 +38,12 @@ The app binds to `127.0.0.1` only. There is one active invoice at a time.
 
 Do not add React, Node, a SPA architecture, a separate frontend service, or a frontend build pipeline.
 
+### Runtime dependencies
+
+Keep the web/runtime additions narrow. The implementation needs FastAPI, an ASGI server, Jinja template support, multipart upload parsing, and the existing `pdfplumber` parser at runtime. `pdfplumber` is currently a development dependency even though the parser imports it; this slice should promote it to the normal runtime dependency set because PDF extraction becomes an application runtime path.
+
+No JavaScript package manager or frontend build tooling is required.
+
 ## Supported input
 
 The UI accepts one ordinary Polish domestic VAT invoice as a native/text-based, single-page PDF.
@@ -128,15 +134,17 @@ Do not add a dashboard, invoice queue, history page, settings area, or multi-inv
 
 ## PDF evidence interaction
 
-The left pane shows the original PDF.
+The left pane shows a faithful render of the uploaded PDF page and supports field-linked evidence overlays.
+
+For this single-page slice, render the page server-side with the same `pdfplumber` PDF layer used for extraction, then overlay evidence boxes in the browser with ordinary HTML/CSS positioned relative to the rendered page. Scale the existing PDF coordinates to the displayed page dimensions. This avoids PDF.js, Node, a JavaScript dependency tree, and a second coordinate system.
+
+Also provide a small `Open original PDF` action so the reviewer can inspect the original file directly when needed.
 
 Selecting or focusing an unresolved field should:
 
-- bring its evidence region into view when possible;
+- bring its evidence region into view;
 - highlight the evidence bounding box;
 - visually associate the highlight with the selected field card.
-
-Use the existing extraction geometry. Do not invent a second evidence-coordinate representation.
 
 When no geometry exists, show `No source evidence found` and do not display a fake highlight.
 
@@ -267,9 +275,7 @@ candidate selection → "selected evidence candidate"
 manual correction   → "manual correction"
 ```
 
-An optional reviewer note may be supported, but typing a reason for every field is not required.
-
-Every human decision still records reviewer attribution and the resulting change.
+Do not add a free-form per-field reason or note input in this slice. Every human decision still records reviewer attribution, the generated reason, old/new values, and the chosen correction mode through the existing review audit model.
 
 ## Successful outcomes
 
@@ -333,6 +339,8 @@ process starts
 → process restart loses it
 ```
 
+The application is designed for one local reviewer, one browser session, and one active invoice. Concurrent multi-user/multi-invoice semantics are not part of this slice.
+
 Do not add:
 
 - a database;
@@ -382,6 +390,7 @@ Explicitly exclude:
 - non-domestic invoices;
 - generic arbitrary-PDF support;
 - React or another frontend framework;
+- PDF.js or another client-side PDF framework;
 - deployment infrastructure.
 
 ## Acceptance criteria
