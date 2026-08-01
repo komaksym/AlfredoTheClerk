@@ -21,10 +21,18 @@ _SAMPLE_PDF = (
 class _FailingRepairModel:
     """Minimal model boundary that fails only when the real agent invokes it."""
 
-    def bind_tools(self, tools: list[Any]) -> _FailingRepairModel:
-        """Accept the production tool binding while preserving this test double."""
+    def bind_tools(
+        self,
+        tools: list[Any],
+        *,
+        tool_choice: object = None,
+        parallel_tool_calls: object = None,
+    ) -> _FailingRepairModel:
+        """Accept and verify the production single-tool binding contract."""
 
         assert tools
+        assert tool_choice == "required"
+        assert parallel_tool_calls is False
         return self
 
     def invoke(self, messages: list[Any]) -> object:
