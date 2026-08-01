@@ -92,8 +92,10 @@ def runner(
     tools_by_name = {tool.name: tool for tool in tools}
     model_with_tools = model.bind_tools(
         tools,
-        tool_choice="required",
-        parallel_tool_calls=False,
+        tool_choice={
+            "type": "function",
+            "function": {"name": tools[0].name},
+        },
     )
 
     # Build workflow
