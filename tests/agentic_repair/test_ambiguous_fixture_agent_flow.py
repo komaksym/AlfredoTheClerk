@@ -33,7 +33,6 @@ class _PayloadSelectingModel:
 
         self.invoke_count = 0
         self.tool_choice: object = None
-        self.parallel_tool_calls: object = None
         self.tool_name = ""
 
     def bind_tools(
@@ -41,14 +40,12 @@ class _PayloadSelectingModel:
         tools: list[Any],
         *,
         tool_choice: object = None,
-        parallel_tool_calls: object = None,
     ) -> _PayloadSelectingModel:
         """Record whether the repair tool is mandatory and singular."""
 
         assert len(tools) == 1
         self.tool_name = tools[0].name
         self.tool_choice = tool_choice
-        self.parallel_tool_calls = parallel_tool_calls
         return self
 
     def invoke(self, messages: list[Any]) -> AIMessage:
@@ -95,8 +92,10 @@ def test_ambiguous_seller_nip_repairs_in_one_required_tool_call() -> None:
     model = _PayloadSelectingModel()
     workflow = run_shell_repair(parsed, model)
 
-    assert model.tool_choice == "required"
-    assert model.parallel_tool_calls is False
+    assert model.tool_choice == {
+        "type": "function",
+        "function": {"name": "apply_repair_plan"},
+    }
     assert model.invoke_count == 1
     assert workflow.status is RepairWorkflowStatus.REPAIRED
     assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
