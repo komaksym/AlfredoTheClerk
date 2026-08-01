@@ -100,8 +100,8 @@ jobs:
           curl --fail --silent --show-error \
             --request POST \
             --data-urlencode "reviewer_id=CI browser smoke" \
-            --data-urlencode "mode::seller.nip=manual" \
-            --data-urlencode "manual::seller.nip=8637940261" \
+            --data-urlencode "mode::buyer.nip=manual" \
+            --data-urlencode "manual::buyer.nip=5423511615" \
             http://127.0.0.1:8001/review >/dev/null
 
           google-chrome --headless --no-sandbox --disable-gpu \
