@@ -86,6 +86,24 @@ totals.
 A successful local run ends at `READY_FOR_KSEF` with downloadable FA(3) XML.
 Remote KSeF submission remains an explicit separate capability.
 
+## Industry context, not a benchmark baseline
+
+Invoice exceptions are a material accounts-payable bottleneck, but published AP
+statistics cover much broader workflows than Alfredo's field-repair boundary.
+APQC reports a 12-hour median cycle time from invoice receipt until data entry
+across 2,461 organizations. Ardent Partners' 2025 State of ePayables benchmark
+reports an average invoice-processing cost of $9.84, an 8.2-day processing time,
+and an 18.4% exception rate.
+
+Sources:
+
+- [APQC: cycle time from invoice receipt to system entry](https://www.apqc.org/resources/benchmarking/open-standards-benchmarking/measures/cycle-time-hours-receipt-invoice-until)
+- [Ardent Partners: 2025 AP benchmarks](https://payablesplace.ardentpartners.com/2026/01/state-of-epayables-part-nine-ap-benchmarks-and-best-in-class-performance/)
+
+These figures explain the business context only. They include waiting, approvals,
+matching, supplier communication, and other AP work, so they are not used as
+Alfredo's baseline and are not converted into claimed time or cost savings.
+
 ## Controlled synthetic benchmark
 
 The repository includes a persisted 200-case controlled synthetic benchmark for
