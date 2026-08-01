@@ -48,6 +48,30 @@ The backend rejects unsupported paths, summary mutation, incompatible runtime
 value types, duplicate paths, invalid candidate selections, and unattributed
 changes before applying a batch.
 
+### Controlled agentic-repair benchmark
+
+The repository contains a persisted 200-case synthetic benchmark at
+`data/benchmark_cases/agentic_repair_v1.json`. It evaluates the existing
+LangGraph repair graph at its evidence-candidate decision boundary without
+requiring confidential invoices or a human timing baseline.
+
+The corpus contains single-field, multi-field, mixed agent-plus-human,
+human-only, and ambiguous no-action cases. Complete candidate evidence, expected
+candidate indexes, and human-only defect counts are materialized on disk;
+evaluation never regenerates case values from seeds.
+
+The benchmark reports correct automated repairs, incorrect selections, missed
+repairs, safe escalation, residual human corrections, straight-through cases,
+model errors, and latency. The agent-disabled baseline requires one human
+correction per known defect. Only a ground-truth-matching candidate promotion
+counts as removed human work.
+
+Ordinary CI validates corpus reproducibility, schema checks, scoring, reports,
+and graph integration through scripted models without external calls. The live
+DeepSeek run remains a separate manual-only workflow that uploads JSON and
+Markdown reports. Synthetic results do not establish production generalization,
+accountant speed, AP cost savings, or end-to-end cycle-time improvement.
+
 ### KSeF TEST submission proof
 
 The TEST-only KSeF boundary under `src/ksef/` is complete and remains separate
