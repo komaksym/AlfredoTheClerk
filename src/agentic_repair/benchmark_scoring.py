@@ -137,9 +137,10 @@ def score_benchmark(
             selection.path: selection.candidate_index
             for selection in attempt.selections
         }
+        attempt_failed = attempt.error is not None
 
         total_defects += len(case.fields) + case.human_only_defects
-        if attempt.error is not None:
+        if attempt_failed:
             errored_attempts += 1
 
         all_repairable_fields_correct = True
@@ -149,15 +150,18 @@ def score_benchmark(
 
             if expected is None:
                 safe_opportunities += 1
-                if actual is None and attempt.error is None:
+                if not attempt_failed and actual is None:
                     correct_escalations += 1
-                elif actual is not None:
+                elif not attempt_failed and actual is not None:
                     incorrect_selections += 1
                 all_repairable_fields_correct = False
                 continue
 
             agent_eligible_fields += 1
-            if actual == expected:
+            if attempt_failed:
+                missed_repairs += 1
+                all_repairable_fields_correct = False
+            elif actual == expected:
                 correct_repairs += 1
             elif actual is None:
                 missed_repairs += 1
