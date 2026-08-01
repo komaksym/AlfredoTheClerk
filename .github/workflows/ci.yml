@@ -45,6 +45,53 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+      - name: Capture browser smoke evidence
+        run: |
+          mkdir -p browser-smoke
+          uv run python tests/review_ui/browser_smoke_server.py &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:8001/review >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+
+          google-chrome --headless --no-sandbox --disable-gpu \
+            --window-size=1440,1000 \
+            --screenshot=browser-smoke/human-fallback.png \
+            http://127.0.0.1:8001/review
+
+          buyer_nip=$(uv run python -c \
+            'from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed; from src.invoice_gen.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell; print(map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42)).buyer.nip)')
+          curl --fail --silent --show-error \
+            --request POST \
+            --data-urlencode "reviewer_id=CI browser smoke" \
+            --data-urlencode "mode::buyer.nip=manual" \
+            --data-urlencode "manual::buyer.nip=$buyer_nip" \
+            http://127.0.0.1:8001/review >/dev/null
+
+          google-chrome --headless --no-sandbox --disable-gpu \
+            --window-size=1440,1000 \
+            --screenshot=browser-smoke/ready-for-ksef.png \
+            http://127.0.0.1:8001/result
+
+          test -s browser-smoke/human-fallback.png
+          test -s browser-smoke/ready-for-ksef.png
+
+      - name: Upload browser smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: human-review-browser-smoke
+          path: browser-smoke/*.png
+          if-no-files-found: error
+
       - name: Compile Python sources
         run: uv run python -m compileall src tests
 
