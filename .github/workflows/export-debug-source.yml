@@ -23,12 +23,11 @@ jobs:
           tar \
             --exclude=.git \
             --exclude=.venv \
-            --exclude=debug-source.tar.gz \
-            -czf debug-source.tar.gz .
+            -czf /tmp/debug-source.tar.gz .
 
       - name: Upload source archive
         uses: actions/upload-artifact@v4
         with:
           name: pr9-debug-source
-          path: debug-source.tar.gz
+          path: /tmp/debug-source.tar.gz
           if-no-files-found: error
