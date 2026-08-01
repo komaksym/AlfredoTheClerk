@@ -76,7 +76,6 @@ def test_review_page_uses_approved_product_shell() -> None:
     assert 'name="reviewer_id"' in review.text
     assert 'name="mode::invoice_number"' in review.text
     assert 'name="manual::invoice_number"' in review.text
-    assert "workspace-light.css" in review.text
 
     parsed = _RenderedShellParser()
     parsed.feed(review.text)
@@ -90,16 +89,6 @@ def test_review_page_uses_approved_product_shell() -> None:
     assert "Alfredo" in parsed.text
     assert "Confirm & continue" in parsed.text
 
-    light_shell = client.get("/static/workspace-light.css")
-    assert light_shell.status_code == 200
-    assert "color-scheme: only light" in light_shell.text
-    assert "html" in light_shell.text
-    assert "body" in light_shell.text
-    assert ".app-frame" in light_shell.text
-    assert ".app-main" in light_shell.text
-    assert ".page-shell" in light_shell.text
-    assert "background-color: var(--app-bg)" in light_shell.text
-
     original = client.get("/review/original.pdf")
     assert original.status_code == 200
     assert original.content.startswith(b"%PDF")
@@ -107,3 +96,24 @@ def test_review_page_uses_approved_product_shell() -> None:
     page = client.get("/review/page.png")
     assert page.status_code == 200
     assert page.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_review_page_embeds_critical_light_workspace_style() -> None:
+    """The page response should own a light shell without extra static CSS."""
+
+    result, _ = _valid_manual_review_result("invoice_number", "")
+    client, _ = _client_for_result(result)
+    client.post(
+        "/invoice",
+        files={"invoice": ("invoice.pdf", SAMPLE_PDF.read_bytes(), "application/pdf")},
+    )
+
+    review = client.get("/review")
+
+    assert review.status_code == 200
+    assert 'id="critical-light-shell"' in review.text
+    assert "html," in review.text
+    assert ".app-frame," in review.text
+    assert ".app-main," in review.text
+    assert ".page-shell" in review.text
+    assert "background-color: #fbfaf8 !important;" in review.text
