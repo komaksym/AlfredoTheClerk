@@ -1,0 +1,11 @@
+:root {
+  color-scheme: only light;
+}
+
+html,
+body,
+.app-frame,
+.app-main,
+.page-shell {
+  background-color: var(--app-bg);
+}
