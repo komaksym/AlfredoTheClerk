@@ -18,9 +18,14 @@ def test_setup_keys_loads_dotenv_and_prompts_only_for_missing_deepseek_key(
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
     monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    monkeypatch.delenv("LANGSMITH_HIDE_INPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_HIDE_OUTPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_HIDE_METADATA", raising=False)
     monkeypatch.setattr(config, "load_dotenv", lambda: prompts.append("dotenv"))
 
     def fake_getpass(prompt: str) -> str:
+        """Return one deterministic test key while recording the prompt."""
+
         prompts.append(prompt)
         return "deepseek-key"
 
@@ -35,17 +40,25 @@ def test_setup_keys_loads_dotenv_and_prompts_only_for_missing_deepseek_key(
     assert os.environ["DEEPSEEK_API_KEY"] == "deepseek-key"
     assert "LANGSMITH_API_KEY" not in os.environ
     assert "LANGSMITH_TRACING" not in os.environ
+    assert "LANGSMITH_HIDE_INPUTS" not in os.environ
+    assert "LANGSMITH_HIDE_OUTPUTS" not in os.environ
+    assert "LANGSMITH_HIDE_METADATA" not in os.environ
 
 
-def test_setup_keys_preserves_explicit_langsmith_opt_in(monkeypatch) -> None:
-    """An explicit tracing configuration should survive model setup unchanged."""
+def test_setup_keys_masks_explicit_langsmith_opt_in(monkeypatch) -> None:
+    """Explicit tracing must preserve the opt-in while hiding invoice payloads."""
 
     monkeypatch.setenv("DEEPSEEK_API_KEY", "existing-deepseek-key")
     monkeypatch.setenv("LANGSMITH_API_KEY", "existing-langsmith-key")
     monkeypatch.setenv("LANGSMITH_TRACING", "true")
+    monkeypatch.delenv("LANGSMITH_HIDE_INPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_HIDE_OUTPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_HIDE_METADATA", raising=False)
     monkeypatch.setattr(config, "load_dotenv", lambda: None)
 
     def fail_if_prompted(prompt: str) -> str:
+        """Fail because preconfigured repair startup must remain noninteractive."""
+
         raise AssertionError(f"unexpected prompt: {prompt}")
 
     monkeypatch.setattr(config.getpass, "getpass", fail_if_prompted)
@@ -55,6 +68,9 @@ def test_setup_keys_preserves_explicit_langsmith_opt_in(monkeypatch) -> None:
     assert os.environ["DEEPSEEK_API_KEY"] == "existing-deepseek-key"
     assert os.environ["LANGSMITH_API_KEY"] == "existing-langsmith-key"
     assert os.environ["LANGSMITH_TRACING"] == "true"
+    assert os.environ["LANGSMITH_HIDE_INPUTS"] == "true"
+    assert os.environ["LANGSMITH_HIDE_OUTPUTS"] == "true"
+    assert os.environ["LANGSMITH_HIDE_METADATA"] == "true"
 
 
 def test_build_repair_model_uses_supported_non_thinking_deepseek_model(
@@ -68,6 +84,8 @@ def test_build_repair_model_uses_supported_non_thinking_deepseek_model(
     monkeypatch.setattr(config, "setup_keys", lambda: None)
 
     def fake_init_chat_model(model_name: str, **kwargs: Any) -> object:
+        """Record model initialization without contacting the provider."""
+
         calls.append((model_name, kwargs))
         return model
 
@@ -88,12 +106,16 @@ def test_build_repair_model_uses_supported_non_thinking_deepseek_model(
 
 
 def test_build_repair_model_accepts_model_overrides(monkeypatch) -> None:
+    """Allow an explicit supported repair model and temperature override."""
+
     calls: list[tuple[str, dict[str, Any]]] = []
     model = object()
 
     monkeypatch.setattr(config, "setup_keys", lambda: None)
 
     def fake_init_chat_model(model_name: str, **kwargs: Any) -> object:
+        """Record the explicit model configuration supplied by the caller."""
+
         calls.append((model_name, kwargs))
         return model
 
