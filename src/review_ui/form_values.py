@@ -49,7 +49,10 @@ def parse_manual_value(
         if value_type is int:
             return ParsedFormValue(value=int(text))
         if value_type is Decimal:
-            return ParsedFormValue(value=Decimal(text))
+            value = Decimal(text)
+            if not value.is_finite():
+                raise InvalidOperation
+            return ParsedFormValue(value=value)
     except (InvalidOperation, ValueError):
         return ParsedFormValue(value=None, error=_invalid_value_message(value_type))
 
