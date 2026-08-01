@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import re
 
-from src.agentic_repair.human_review import HumanReviewCase, HumanReviewField
+from src.agentic_repair.human_review import (
+    HumanReviewCandidate,
+    HumanReviewCase,
+    HumanReviewField,
+)
 from src.agentic_repair.repair_orchestration import RepairWorkflowResult
-from src.agentic_repair.shell_fields import supports_shell_field
+from src.agentic_repair.shell_fields import read_shell_field, supports_shell_field
 from src.invoice_gen.invoice_correctness import CorrectnessStatus
 from src.review_ui.pdf_view import OverlayBox, PdfPageView, overlay_from_bbox
 
 
 _LINE_ITEM_PATH = re.compile(r"^line_items\[(\d+)\]\.([a-z_]+)$")
+_BUCKET_SUMMARY_PATH = re.compile(
+    r"^summary\.bucket_summaries\[([^\]]+)\](?:\.[a-z_]+)?$"
+)
+_TOTAL_INPUT_FIELDS = ("discount", "quantity", "unit_price_net", "vat_rate")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -88,11 +96,15 @@ def build_review_presentation(
 
     agent_changes = build_agent_change_views(workflow)
     change_paths = {change.path for change in agent_changes}
-    fields = tuple(
-        _field_view(field, case, page)
+    field_views = {
+        field.path: _field_view(field, case, page)
         for field in case.fields
         if not _is_resolved_agent_field(field.path, case, change_paths)
-    )
+    }
+    for field in _totals_mismatch_fields(case):
+        field_views.setdefault(field.path, _field_view(field, case, page))
+    fields = tuple(field_views[path] for path in sorted(field_views))
+
     mismatches = ()
     if case.correctness is not None:
         mismatches = tuple(
@@ -208,6 +220,97 @@ def _field_view(
         editable=supports_shell_field(case.shell, field.path),
         overlay=overlay,
         no_source_evidence=field.path not in case.context.evidence,
+    )
+
+
+def _totals_mismatch_fields(
+    case: HumanReviewCase,
+) -> tuple[HumanReviewField, ...]:
+    """Expose canonical line inputs that can resolve immutable total mismatches."""
+
+    correctness = case.correctness
+    if (
+        correctness is None
+        or correctness.status is not CorrectnessStatus.TOTALS_MISMATCH
+    ):
+        return ()
+
+    paths: set[str] = set()
+    for mismatch in correctness.mismatches:
+        paths.update(_mismatch_input_paths(case, mismatch.path))
+
+    existing_paths = {field.path for field in case.fields}
+    return tuple(
+        _totals_mismatch_field(case, path)
+        for path in sorted(paths - existing_paths)
+    )
+
+
+def _mismatch_input_paths(case: HumanReviewCase, path: str) -> set[str]:
+    """Map one summary disagreement to the shell inputs that determine it."""
+
+    if path.startswith("summary.invoice_"):
+        return {
+            f"line_items[{index}].{field}"
+            for index in range(len(case.shell.line_items))
+            for field in _TOTAL_INPUT_FIELDS
+        }
+
+    match = _BUCKET_SUMMARY_PATH.fullmatch(path)
+    if match is None:
+        return set()
+
+    try:
+        vat_rate = Decimal(match.group(1))
+    except InvalidOperation:
+        return set()
+
+    paths = {
+        f"line_items[{index}].vat_rate"
+        for index in range(len(case.shell.line_items))
+    }
+    for index, line_item in enumerate(case.shell.line_items):
+        if line_item.vat_rate == vat_rate:
+            paths.update(
+                f"line_items[{index}].{field}" for field in _TOTAL_INPUT_FIELDS
+            )
+    return paths
+
+
+def _totals_mismatch_field(
+    case: HumanReviewCase,
+    path: str,
+) -> HumanReviewField:
+    """Build one actionable review field for a source-total disagreement."""
+
+    evidence = case.context.evidence.get(path)
+    diagnostic = case.context.diagnostics.fields.get(path)
+    candidates = ()
+    if evidence is not None and evidence.candidates:
+        candidates = tuple(
+            HumanReviewCandidate(
+                index=index,
+                value=candidate.value,
+                source=candidate.source,
+                confidence=candidate.confidence,
+                bbox=candidate.bbox,
+                raw_text=candidate.raw_text,
+                same_line_text=candidate.same_line_text,
+                rule=candidate.rule,
+                rejected_by=candidate.rejected_by,
+            )
+            for index, candidate in enumerate(evidence.candidates)
+        )
+
+    return HumanReviewField(
+        path=path,
+        current_value=read_shell_field(case.shell, path),
+        diagnostic_status=(diagnostic.status if diagnostic is not None else None),
+        validation_errors=(),
+        blocking_reason="source_total_mismatch",
+        raw_text=evidence.raw_text if evidence is not None else None,
+        bbox=evidence.bbox if evidence is not None else None,
+        candidates=candidates,
     )
 
 
