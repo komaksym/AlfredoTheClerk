@@ -76,6 +76,7 @@ def test_review_page_uses_approved_product_shell() -> None:
     assert 'name="reviewer_id"' in review.text
     assert 'name="mode::invoice_number"' in review.text
     assert 'name="manual::invoice_number"' in review.text
+    assert "workspace-light.css" in review.text
 
     parsed = _RenderedShellParser()
     parsed.feed(review.text)
@@ -88,6 +89,16 @@ def test_review_page_uses_approved_product_shell() -> None:
     assert "review-workspace" in parsed.classes
     assert "Alfredo" in parsed.text
     assert "Confirm & continue" in parsed.text
+
+    light_shell = client.get("/static/workspace-light.css")
+    assert light_shell.status_code == 200
+    assert "color-scheme: only light" in light_shell.text
+    assert "html" in light_shell.text
+    assert "body" in light_shell.text
+    assert ".app-frame" in light_shell.text
+    assert ".app-main" in light_shell.text
+    assert ".page-shell" in light_shell.text
+    assert "background-color: var(--app-bg)" in light_shell.text
 
     original = client.get("/review/original.pdf")
     assert original.status_code == 200
