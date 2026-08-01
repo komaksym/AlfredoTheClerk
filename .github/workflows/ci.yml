@@ -75,13 +75,11 @@ jobs:
             --screenshot=browser-smoke/human-fallback.png \
             http://127.0.0.1:8001/review
 
-          buyer_nip=$(uv run python -c \
-            'from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed; from src.invoice_gen.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell; print(map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42)).buyer.nip)')
           curl --fail --silent --show-error \
             --request POST \
             --data-urlencode "reviewer_id=CI browser smoke" \
-            --data-urlencode "mode::buyer.nip=manual" \
-            --data-urlencode "manual::buyer.nip=$buyer_nip" \
+            --data-urlencode "mode::seller.nip=manual" \
+            --data-urlencode "manual::seller.nip=8637940261" \
             http://127.0.0.1:8001/review >/dev/null
 
           google-chrome --headless --no-sandbox --disable-gpu \
