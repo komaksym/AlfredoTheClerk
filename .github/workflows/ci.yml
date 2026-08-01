@@ -71,6 +71,32 @@ jobs:
             --screenshot=browser-smoke/human-fallback.png \
             http://127.0.0.1:8001/review
 
+          google-chrome --headless --no-sandbox --disable-gpu \
+            --force-dark-mode \
+            --window-size=1536,960 \
+            --screenshot=browser-smoke/human-fallback-dark-preference.png \
+            http://127.0.0.1:8001/review
+
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          from PIL import Image
+
+          expected = (251, 250, 248)
+          sample = (225, 20)
+          screenshots = (
+              Path("browser-smoke/human-fallback.png"),
+              Path("browser-smoke/human-fallback-dark-preference.png"),
+          )
+          for screenshot in screenshots:
+              with Image.open(screenshot) as image:
+                  actual = image.convert("RGB").getpixel(sample)
+              assert actual == expected, (
+                  f"{screenshot} workspace pixel {sample} was {actual}; "
+                  f"expected {expected}"
+              )
+          PY
+
           curl --fail --silent --show-error \
             --request POST \
             --data-urlencode "reviewer_id=CI browser smoke" \
@@ -84,6 +110,7 @@ jobs:
             http://127.0.0.1:8001/result
 
           test -s browser-smoke/human-fallback.png
+          test -s browser-smoke/human-fallback-dark-preference.png
           test -s browser-smoke/ready-for-ksef.png
 
       - name: Upload browser smoke evidence
