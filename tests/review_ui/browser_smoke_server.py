@@ -29,7 +29,7 @@ from src.review_ui.session import ReviewSession
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SAMPLE_PDF = (
     _REPO_ROOT
-    / "data/synthetic_data/FV2026_11_390_seller_buyer_block_v1.pdf"
+    / "data/synthetic_data/BROKEN_human_missing_buyer_nip.pdf"
 )
 
 
