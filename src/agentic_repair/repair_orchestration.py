@@ -8,7 +8,12 @@ from enum import Enum
 from typing import Any
 
 from src.agentic_repair.agent_extraction_repair import AgentRepairResult, runner
-from src.agentic_repair.repair_kernel import RepairSession
+from src.agentic_repair.repair_kernel import (
+    RepairCommand,
+    RepairPlanCommand,
+    RepairResult,
+    RepairSession,
+)
 from src.agentic_repair.repair_payload import build_agent_repair_payload
 from src.agentic_repair.repair_routing import (
     RepairRoute,
@@ -105,14 +110,17 @@ def _run_agent_repair(
     try:
         agent_result = runner(session, payload, model)
     except Exception:
-        return _agent_failed(
+        return _fallback_or_agent_failure(
+            session=session,
             context=context,
             route=route,
             agent_result=None,
             reason="agent_exception",
+            generated_at=generated_at,
         )
 
     return _agent_result_to_workflow_result(
+        session=session,
         context=context,
         route=route,
         agent_result=agent_result,
@@ -122,6 +130,7 @@ def _run_agent_repair(
 
 def _agent_result_to_workflow_result(
     *,
+    session: RepairSession,
     context: RepairContext,
     route: RepairRoute,
     agent_result: AgentRepairResult,
@@ -130,20 +139,24 @@ def _agent_result_to_workflow_result(
     """Classify an agent run as repaired, failed, or manual-review needed."""
 
     if not agent_result.tool_called:
-        return _agent_failed(
+        return _fallback_or_agent_failure(
+            session=session,
             context=context,
             route=route,
             agent_result=agent_result,
             reason="agent_no_tool_call",
+            generated_at=generated_at,
         )
 
     repair_result = agent_result.repair_result
     if repair_result is None:
-        return _agent_failed(
+        return _fallback_or_agent_failure(
+            session=session,
             context=context,
             route=route,
             agent_result=agent_result,
             reason="repair_result_is_missing",
+            generated_at=generated_at,
         )
 
     return _finish_correctness(
@@ -153,6 +166,83 @@ def _agent_result_to_workflow_result(
         success_status=RepairWorkflowStatus.REPAIRED,
         agent_result=agent_result,
         generated_at=generated_at,
+    )
+
+
+def _fallback_or_agent_failure(
+    *,
+    session: RepairSession,
+    context: RepairContext,
+    route: RepairRoute,
+    agent_result: AgentRepairResult | None,
+    reason: str,
+    generated_at: datetime | None,
+) -> RepairWorkflowResult:
+    """Use a uniquely labelled candidate before escalating an agent failure."""
+
+    repair_result = _try_exact_label_fallback(session, context, route)
+    if repair_result is None:
+        return _agent_failed(
+            context=context,
+            route=route,
+            agent_result=agent_result,
+            reason=reason,
+        )
+
+    fallback_result = AgentRepairResult(
+        repair_result=repair_result,
+        tool_called=True,
+        final_messages=(),
+    )
+    return _finish_correctness(
+        context=context,
+        route=route,
+        candidate_shell=repair_result.shell,
+        success_status=RepairWorkflowStatus.REPAIRED,
+        agent_result=fallback_result,
+        generated_at=generated_at,
+    )
+
+
+def _try_exact_label_fallback(
+    session: RepairSession,
+    context: RepairContext,
+    route: RepairRoute,
+) -> RepairResult | None:
+    """Repair only when every routed NIP has one exact ``NIP:`` candidate."""
+
+    commands: list[RepairCommand] = []
+    for field in route.repairable_fields:
+        if not field.path.endswith(".nip"):
+            return None
+
+        evidence = context.evidence.get(field.path)
+        candidates = evidence.candidates if evidence is not None else None
+        if not candidates:
+            return None
+
+        exact_indexes = [
+            index
+            for index, candidate in enumerate(candidates)
+            if candidate.same_line_text is not None
+            and candidate.same_line_text.partition(":")[0].strip().casefold() == "nip"
+        ]
+        if len(exact_indexes) != 1:
+            return None
+
+        commands.append(
+            RepairCommand(
+                path=field.path,
+                candidate_index=exact_indexes[0],
+                reason="unique candidate on the exact NIP-labelled line",
+            )
+        )
+
+    if not commands:
+        return None
+
+    return session.apply_repair_plan(
+        RepairPlanCommand(repair_commands=tuple(commands))
     )
 
 
