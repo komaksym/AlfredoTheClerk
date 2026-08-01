@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
+import pytest
 from weasyprint import HTML
 
 from src.agentic_repair.repair_orchestration import (
@@ -14,6 +15,7 @@ from src.agentic_repair.repair_orchestration import (
     RepairWorkflowStatus,
 )
 from src.agentic_repair.repair_routing import route_repair_context
+from src.agentic_repair.shell_fields import read_shell_field, write_shell_field
 from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
 from src.invoice_gen.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell
 from src.invoice_gen.domestic_vat_shell_summary import summarize_domestic_vat_shell
@@ -56,9 +58,9 @@ def _valid_manual_review_result(
     """Build one blocking field on an otherwise fully valid invoice shell."""
 
     valid_shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
-    expected_value = _read_simple_path(valid_shell, path)
+    expected_value = read_shell_field(valid_shell, path)
     shell = copy.deepcopy(valid_shell)
-    _write_simple_path(shell, path, broken_value)
+    write_shell_field(shell, path, broken_value)
     error = make_validation_error(path)
     context = make_repair_context(
         shell=shell,
@@ -75,18 +77,6 @@ def _valid_manual_review_result(
         ),
         expected_value,
     )
-
-
-def _read_simple_path(shell: object, path: str) -> object:
-    """Read the top-level paths used by route tests."""
-
-    return getattr(shell, path)
-
-
-def _write_simple_path(shell: object, path: str, value: object) -> None:
-    """Write the top-level paths used by route tests."""
-
-    setattr(shell, path, value)
 
 
 def test_upload_page_and_ready_result_with_xml_download() -> None:
@@ -201,6 +191,34 @@ def test_invalid_manual_value_stays_on_review_without_mutating_case() -> None:
     assert "not-a-number" in response.text
     assert session.case is not None
     assert session.case.shell.payment_form is None
+
+
+@pytest.mark.parametrize("raw_value", ["NaN", "Infinity", "-Infinity"])
+def test_non_finite_decimal_stays_on_review_without_http_500(raw_value: str) -> None:
+    """Hostile decimal spellings must remain retryable field errors."""
+
+    path = "line_items[0].quantity"
+    result, _ = _valid_manual_review_result(path, None)
+    client, session = _client_for_result(result)
+    client.post(
+        "/invoice",
+        files={"invoice": ("invoice.pdf", SAMPLE_PDF.read_bytes(), "application/pdf")},
+    )
+
+    response = client.post(
+        "/review",
+        data={
+            "reviewer_id": "Max",
+            f"mode::{path}": "manual",
+            f"manual::{path}": raw_value,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Enter a valid number." in response.text
+    assert raw_value in response.text
+    assert session.case is not None
+    assert session.case.shell.line_items[0].quantity is None
 
 
 def test_successful_manual_review_reaches_ready_result() -> None:
