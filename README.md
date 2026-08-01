@@ -46,9 +46,10 @@ export LANGSMITH_TRACING="true"
 export LANGSMITH_API_KEY="..."
 ```
 
-Tracing can send agent inputs and outputs—including invoice field values and
-extracted source snippets—to LangSmith. Enable it only under an approved data-
-handling policy and configure suitable input/output masking for real invoices.
+When tracing is enabled, startup forces LangSmith input, output, and metadata
+hiding so invoice payloads are not recorded in traces. Tracing still creates an
+outbound observability connection and trace metadata, so enable it only under an
+approved data-handling policy.
 
 Open `http://127.0.0.1:8000`.
 
