@@ -1,33 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Review invoice · Alfredo{% endblock %}
 {% block content %}
-<section class="review-header">
-  <div>
-    <div class="eyebrow">Human fallback</div>
-    <h1>Review invoice</h1>
-    <p class="lead">{{ session.pdf_name }}</p>
-  </div>
-  <a class="button button-secondary" href="/review/original.pdf" target="_blank" rel="noopener">Open original PDF</a>
-</section>
-
-{% if session.agent_warning %}
-<div class="alert alert-warning" role="status">{{ session.agent_warning }}</div>
-{% endif %}
-{% if correctness_notice %}
-<div class="alert alert-warning" role="status">{{ correctness_notice }}</div>
-{% endif %}
-
-<div class="review-layout">
-  <section class="document-pane" aria-label="Original invoice">
-    <div class="pane-heading">
-      <div>
-        <span class="eyebrow">Source document</span>
-        <h2>Original invoice</h2>
-      </div>
-      <span class="evidence-help">Select a field to locate its evidence.</span>
+<header class="document-header">
+  <div class="document-heading">
+    <div class="document-title-row">
+      <h1>{{ session.pdf_name }}</h1>
+      <span class="review-status">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="M10 5.7v4.8M10 13.8h.01"/></svg>
+        Needs review
+      </span>
     </div>
+    <p class="document-meta">Local invoice review · {{ presentation.fields|length }} unresolved field{% if presentation.fields|length != 1 %}s{% endif %}</p>
+  </div>
+  <span class="overflow-control" aria-hidden="true">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/></svg>
+  </span>
+</header>
+
+{% if correctness_notice %}
+<div class="compact-notice" role="status">{{ correctness_notice }}</div>
+{% endif %}
+
+<div class="review-workspace">
+  <section class="document-card" aria-label="Original invoice">
+    <div class="pdf-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M6 3.75h8.5L18 7.25v13H6z"/><path d="M14.5 3.75v3.5H18"/></svg>
+        </span>
+        <span class="page-control"><strong>1</strong><span>/ 1</span></span>
+      </div>
+      <div class="toolbar-group zoom-controls" aria-label="Document zoom controls">
+        <button type="button" class="toolbar-button" data-zoom-out aria-label="Zoom out">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10"/></svg>
+        </button>
+        <span class="zoom-value" data-zoom-value>100%</span>
+        <button type="button" class="toolbar-button" data-zoom-in aria-label="Zoom in">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v10M7 12h10"/></svg>
+        </button>
+      </div>
+      <div class="toolbar-group toolbar-actions">
+        <a class="toolbar-button" href="/review/original.pdf" target="_blank" rel="noopener" aria-label="Download original PDF">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 10l4 4 4-4M5 18v2h14v-2"/></svg>
+        </a>
+        <span class="toolbar-button toolbar-button-static" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></svg>
+        </span>
+      </div>
+    </div>
+
     <div class="pdf-scroll">
-      <div class="pdf-stage">
+      <div class="pdf-stage" data-pdf-stage>
         <img src="/review/page.png" alt="Rendered invoice page">
         {% for field in presentation.fields %}
           {% if field.overlay %}
@@ -44,41 +67,64 @@
     </div>
   </section>
 
-  <section class="review-pane">
-    {% if presentation.agent_changes %}
-    <details class="agent-changes" open>
-      <summary>Agent changes <span class="count-pill">{{ presentation.agent_changes|length }}</span></summary>
-      <div class="change-list">
-        {% for change in presentation.agent_changes %}
-        <div class="change-row">
-          <div>
-            <strong>{{ change.label }}</strong>
-            <code>{{ change.path }}</code>
+  <aside class="review-column" aria-label="Invoice correction controls">
+    <details class="agent-changes">
+      <summary>
+        <span class="summary-title">
+          <span class="summary-icon summary-icon-agent" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+          </span>
+          <span>Agent changes</span>
+        </span>
+        <span class="summary-side">
+          {% if presentation.agent_changes %}
+          <span class="success-chip">
+            <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 9.5l3 3 7-7"/></svg>
+            {{ presentation.agent_changes|length }} change{% if presentation.agent_changes|length != 1 %}s{% endif %}
+          </span>
+          {% else %}
+          <span class="neutral-chip">No changes</span>
+          {% endif %}
+          <svg class="details-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 7.5l5 5 5-5"/></svg>
+        </span>
+      </summary>
+      <div class="agent-change-body">
+        {% if session.agent_warning %}
+        <div class="agent-warning" role="status">{{ session.agent_warning }}</div>
+        {% endif %}
+        {% if presentation.agent_changes %}
+        <div class="change-list">
+          {% for change in presentation.agent_changes %}
+          <div class="change-row">
+            <div>
+              <strong>{{ change.label }}</strong>
+              <span class="field-path">{{ change.path }}</span>
+            </div>
+            <div class="change-values">
+              <span>{{ change.old_value }}</span>
+              <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 9h11M10 5l4 4-4 4"/></svg>
+              <strong>{{ change.new_value }}</strong>
+            </div>
+            <div class="meta-line">Candidate {{ change.candidate_index }}{% if change.confidence is not none %} · {{ "%.0f"|format(change.confidence * 100) }}% confidence{% endif %}</div>
           </div>
-          <div class="change-values">
-            <span>{{ change.old_value }}</span>
-            <span aria-hidden="true">→</span>
-            <strong>{{ change.new_value }}</strong>
-          </div>
-          <div class="meta-line">
-            Candidate #{{ change.candidate_index }}
-            {% if change.confidence is not none %}
-              · confidence {{ "%.2f"|format(change.confidence) }}
-            {% endif %}
-          </div>
+          {% endfor %}
         </div>
-        {% endfor %}
+        {% elif not session.agent_warning %}
+        <p class="empty-copy">The agent did not change any invoice fields.</p>
+        {% endif %}
       </div>
     </details>
-    {% endif %}
 
     {% if presentation.mismatches %}
     <section class="summary-issues" aria-labelledby="summary-issues-title">
-      <h2 id="summary-issues-title">Source total mismatches</h2>
+      <div class="section-heading compact-heading">
+        <h2 id="summary-issues-title">Source total mismatches</h2>
+        <span class="count-pill">{{ presentation.mismatches|length }}</span>
+      </div>
       {% for mismatch in presentation.mismatches %}
       <article class="issue-card">
         <strong>{{ mismatch.label }}</strong>
-        <code>{{ mismatch.path }}</code>
+        <span class="field-path">{{ mismatch.path }}</span>
         <div class="totals-grid">
           <span>PDF evidence</span><strong>{{ mismatch.extracted if mismatch.extracted is not none else "Missing" }}</strong>
           <span>Calculated invoice</span><strong>{{ mismatch.computed if mismatch.computed is not none else "Missing" }}</strong>
@@ -89,13 +135,18 @@
     </section>
     {% endif %}
 
-    <section class="unresolved-section" aria-labelledby="unresolved-title">
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">Residual problems</span>
-          <h2 id="unresolved-title">Unresolved fields</h2>
-        </div>
-        <span class="count-pill">{{ presentation.fields|length }}</span>
+    <section class="unresolved-card" aria-labelledby="unresolved-title">
+      <div class="unresolved-heading">
+        <span class="summary-title">
+          <span class="summary-icon summary-icon-warning" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3L2.8 20h18.4z"/><path d="M12 8v5M12 16.5h.01"/></svg>
+          </span>
+          <span id="unresolved-title">Unresolved fields</span>
+        </span>
+        <span class="summary-side">
+          <span class="warning-count">{{ presentation.fields|length }}</span>
+          <svg class="static-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12.5l5-5 5 5"/></svg>
+        </span>
       </div>
 
       {% for error in session.global_errors %}
@@ -104,115 +155,133 @@
 
       {% if presentation.fields %}
       <form action="/review" method="post" class="review-form">
-        <label class="reviewer-field">
-          <span>Reviewer</span>
-          <input name="reviewer_id" value="{{ session.reviewer_id }}" autocomplete="name" required>
-        </label>
-
         <div class="field-list">
         {% for field in presentation.fields %}
-          <article class="field-card" data-field-path="{{ field.path }}" tabindex="0">
-            <div class="field-card-heading">
-              <div>
-                <h3>{{ field.label }}</h3>
-                <code>{{ field.path }}</code>
+          <details class="field-card" data-field-path="{{ field.path }}" {% if loop.first %}open{% endif %}>
+            <summary class="field-summary">
+              <span class="field-summary-title">
+                <strong>{{ field.label }}</strong>
+                <span class="field-path">{{ field.path }}</span>
+              </span>
+              <span class="field-summary-side">
+                <span class="required-chip">{{ field.diagnostic_status if field.diagnostic_status else "Needs review" }}</span>
+                <svg class="details-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 7.5l5 5 5-5"/></svg>
+              </span>
+            </summary>
+
+            <div class="field-card-body">
+              <p class="field-intro">We couldn’t confidently verify this value. Select the correct option or enter it manually.</p>
+
+              <div class="current-value">
+                <span>Current value</span>
+                <strong>{{ field.current_value if field.current_value is not none else "Missing" }}</strong>
               </div>
-              {% if field.diagnostic_status %}<span class="status-chip">{{ field.diagnostic_status }}</span>{% endif %}
-            </div>
 
-            <div class="current-value">
-              <span>Current value</span>
-              <strong>{{ field.current_value if field.current_value is not none else "Missing" }}</strong>
-            </div>
-
-            {% for message in field.validation_errors %}
-            <p class="field-problem">{{ message }}</p>
-            {% endfor %}
-            {% if field.blocking_reason %}
-            <p class="field-problem">{{ field.blocking_reason|replace('_', ' ') }}</p>
-            {% endif %}
-
-            {% if field.raw_text %}
-            <div class="source-snippet"><span>Extracted text</span><q>{{ field.raw_text }}</q></div>
-            {% elif field.no_source_evidence %}
-            <div class="no-evidence">No source evidence found</div>
-            {% endif %}
-
-            {% if session.form_errors.get(field.path) %}
-            <div class="field-error" role="alert">{{ session.form_errors[field.path] }}</div>
-            {% endif %}
-
-            {% if field.editable %}
-            <fieldset class="repair-controls">
-              <legend>Correction</legend>
-
-              {% if field.candidates %}
-              <label class="mode-choice">
-                <input
-                  type="radio"
-                  name="mode::{{ field.path }}"
-                  value="candidate"
-                  {% if session.form_modes.get(field.path) == "candidate" %}checked{% endif %}
-                >
-                Select extracted candidate
-              </label>
-              <div class="candidate-list" data-candidate-controls="{{ field.path }}">
-                {% for candidate in field.candidates %}
-                <label class="candidate-row {% if candidate.value is none %}candidate-disabled{% endif %}">
-                  <input
-                    type="radio"
-                    name="candidate::{{ field.path }}"
-                    value="{{ candidate.index }}"
-                    {% if session.form_modes.get(field.path) == "candidate" and session.form_values.get(field.path) == candidate.index|string %}checked{% endif %}
-                    {% if candidate.value is none %}disabled{% endif %}
-                  >
-                  <span class="candidate-main">
-                    <strong>{{ candidate.value if candidate.value is not none else "No value" }}</strong>
-                    <small>{{ candidate.source }} · confidence {{ "%.2f"|format(candidate.confidence) }}</small>
-                  </span>
-                </label>
-                {% endfor %}
-              </div>
+              {% for message in field.validation_errors %}
+              <p class="field-problem">{{ message }}</p>
+              {% endfor %}
+              {% if field.blocking_reason %}
+              <p class="field-problem">{{ field.blocking_reason|replace('_', ' ') }}</p>
               {% endif %}
 
-              <label class="mode-choice">
+              {% if field.raw_text %}
+              <div class="source-snippet"><span>Source evidence</span><q>{{ field.raw_text }}</q></div>
+              {% elif field.no_source_evidence %}
+              <div class="no-evidence">No source evidence found</div>
+              {% endif %}
+
+              {% if session.form_errors.get(field.path) %}
+              <div class="field-error" role="alert">{{ session.form_errors[field.path] }}</div>
+              {% endif %}
+
+              {% if field.editable %}
+              <fieldset class="repair-controls">
+                <legend class="sr-only">Correction for {{ field.label }}</legend>
+
+                {% if field.candidates %}
+                <label class="mode-choice sr-only">
+                  <input
+                    type="radio"
+                    name="mode::{{ field.path }}"
+                    value="candidate"
+                    {% if session.form_modes.get(field.path) == "candidate" %}checked{% endif %}
+                  >
+                  Use an extracted candidate
+                </label>
+                <span class="control-label">Candidate options</span>
+                <div class="candidate-list" data-candidate-controls="{{ field.path }}">
+                  {% for candidate in field.candidates %}
+                  <label class="candidate-row {% if candidate.value is none %}candidate-disabled{% endif %}">
+                    <input
+                      type="radio"
+                      name="candidate::{{ field.path }}"
+                      value="{{ candidate.index }}"
+                      {% if session.form_modes.get(field.path) == "candidate" and session.form_values.get(field.path) == candidate.index|string %}checked{% endif %}
+                      {% if candidate.value is none %}disabled{% endif %}
+                    >
+                    <span class="candidate-main">
+                      <strong>{{ candidate.value if candidate.value is not none else "No value" }}</strong>
+                      <small>{{ candidate.source }}</small>
+                    </span>
+                    {% if candidate.value is not none %}<span class="confidence-chip">{{ "%.0f"|format(candidate.confidence * 100) }}%</span>{% endif %}
+                  </label>
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+                <label class="mode-choice sr-only">
+                  <input
+                    type="radio"
+                    name="mode::{{ field.path }}"
+                    value="manual"
+                    {% if session.form_modes.get(field.path) == "manual" %}checked{% endif %}
+                  >
+                  Use a manual correction
+                </label>
+                <label class="manual-label" for="manual-{{ loop.index }}">Or enter a value manually</label>
                 <input
-                  type="radio"
-                  name="mode::{{ field.path }}"
-                  value="manual"
-                  {% if session.form_modes.get(field.path) == "manual" %}checked{% endif %}
+                  id="manual-{{ loop.index }}"
+                  class="manual-input"
+                  data-manual-input="{{ field.path }}"
+                  name="manual::{{ field.path }}"
+                  value="{% if session.form_modes.get(field.path) == 'manual' %}{{ session.form_values.get(field.path, '') }}{% endif %}"
+                  placeholder="Enter the correct value"
                 >
-                Enter manual correction
-              </label>
-              <input
-                class="manual-input"
-                data-manual-input="{{ field.path }}"
-                name="manual::{{ field.path }}"
-                value="{% if session.form_modes.get(field.path) == 'manual' %}{{ session.form_values.get(field.path, '') }}{% endif %}"
-                placeholder="Canonical value"
-              >
-            </fieldset>
-            {% else %}
-            <div class="immutable-note">This source evidence is read-only.</div>
-            {% endif %}
-          </article>
+              </fieldset>
+              {% else %}
+              <div class="immutable-note">This source evidence is read-only.</div>
+              {% endif %}
+            </div>
+          </details>
         {% endfor %}
         </div>
 
-        {% if has_editable_fields %}
-        <div class="review-actions">
-          <button class="button button-primary" type="submit">Review &amp; Validate</button>
+        <div class="review-footer">
+          <label class="reviewer-field">
+            <span>Reviewer</span>
+            <input name="reviewer_id" value="{{ session.reviewer_id }}" autocomplete="name" required placeholder="Your name">
+          </label>
+
+          {% if has_editable_fields %}
+          <div class="review-actions">
+            <button class="button button-primary" type="submit">
+              <svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M7.5 11l2.2 2.2 4.8-5"/></svg>
+              Confirm &amp; continue
+            </button>
+            <p class="review-note">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="8" width="10" height="8" rx="2"/><path d="M7.5 8V6a2.5 2.5 0 0 1 5 0v2"/></svg>
+              Reviewer attribution is recorded with this correction
+            </p>
+          </div>
+          {% else %}
+          <div class="alert alert-warning">No directly editable field was identified for this issue.</div>
+          {% endif %}
         </div>
-        {% else %}
-        <div class="alert alert-warning">No directly editable field was identified for this issue.</div>
-        {% endif %}
       </form>
       {% else %}
-      <div class="empty-state">
-        No editable residual field was identified. Inspect the source-total issue above and the original PDF.
-      </div>
+      <div class="empty-state">No editable residual field was identified. Inspect the source-total issue and original PDF.</div>
       {% endif %}
     </section>
-  </section>
+  </aside>
 </div>
 {% endblock %}
