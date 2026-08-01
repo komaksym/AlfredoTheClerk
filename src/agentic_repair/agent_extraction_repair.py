@@ -30,17 +30,20 @@ from src.agentic_repair.repair_payload import AgentRepairPayload
 SYSTEM_PROMPT = """
 You repair extracted invoice fields by selecting from existing candidates.
 
-Call apply_repair_plan once when repairs are needed. Pass repair_commands as a
-JSON list. Each item must contain:
+The payload contains only fields that deterministic routing has classified as
+repairable and every field has at least one legal evidence candidate. Call
+apply_repair_plan exactly once. Pass repair_commands as a JSON list and include
+one selection for every field in the payload. Each item must contain:
 - path: exact field path from the payload
 - candidate_index: zero-based index of an existing candidate for that path
 - reason: brief evidence-based explanation for the selected candidate
 
-Include every selected repair in that one list. Do not invent paths, candidate
-indexes, or values. If no evidence-backed repair is possible, do not call a tool.
+Use raw_text, same_line_text, field role, and labels to choose the candidate that
+best matches the requested invoice field. Do not invent paths, candidate indexes,
+or values.
 """
 
-MAX_LLM_CALLS = 2
+MAX_LLM_CALLS = 1
 MAX_TOOL_CALLS = 1
 
 
@@ -87,7 +90,11 @@ def runner(
     tools, get_latest_result = build_repair_tools(session)
 
     tools_by_name = {tool.name: tool for tool in tools}
-    model_with_tools = model.bind_tools(tools)
+    model_with_tools = model.bind_tools(
+        tools,
+        tool_choice="required",
+        parallel_tool_calls=False,
+    )
 
     # Build workflow
     agent_builder = StateGraph(MessagesState)
@@ -103,7 +110,7 @@ def runner(
     agent_builder.add_conditional_edges(
         "llm_call", should_continue, ["tool_node", END]
     )
-    agent_builder.add_edge("tool_node", "llm_call")
+    agent_builder.add_edge("tool_node", END)
 
     # Compile the agent
     agent = agent_builder.compile()
@@ -234,23 +241,21 @@ def make_llm_call_node(
 
 
 def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyright: ignore[reportInvalidTypeForm]
-    """Route to tools only while call budgets allow pending tool calls."""
+    """Route one valid model tool request to the deterministic repair node."""
 
     messages = state["messages"]
     last_message = messages[-1]
     tool_calls_used = sum(1 for m in messages if isinstance(m, ToolMessage))
 
-    # If the LLM makes a tool call, then perform an action
-    if tool_calls_used >= MAX_TOOL_CALLS:
+    if state["llm_calls"] > MAX_LLM_CALLS:
         return END
 
-    if state["llm_calls"] >= MAX_LLM_CALLS:
+    if tool_calls_used >= MAX_TOOL_CALLS:
         return END
 
     if last_message.tool_calls:
         return "tool_node"
 
-    # Otherwise, we stop (reply to the user)
     return END
 
 
