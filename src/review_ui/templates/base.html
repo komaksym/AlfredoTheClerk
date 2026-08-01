@@ -4,8 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Alfredo human review{% endblock %}</title>
+  <style id="critical-light-shell">
+    :root {
+      color-scheme: only light;
+    }
+
+    html,
+    body,
+    .app-frame,
+    .app-main,
+    .page-shell {
+      background-color: #fbfaf8 !important;
+    }
+  </style>
   <link rel="stylesheet" href="{{ url_for('static', path='/review.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='/workspace-light.css') }}">
 </head>
 <body>
   <div class="app-frame">
