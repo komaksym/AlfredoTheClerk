@@ -101,3 +101,34 @@ def test_ambiguous_seller_nip_repairs_in_one_required_tool_call() -> None:
     assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
     assert workflow.correctness is not None
     assert workflow.correctness.status is CorrectnessStatus.READY_FOR_KSEF
+
+
+class _UnavailableRepairModel:
+    """Model double that reproduces an unavailable provider after binding."""
+
+    def bind_tools(self, tools: list[Any], **kwargs: Any) -> _UnavailableRepairModel:
+        """Accept the production binding before failing at invocation."""
+
+        assert tools
+        assert kwargs["tool_choice"]["function"]["name"] == "apply_repair_plan"
+        return self
+
+    def invoke(self, messages: list[Any]) -> AIMessage:
+        """Simulate the provider failure seen by the local application."""
+
+        assert messages
+        raise RuntimeError("provider unavailable")
+
+
+def test_ambiguous_seller_nip_uses_exact_label_fallback_when_agent_fails() -> None:
+    """The real fixture must not require review during a provider failure."""
+
+    with pdfplumber.open(_FIXTURE) as pdf:
+        parsed = parse_data(pdf)
+
+    workflow = run_shell_repair(parsed, _UnavailableRepairModel())
+
+    assert workflow.status is RepairWorkflowStatus.REPAIRED
+    assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
+    assert workflow.correctness is not None
+    assert workflow.correctness.status is CorrectnessStatus.READY_FOR_KSEF
