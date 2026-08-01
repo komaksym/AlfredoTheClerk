@@ -67,7 +67,7 @@ jobs:
           test "$ready" -eq 1
 
           google-chrome --headless --no-sandbox --disable-gpu \
-            --window-size=1440,1000 \
+            --window-size=1536,960 \
             --screenshot=browser-smoke/human-fallback.png \
             http://127.0.0.1:8001/review
 
@@ -79,7 +79,7 @@ jobs:
             http://127.0.0.1:8001/review >/dev/null
 
           google-chrome --headless --no-sandbox --disable-gpu \
-            --window-size=1440,1000 \
+            --window-size=1536,960 \
             --screenshot=browser-smoke/ready-for-ksef.png \
             http://127.0.0.1:8001/result
 
