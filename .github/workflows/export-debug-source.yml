@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - debug/export-pr9-source
+  pull_request:
+    branches:
+      - feat/review-ui-redesign
 
 permissions:
   contents: read
