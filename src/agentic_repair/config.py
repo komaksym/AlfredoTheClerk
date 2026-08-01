@@ -10,6 +10,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 REPAIR_MODEL_NAME = "deepseek:deepseek-v4-flash"
 REPAIR_MODEL_TEMPERATURE = 0.0
 REPAIR_MODEL_EXTRA_BODY = {"thinking": {"type": "disabled"}}
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 def setup_keys() -> None:
@@ -21,6 +22,18 @@ def setup_keys() -> None:
         os.environ["DEEPSEEK_API_KEY"] = getpass.getpass(
             "Enter your Deepseek API key: "
         )
+
+    if _langsmith_tracing_enabled():
+        os.environ["LANGSMITH_HIDE_INPUTS"] = "true"
+        os.environ["LANGSMITH_HIDE_OUTPUTS"] = "true"
+        os.environ["LANGSMITH_HIDE_METADATA"] = "true"
+
+
+def _langsmith_tracing_enabled() -> bool:
+    """Return whether the operator explicitly enabled LangSmith tracing."""
+
+    value = os.getenv("LANGSMITH_TRACING", "")
+    return value.strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def build_repair_model(
