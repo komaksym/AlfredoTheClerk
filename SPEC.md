@@ -6,58 +6,25 @@ when work is completed, reprioritized, or materially re-scoped.
 `ROADMAP.md` defines durable product direction. `AGENTS.md` defines development
 and repository rules.
 
-## Completed in this PR
+## Completed foundations
 
-### Fix `build_repair_model()`
+### Shared post-repair correctness
 
-`src/agentic_repair/config.py` now returns the chat model object rather than a
-one-element tuple.
+`src/invoice_gen/invoice_correctness.py` is the common acceptance boundary for
+unchanged, agent-repaired, and human-repaired invoices:
 
-Acceptance:
+```text
+canonical shell
+-> full shell validation
+-> recompute monetary summary
+-> reconcile against extracted PDF totals
+-> map to FA(3)
+-> serialize XML
+-> local XSD validation
+-> READY_FOR_KSEF
+```
 
-- the existing model-configuration tests pass
-- the returned object can be passed directly into the repair workflow
-
-### Post-repair correctness pipeline
-
-`src/invoice_gen/invoice_correctness.py` now provides one shared correctness
-pipeline for every unchanged or repaired invoice, and repair orchestration
-requires its successful result before returning an accepted shell:
-
-`unchanged or repaired shell`
-
-`-> full shell validation`
-
-`-> recompute monetary summary`
-
-`-> reconcile against extracted PDF totals`
-
-`-> map to FA(3)`
-
-`-> serialize XML`
-
-`-> XSD validation`
-
-Requirements:
-
-- do not mark a repair as ready merely because field-level shell validation
-  passes
-- recompute line, VAT-bucket, and invoice totals deterministically from the
-  repaired shell
-- compare computed totals with totals extracted from the source PDF
-- keep extracted totals as evidence; do not allow the model to invent or edit
-  totals directly
-- stop and return a structured failure or review outcome when reconciliation,
-  mapping, serialization, or XSD validation fails
-- expose one reusable correctness function for both agent and human repairs
-- run the shared correctness function even when deterministic routing finds no
-  repair work
-- retain the original repair context, including extraction evidence and
-  diagnostics, on every workflow outcome
-- load the FA(3) schemas from installed package resources rather than the source
-  repository layout
-
-Expected result states:
+Expected local states remain:
 
 - `READY_FOR_KSEF`
 - `INVALID_SHELL`
@@ -66,187 +33,194 @@ Expected result states:
 - `XML_SERIALIZATION_FAILED`
 - `XSD_VALIDATION_FAILED`
 
-Acceptance:
+Extracted `summary.*` totals are immutable evidence. They are reconciled against
+values computed from canonical line items rather than edited by agent or human
+repair.
 
-- unchanged and repaired invoices are accepted only after the same complete
-  pipeline succeeds
-- repaired line items and extracted invoice totals are explicitly reconciled
-- the final XML passes the packaged local FA(3) XSD bundle
-- failure states retain enough detail for review and debugging
-- manual-review outcomes retain their original extraction context without
-  re-extracting the source invoice
-- an isolated installed-wheel smoke test proves the production validator can
-  load every packaged XSD
+### Human-review backend
 
-### Human-review workflow
+`src/agentic_repair/human_review.py` provides retryable review cases, candidate
+selection, explicit manual canonical corrections, reviewer attribution, atomic
+batch validation/application, decision history, and re-entry into the same
+correctness pipeline.
 
-`src/agentic_repair/human_review.py` now builds complete review cases for
-unresolved or blocking fields, applies attributed human corrections atomically,
-retains failed attempts for retry, and resumes the shared correctness pipeline:
+The backend rejects unsupported paths, summary mutation, incompatible runtime
+value types, duplicate paths, invalid candidate selections, and unattributed
+changes before applying a batch.
 
-`unresolved/blocking fields`
+### KSeF TEST submission proof
 
-`-> show evidence and candidates`
+The TEST-only KSeF boundary under `src/ksef/` is complete and remains separate
+from the local review product:
 
-`-> human selects or edits`
+```text
+READY_FOR_KSEF
+-> TEST token authentication
+-> encrypted online FA(3) session
+-> one invoice submission
+-> poll or reconcile ambiguous transport outcome
+-> ACCEPTED / REJECTED / PENDING / FAILED
+```
 
-`-> rerun the same correctness pipeline`
+Implemented properties include TEST-only origin configuration, dynamic public
+certificate discovery, key-rotation handling, one-shot token redemption,
+AES-256-CBC + RSA-OAEP encryption, duplicate-safe ambiguous-response
+reconciliation, bounded polling, best-effort close, secret redaction, fake-HTTP
+coverage, and an opt-in `ksef_live` integration test.
 
-`-> produce validated invoice`
+A real synthetic TEST submission has been run successfully through the opt-in
+workflow. This proof demonstrates the remote protocol boundary; it does not make
+durable KSeF orchestration part of the minimal UI product.
 
-Requirements:
+## Current slice: local agent-first human-review UI
 
-- show the current value, validation error, extraction status, evidence region,
-  and available candidates for each problem field
-- allow a reviewer to select an existing candidate or enter a corrected value
-- reject manual and candidate-selected values whose runtime type does not match
-  the target canonical shell path before applying any command
-- snapshot extraction evidence, diagnostics, validation, extracted totals,
-  routing, and correctness when the review case is built so upstream mutation
-  cannot change later review decisions or reconciliation evidence
-- accept only canonical ASCII line-item indices at repair and review boundaries
-  so path aliases cannot target one shell field more than once per batch
-- record every human change
-- resume the same deterministic correctness pipeline used after agent repair
-- do not create a separate, weaker validation path for human-reviewed invoices
+Design:
+`docs/superpowers/specs/2026-07-31-human-review-ui-design.md`
 
-Acceptance:
+Implementation plan:
+`docs/superpowers/plans/2026-07-31-human-review-ui.md`
 
-- manual-review outcomes can be resolved and resumed
-- successful human repairs produce the same validated invoice artifact as
-  successful agent repairs
-- failed review attempts remain reviewable and auditable
-- incompatible value types produce an audited `INVALID_VALUE_TYPE` issue,
-  apply no decisions, and do not call correctness
-- mutating the source workflow context after case construction cannot change
-  review candidates, diagnostics, validation, or extracted totals
+Pull request: `#7` on branch `feat/human-review-ui`.
 
-## 1. KSeF TEST submission proof — live proof pending
+### Goal
 
-The TEST-only implementation now covers:
+Make the existing backend usable as a minimal local product:
 
-`READY_FOR_KSEF -> token auth -> encrypted online session -> one FA(3)`
+```text
+single-page native-text PDF
+-> extraction + evidence + diagnostics
+-> deterministic repair routing
+-> evidence-constrained agent repair when legal
+-> shared correctness
+   -> READY_FOR_KSEF -> success + FA(3) XML
+   -> unresolved     -> side-by-side human review
+                       -> atomic correction batch
+                       -> shared correctness
+                       -> READY_FOR_KSEF
+```
 
-`-> poll or reconcile -> ACCEPTED / REJECTED / PENDING / FAILED`
+### Runtime boundary
 
-Implemented contracts:
+- FastAPI + Jinja + small vanilla JavaScript.
+- One process, one local reviewer, one active invoice.
+- Bind to `127.0.0.1` only.
+- In-memory state only; restart loses the active case.
+- No database, queue, accounts, roles, background workers, React/Node build, or
+  deployment infrastructure.
 
-- only complete locally XSD-valid `READY_FOR_KSEF` results may submit
-- KSeF HTTP, authentication, cryptography, polling, and cleanup stay under
-  `src/ksef/`
-- only the fixed KSeF TEST origin exists; no production URL is configurable
-- public encryption certificates are discovered dynamically by usage; `21470`
-  refreshes the affected key once before submission
-- temporary authentication tokens are redeemed at most once; only the access
-  token needed by this slice is consumed
-- FA(3) XML uses AES-256-CBC with the session key encrypted by the matching KSeF
-  RSA certificate
-- invoice submission is never blindly retried after an ambiguous response;
-  reconciliation matches both invoice hash and invoice number
-- ambiguous remote truth stays `PENDING`, including reconciliation failures;
-  accepted/rejected truth survives best-effort session-close failure
-- secrets are excluded from result representations, diagnostics, and transport
-  exception messages
-- shared fake-HTTP coverage exercises success, rejection, key rotation,
-  one-shot redemption, polling deadlines, malformed responses, reconciliation,
-  and cleanup failure
-- the `ksef_live` test is explicitly opt-in and ordinary CI cannot submit
-  remotely
+### Supported input
 
-Remaining acceptance gate:
+- ordinary Polish domestic VAT invoice;
+- native/text-based PDF;
+- exactly one page;
+- current supported extraction layouts only.
 
-- run one real synthetic invoice through KSeF TEST and record
-  `ACCEPTED + KSeF number`
-- Ruff, pytest, compileall, and package build pass for the final revision
+Multi-page PDFs, scans, OCR, photos, correction invoices, advance invoices,
+non-domestic invoices, and arbitrary PDF reliability remain outside this slice.
 
-Detailed protocol and design rationale:
-`docs/superpowers/specs/2026-07-29-ksef-test-submission-proof-design.md`.
+### Agent-first repair invariant
 
-## 2. Durable KSeF integration — after the TEST proof
+A field goes to the agent only when at least one usable evidence-backed candidate
+exists. The agent may select candidates but may not invent a value.
 
-Turn the proven TEST protocol boundary into a recoverable product workflow:
+- usable candidate exists -> agent gets the first repair opportunity;
+- no evidence -> human;
+- no candidates -> human;
+- all candidate values are `None` -> human;
+- `summary.*` -> immutable evidence, never direct repair.
 
-`validated FA(3) XML`
+For mixed invoices, the agent repairs the legal subset first. Human review then
+contains the residual problems only, while successful agent changes remain
+visible in a read-only diff.
 
-`-> durable submission intent`
+Technical agent exceptions are contained as structured `AGENT_FAILED` workflow
+results and fall back to human review without mutating the extracted shell.
 
-`-> submit or reconcile`
+### Review UI
 
-`-> persist every status transition`
+The review screen is side-by-side:
 
-`-> store KSeF number and UPO`
+```text
+original rendered PDF + evidence overlays | agent diff + unresolved field cards
+```
 
-Requirements:
+Each residual field displays available validation/evidence context. The reviewer
+may select an extracted candidate or enter a manual canonical value. The browser
+accumulates changes and submits one `Review & Validate` batch; browser events do
+not mutate the canonical invoice directly.
 
-- persist submission identity, session and invoice references, request metadata,
-  remote statuses, and redacted failure history
-- resume polling and ambiguous-submission reconciliation after process restarts
-- prevent duplicate submissions through durable identity and explicit operator
-  recovery
-- refresh access tokens safely
-- download, validate, and store the invoice or session UPO
-- preserve local correctness separately from remote rejection or acceptance
-- introduce DEMO or production only through an explicit rollout decision and
-  environment enum with internally mapped official origins
+Failed transport parsing or backend review validation stays on the same review
+case with entered values/errors preserved.
 
-Acceptance:
+Non-field correctness failures such as FA(3), XML, or XSD failure are shown as
+explicit local correctness blockers rather than being mistaken for readiness.
 
-- remotely pending work survives process restart
-- accepted invoices retain their KSeF number and verified UPO
-- retries and recovery cannot silently create duplicate submissions
-- submission and status history remains auditable without exposing secrets
+### Successful output
 
-## 3. Real legacy invoices — parallel when data is available
+`READY_FOR_KSEF` exposes generated FA(3) XML for download. The UI does not submit
+to KSeF and has no remote status/UPO controls.
 
-Add real legacy-system invoices whenever they become available:
+### Acceptance
 
-`real legacy invoice`
+The slice is complete only when regression coverage and final gates prove:
 
-`-> annotate ground truth`
+- known-good PDF -> real extraction -> local `READY_FOR_KSEF`;
+- fully agent-repaired -> no human form + visible agent diff;
+- mixed agent + human -> agent-fixed fields are audit-only, residual fields are
+  editable;
+- blocking-only -> human review without an illegal agent action;
+- agent technical failure -> warning + human fallback;
+- candidate and manual human corrections use the existing atomic backend;
+- malformed human input produces display-safe retryable errors with no partial
+  mutation;
+- successful human review reaches the same correctness boundary and XML output;
+- PDF evidence overlays reuse existing bbox geometry;
+- invalid, non-text, and multi-page input fail clearly;
+- no UI action submits to KSeF;
+- package assets and FA(3) schemas work from the built installation.
 
-`-> measure failures`
+## Parallel product work: real legacy invoices
 
-`-> add source-specific extraction support`
+When real invoices become available:
 
-`-> preserve failures as regression cases`
+```text
+real named-system invoice
+-> annotate canonical ground truth
+-> measure failure stage
+-> add evidence-driven source support
+-> preserve regression
+```
 
-Requirements:
+Keep synthetic fixtures as controlled regression data. Add source-specific
+anchors or extraction logic only when real evidence justifies them, and keep an
+untouched real-invoice evaluation split for product-quality claims.
 
-- keep the synthetic corpus; real invoices supplement it rather than replace it
-- begin with invoices from one identifiable accounting or vertical software
-  system instead of claiming arbitrary-PDF support
-- create manually reviewed canonical shell truth for each evaluation invoice
-- keep an untouched evaluation split separate from development cases
-- classify failures by parsing, candidate generation, normalization, routing,
-  repair, reconciliation, mapping, or validation stage
-- convert recurring real failures into stable regression fixtures when legally
-  and operationally possible
-- add source-specific anchors or extraction logic only when real evidence shows
-  they are needed
+## Optional later slice: durable KSeF productization
 
-Acceptance:
+Durable remote orchestration is intentionally not the current priority. A future
+explicit slice may add:
 
-- extraction and repair quality are measured on real system output
-- each fixed real-world failure remains covered by regression tests
-- supported source systems are named explicitly rather than implied through a
-  generic reliability claim
+- durable submission identity and intent;
+- restart-safe polling and ambiguous-response reconciliation;
+- duplicate prevention and operator recovery;
+- access-token/session lifecycle management;
+- persisted remote status/KSeF number;
+- UPO download, validation, and storage;
+- explicit DEMO/production environment rollout.
+
+Local correctness and remote acceptance must remain separate even if this work
+is later promoted into the active plan.
 
 ## Validation gates
 
-For each implementation change:
+For implementation changes:
 
-- run the narrowest relevant tests first
-- run `uv run ruff check src tests`
-- run `uv run pytest`
-- run `uv run python -m compileall src tests`
+```bash
+uv run ruff check src tests
+uv run pytest
+uv run python -m compileall src tests
+```
 
-For product readiness:
-
-- repaired shell passes full validation
-- computed and extracted totals reconcile or receive an explicit review outcome
-- FA(3) mapping and XML serialization succeed
-- XML passes local XSD validation
-- human-reviewed cases use the same correctness gate
-- KSeF acceptance is tracked separately from local correctness
-- real legacy-system evaluation results are recorded separately from synthetic
-  benchmark results
+Final handoff also requires wheel build/install resource checks, a local workflow
+smoke test to the extent the execution environment permits, and independent PR
+diff review before merge approval is requested.
