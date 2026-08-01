@@ -48,7 +48,7 @@ jobs:
       - name: Capture browser smoke evidence
         run: |
           mkdir -p browser-smoke
-          uv run python tests/review_ui/browser_smoke_server.py &
+          PYTHONPATH=. uv run python tests/review_ui/browser_smoke_server.py &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 
