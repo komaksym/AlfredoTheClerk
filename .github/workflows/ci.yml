@@ -45,6 +45,13 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+      - name: Verify active-slice docstrings three times
+        run: |
+          for pass in 1 2 3; do
+            echo "Docstring audit pass $pass"
+            uv run pytest tests/ksef/test_docstrings.py -q
+          done
+
       - name: Capture browser smoke evidence
         run: |
           mkdir -p browser-smoke
