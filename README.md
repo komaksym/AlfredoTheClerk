@@ -86,6 +86,66 @@ totals.
 A successful local run ends at `READY_FOR_KSEF` with downloadable FA(3) XML.
 Remote KSeF submission remains an explicit separate capability.
 
+## Controlled synthetic benchmark
+
+The repository includes a persisted 200-case controlled synthetic benchmark for
+the agentic decision layer. It measures whether the existing LangGraph agent
+selects the ground-truth evidence candidate or safely takes no action. It does
+not regenerate cases during evaluation.
+
+The checked-in corpus contains:
+
+- 80 single-field repairable cases;
+- 40 multi-field repairable cases;
+- 40 mixed agent-plus-human cases;
+- 20 human-only cases with no legal agent action; and
+- 20 ambiguous cases where the expected safe action is no tool call.
+
+Candidate order and confidence vary. The correct candidate is not tied to a
+fixed index or to the highest confidence value.
+
+### Baseline and metrics
+
+The agent-disabled baseline requires one human correction for every persisted
+known defect. Only an automated candidate selection that exactly matches ground
+truth counts as removed human work. Wrong, missing, or errored actions remain in
+the human-work total.
+
+The report publishes:
+
+- **manual-correction reduction** — correct automated repairs divided by all
+  known defects;
+- **candidate-selection accuracy** — correct automated repairs divided by all
+  agent-eligible fields;
+- **safe-escalation rate** — ambiguous fields correctly left unchanged divided
+  by all safe-escalation opportunities;
+- **straight-through rate** — case-runs completed with no residual human
+  correction; and
+- raw per-case actions, errors, median latency, and p95 latency.
+
+### Run the live benchmark
+
+Provide the same DeepSeek key used by the repair agent, then run three complete
+repeats:
+
+```bash
+export DEEPSEEK_API_KEY="..."
+uv run python -m src.agentic_repair.benchmark_runner \
+  --runs 3 \
+  --json-out reports/agentic-repair-benchmark.json \
+  --markdown-out reports/agentic-repair-benchmark.md
+```
+
+Use `--limit 5` for a small credential and integration smoke run. The full run
+writes an auditable JSON file and a human-readable Markdown summary. The manual
+GitHub Actions workflow uploads both files as the
+`agentic-repair-benchmark` artifact.
+
+This controlled synthetic result does not establish production generalization,
+accountant speed, cost savings, or end-to-end accounts-payable cycle-time
+improvement. Those claims require an untouched real-invoice evaluation set or a
+human timing study.
+
 ## Validation
 
 Repository gates:
