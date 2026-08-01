@@ -50,7 +50,7 @@ jobs:
 
       - name: Commit generated artifact
         run: |
-          if git diff --quiet -- data/benchmark_cases/agentic_repair_v1.json; then
+          if test -z "$(git status --porcelain -- data/benchmark_cases/agentic_repair_v1.json)"; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
