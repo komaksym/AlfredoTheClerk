@@ -13,6 +13,9 @@ from src.agentic_repair.repair_orchestration import (
     RepairWorkflowStatus,
 )
 from src.agentic_repair.repair_routing import route_repair_context
+from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
+from src.invoice_gen.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell
+from src.invoice_gen.domestic_vat_shell_summary import summarize_domestic_vat_shell
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
 from src.invoice_gen.invoice_correctness import (
     CorrectnessResult,
@@ -101,16 +104,20 @@ def test_presentation_separates_successful_agent_changes_from_residual_fields() 
     assert presentation.fields[0].no_source_evidence is True
 
 
-def test_presentation_exposes_totals_mismatch_as_immutable_issue() -> None:
-    """Derived summary disagreements should be visible but never editable."""
+def test_presentation_exposes_totals_mismatch_with_editable_line_inputs() -> None:
+    """A totals review must offer the canonical inputs that determine the total."""
 
     from src.review_ui.presenter import build_review_presentation
 
-    context = make_repair_context()
+    shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
+    context = make_repair_context(
+        shell=shell,
+        extracted_summary=summarize_domestic_vat_shell(shell),
+    )
     route = route_repair_context(context)
     correctness = CorrectnessResult(
         status=CorrectnessStatus.TOTALS_MISMATCH,
-        shell=context.shell,
+        shell=shell,
         validation=ShellValidationResult(errors=[]),
         mismatches=(
             TotalsMismatch(
@@ -123,7 +130,7 @@ def test_presentation_exposes_totals_mismatch_as_immutable_issue() -> None:
     )
     workflow = RepairWorkflowResult(
         status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
-        shell=context.shell,
+        shell=shell,
         route=route,
         context=context,
         reason=CorrectnessStatus.TOTALS_MISMATCH.value,
@@ -138,7 +145,18 @@ def test_presentation_exposes_totals_mismatch_as_immutable_issue() -> None:
         PdfPageView(image_png=b"png", width=100.0, height=100.0),
     )
 
-    assert presentation.fields == ()
+    expected_paths = {
+        f"line_items[{index}].{field}"
+        for index in range(len(shell.line_items))
+        for field in ("discount", "quantity", "unit_price_net", "vat_rate")
+    }
+    assert {field.path for field in presentation.fields} == expected_paths
+    assert all(field.editable for field in presentation.fields)
+    assert all(
+        field.blocking_reason == "source_total_mismatch"
+        for field in presentation.fields
+    )
+
     assert len(presentation.mismatches) == 1
     mismatch = presentation.mismatches[0]
     assert mismatch.path == "summary.invoice_gross_total"
