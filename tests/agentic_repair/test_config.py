@@ -8,9 +8,11 @@ from typing import Any
 from src.agentic_repair import config
 
 
-def test_setup_keys_loads_dotenv_sets_tracing_and_prompts_missing_keys(
+def test_setup_keys_loads_dotenv_and_prompts_only_for_missing_deepseek_key(
     monkeypatch,
 ) -> None:
+    """Normal repair startup must not enable or require LangSmith tracing."""
+
     prompts: list[str] = []
 
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -20,9 +22,7 @@ def test_setup_keys_loads_dotenv_sets_tracing_and_prompts_missing_keys(
 
     def fake_getpass(prompt: str) -> str:
         prompts.append(prompt)
-        if "Deepseek" in prompt:
-            return "deepseek-key"
-        return "langsmith-key"
+        return "deepseek-key"
 
     monkeypatch.setattr(config.getpass, "getpass", fake_getpass)
 
@@ -31,17 +31,18 @@ def test_setup_keys_loads_dotenv_sets_tracing_and_prompts_missing_keys(
     assert prompts == [
         "dotenv",
         "Enter your Deepseek API key: ",
-        "Enter your Langsmith API key: ",
     ]
     assert os.environ["DEEPSEEK_API_KEY"] == "deepseek-key"
-    assert os.environ["LANGSMITH_API_KEY"] == "langsmith-key"
-    assert os.environ["LANGSMITH_TRACING"] == "true"
+    assert "LANGSMITH_API_KEY" not in os.environ
+    assert "LANGSMITH_TRACING" not in os.environ
 
 
-def test_setup_keys_does_not_prompt_for_existing_keys(monkeypatch) -> None:
+def test_setup_keys_preserves_explicit_langsmith_opt_in(monkeypatch) -> None:
+    """An explicit tracing configuration should survive model setup unchanged."""
+
     monkeypatch.setenv("DEEPSEEK_API_KEY", "existing-deepseek-key")
     monkeypatch.setenv("LANGSMITH_API_KEY", "existing-langsmith-key")
-    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
     monkeypatch.setattr(config, "load_dotenv", lambda: None)
 
     def fail_if_prompted(prompt: str) -> str:
