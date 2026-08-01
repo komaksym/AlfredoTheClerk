@@ -74,6 +74,21 @@ def test_parse_manual_value_reports_invalid_and_unsupported_input() -> None:
     assert immutable.error == "This field cannot be edited."
 
 
+@pytest.mark.parametrize("raw_value", ["NaN", "Infinity", "-Infinity"])
+def test_parse_manual_value_rejects_non_finite_decimals(raw_value: str) -> None:
+    """Non-finite numbers must remain display-safe browser validation errors."""
+
+    from src.review_ui.form_values import parse_manual_value
+
+    shell = build_domestic_vat_shell()
+    shell.line_items.append(LineItemShell())
+
+    result = parse_manual_value(shell, "line_items[0].quantity", raw_value)
+
+    assert result.value is None
+    assert result.error == "Enter a valid number."
+
+
 def test_parse_manual_value_preserves_blank_strings_and_maps_typed_blanks_to_none() -> None:
     """Keep string blanks auditable while allowing optional typed values to clear."""
 
