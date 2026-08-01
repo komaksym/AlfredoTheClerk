@@ -104,58 +104,6 @@ jobs:
           uv run python tests/smoke_installed_xsd_validation.py
           dist/alfredotheclerk-*.whl
 
-  persist-agentic-corpus:
-    if: ${{ github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' }}
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out feature branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13.0"
-
-      - name: Install dependencies
-        run: uv sync --locked
-
-      - name: Generate corpus
-        run: |
-          uv run python - <<'PY'
-          from pathlib import Path
-
-          from src.agentic_repair.benchmark_corpus import (
-              AGENTIC_REPAIR_CORPUS_PATH,
-              build_benchmark_corpus,
-              corpus_to_json,
-          )
-
-          path = Path(AGENTIC_REPAIR_CORPUS_PATH)
-          path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(
-              corpus_to_json(build_benchmark_corpus()),
-              encoding="utf-8",
-          )
-          PY
-
-      - name: Commit generated artifact
-        run: |
-          if git diff --quiet -- data/benchmark_cases/agentic_repair_v1.json; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/benchmark_cases/agentic_repair_v1.json
-          git commit -m "chore(benchmark): persist generated corpus"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
   # Manual-only proof. Configure KSEF_TEST_TOKEN and KSEF_TEST_CONTEXT_NIP as
   # repository secrets, dispatch this workflow on the feature branch, and set
   # run_ksef_live=true. Push and pull-request events always skip this job.
