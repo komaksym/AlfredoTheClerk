@@ -21,9 +21,9 @@ The current slice is the local agent-first human-review UI.
    paths.
 9. [x] Update README, current spec, and durable roadmap for the minimal-product
    pivot.
-10. [ ] Run final compile/package resource validation, inspect the UI workflow,
+10. [x] Run final compile/package resource validation, inspect the UI workflow,
     complete the three-pass docstring audit, and independently review the PR diff.
-11. [ ] Fix every valid final-review finding, rerun all gates on the final head,
+11. [x] Fix every valid final-review finding, rerun all gates on the final head,
     and update PR validation evidence before requesting merge approval.
 
 ## Scope boundary
