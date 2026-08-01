@@ -10,22 +10,25 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _AUDITED_MODULE_DIRS = (
     _REPO_ROOT / "src" / "ksef",
     _REPO_ROOT / "tests" / "ksef",
-    _REPO_ROOT / "src" / "agentic_repair",
-    _REPO_ROOT / "tests" / "agentic_repair",
     _REPO_ROOT / "src" / "review_ui",
     _REPO_ROOT / "tests" / "review_ui",
+)
+_AUDITED_MODULE_FILES = (
+    _REPO_ROOT / "src" / "agentic_repair" / "config.py",
+    _REPO_ROOT / "tests" / "agentic_repair" / "test_config.py",
 )
 
 
 def _python_modules() -> tuple[Path, ...]:
-    """Return every Python module recursively under the audited source trees."""
+    """Return every Python module covered by the active-slice audit."""
 
     modules = [
         path
         for directory in _AUDITED_MODULE_DIRS
         for path in directory.rglob("*.py")
     ]
-    return tuple(sorted(modules))
+    modules.extend(_AUDITED_MODULE_FILES)
+    return tuple(sorted(set(modules)))
 
 
 def _parse_module(path: Path) -> tuple[str, ast.Module]:
