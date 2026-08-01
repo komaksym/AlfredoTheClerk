@@ -13,19 +13,13 @@ REPAIR_MODEL_EXTRA_BODY = {"thinking": {"type": "disabled"}}
 
 
 def setup_keys() -> None:
-    """Load environment keys required for repair agent runs."""
+    """Load local environment and require only the DeepSeek repair key."""
 
     load_dotenv()
 
     if not os.getenv("DEEPSEEK_API_KEY"):
         os.environ["DEEPSEEK_API_KEY"] = getpass.getpass(
             "Enter your Deepseek API key: "
-        )
-
-    os.environ["LANGSMITH_TRACING"] = "true"
-    if not os.getenv("LANGSMITH_API_KEY"):
-        os.environ["LANGSMITH_API_KEY"] = getpass.getpass(
-            "Enter your Langsmith API key: "
         )
 
 
