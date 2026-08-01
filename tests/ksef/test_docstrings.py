@@ -1,4 +1,4 @@
-"""Regression tests enforcing module and function docstrings across the KSeF slice."""
+"""Regression tests enforcing module and function docstrings across active slices."""
 
 from __future__ import annotations
 
@@ -7,14 +7,28 @@ from pathlib import Path
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_KSEF_MODULE_DIRS = (_REPO_ROOT / "src" / "ksef", _REPO_ROOT / "tests" / "ksef")
+_AUDITED_MODULE_DIRS = (
+    _REPO_ROOT / "src" / "ksef",
+    _REPO_ROOT / "tests" / "ksef",
+    _REPO_ROOT / "src" / "review_ui",
+    _REPO_ROOT / "tests" / "review_ui",
+)
+_AUDITED_MODULE_FILES = (
+    _REPO_ROOT / "src" / "agentic_repair" / "config.py",
+    _REPO_ROOT / "tests" / "agentic_repair" / "test_config.py",
+)
 
 
 def _python_modules() -> tuple[Path, ...]:
-    """Return every Python module recursively under the KSeF source and test trees."""
+    """Return every Python module covered by the active-slice audit."""
 
-    modules = [path for directory in _KSEF_MODULE_DIRS for path in directory.rglob("*.py")]
-    return tuple(sorted(modules))
+    modules = [
+        path
+        for directory in _AUDITED_MODULE_DIRS
+        for path in directory.rglob("*.py")
+    ]
+    modules.extend(_AUDITED_MODULE_FILES)
+    return tuple(sorted(set(modules)))
 
 
 def _parse_module(path: Path) -> tuple[str, ast.Module]:
@@ -24,8 +38,8 @@ def _parse_module(path: Path) -> tuple[str, ast.Module]:
     return source, ast.parse(source, filename=str(path))
 
 
-def test_every_ksef_module_has_line_one_docstring() -> None:
-    """Require every KSeF source and test module to start with a module docstring."""
+def test_every_audited_module_has_line_one_docstring() -> None:
+    """Require every active-slice module to start with a module docstring."""
 
     missing: list[str] = []
     for path in _python_modules():
@@ -37,8 +51,8 @@ def test_every_ksef_module_has_line_one_docstring() -> None:
     assert not missing, "modules missing line-one docstrings: " + ", ".join(missing)
 
 
-def test_every_ksef_function_has_docstring() -> None:
-    """Require docstrings on every function, method, nested function, and async function."""
+def test_every_audited_function_has_docstring() -> None:
+    """Require docstrings on functions, methods, nested and async functions."""
 
     missing: list[str] = []
     for path in _python_modules():

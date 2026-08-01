@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Upload invoice · Alfredo{% endblock %}
+{% block content %}
+<section class="upload-card">
+  <div class="eyebrow">Local review</div>
+  <h1>Upload invoice</h1>
+  <p class="lead">
+    Add one native-text, single-page Polish domestic VAT invoice. Alfredo will
+    extract it, let the repair agent resolve evidence-backed fields, and ask for
+    human review only when something remains unresolved.
+  </p>
+
+  {% if error %}
+  <div class="alert alert-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form action="/invoice" method="post" enctype="multipart/form-data" class="upload-form">
+    <label class="file-drop" for="invoice">
+      <span class="file-drop-title">PDF invoice</span>
+      <span class="file-drop-copy">Single page · native text · PDF</span>
+      <input id="invoice" name="invoice" type="file" accept="application/pdf,.pdf" required>
+    </label>
+    <button class="button button-primary" type="submit">Process invoice</button>
+  </form>
+
+  <p class="scope-note">
+    Scans, photos, OCR, multi-page invoices, and automatic KSeF submission are
+    outside this local review slice.
+  </p>
+</section>
+{% endblock %}

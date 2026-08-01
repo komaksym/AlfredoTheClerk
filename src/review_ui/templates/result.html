@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Invoice ready · Alfredo{% endblock %}
+{% block content %}
+<section class="result-card">
+  <div class="success-mark" aria-hidden="true">✓</div>
+  <div class="eyebrow">Local correctness passed</div>
+  <h1>READY_FOR_KSEF</h1>
+
+  {% if session.case and session.case.attempts %}
+  <p class="lead">Human review complete. The corrected canonical invoice passed local FA(3) and XSD validation.</p>
+  {% elif agent_changes %}
+  <p class="lead">Agent repair successful. The evidence-backed corrections passed the shared correctness pipeline.</p>
+  {% else %}
+  <p class="lead">Invoice valid. No human correction was required.</p>
+  {% endif %}
+
+  <div class="result-checks" aria-label="Readiness checks">
+    <span>Shell valid</span>
+    <span>Totals reconciled</span>
+    <span>FA(3) generated</span>
+    <span>XSD valid</span>
+  </div>
+
+  {% if agent_changes %}
+  <details class="agent-changes result-changes">
+    <summary>Agent changes <span class="count-pill">{{ agent_changes|length }}</span></summary>
+    <div class="change-list">
+      {% for change in agent_changes %}
+      <div class="change-row">
+        <div>
+          <strong>{{ change.label }}</strong>
+          <code>{{ change.path }}</code>
+        </div>
+        <div class="change-values">
+          <span>{{ change.old_value }}</span>
+          <span aria-hidden="true">→</span>
+          <strong>{{ change.new_value }}</strong>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  <div class="result-actions">
+    <a class="button button-primary" href="/result/invoice.xml">Download FA(3) XML</a>
+    <a class="button button-secondary" href="/">Review another invoice</a>
+  </div>
+
+  <p class="scope-note">This local UI does not submit the invoice to KSeF.</p>
+</section>
+{% endblock %}

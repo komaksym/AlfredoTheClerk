@@ -80,6 +80,16 @@ def supports_shell_field(
     return 0 <= index < len(shell.line_items) and field in LINE_ITEM_MUTABLE
 
 
+def shell_field_value_type(
+    shell: DomesticVatInvoiceShell,
+    path: str,
+) -> type[object]:
+    """Return the canonical runtime type for one supported mutable field."""
+
+    _require_supported(shell, path)
+    return _expected_value_type(path)
+
+
 def is_shell_field_value_compatible(
     shell: DomesticVatInvoiceShell,
     path: str,
