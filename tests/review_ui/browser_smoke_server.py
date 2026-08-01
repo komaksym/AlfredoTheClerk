@@ -26,13 +26,14 @@ class _FailingRepairModel:
         tools: list[Any],
         *,
         tool_choice: object = None,
-        parallel_tool_calls: object = None,
     ) -> _FailingRepairModel:
         """Accept and verify the production single-tool binding contract."""
 
         assert tools
-        assert tool_choice == "required"
-        assert parallel_tool_calls is False
+        assert tool_choice == {
+            "type": "function",
+            "function": {"name": "apply_repair_plan"},
+        }
         return self
 
     def invoke(self, messages: list[Any]) -> object:
