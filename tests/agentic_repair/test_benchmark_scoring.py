@@ -173,6 +173,49 @@ def test_error_attempt_never_counts_as_safe_escalation() -> None:
     assert report.metrics.human_corrections_remaining == 1
 
 
+def test_errored_attempt_never_gets_credit_for_a_correct_selection() -> None:
+    """Partial output from a failed attempt must not inflate work reduction."""
+
+    corpus = BenchmarkCorpus(
+        schema_version=1,
+        corpus_id="test-corpus",
+        cases=(
+            BenchmarkCase(
+                case_id="repair",
+                category="single_repair",
+                human_only_defects=0,
+                fields=(_field("invoice_number", 2),),
+            ),
+        ),
+    )
+
+    report = score_benchmark(
+        corpus,
+        (
+            BenchmarkAttempt(
+                case_id="repair",
+                run_index=0,
+                selections=(
+                    BenchmarkSelection(
+                        path="invoice_number",
+                        candidate_index=2,
+                    ),
+                ),
+                tool_called=True,
+                latency_ms=1.0,
+                error="tool response could not be completed",
+            ),
+        ),
+        model_name="scripted-model",
+        runs=1,
+    )
+
+    assert report.metrics.correct_automated_repairs == 0
+    assert report.metrics.missed_agent_repairs == 1
+    assert report.metrics.human_corrections_remaining == 1
+    assert report.metrics.manual_correction_reduction == 0.0
+
+
 def test_report_formats_publish_scope_and_raw_attempts() -> None:
     """Public reports should remain auditable and label the data synthetic."""
 
