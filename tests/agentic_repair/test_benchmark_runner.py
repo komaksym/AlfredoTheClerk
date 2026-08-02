@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from langchain.messages import AIMessage
 
+import src.agentic_repair.benchmark_runner as benchmark_runner_module
 from src.agentic_repair.benchmark_corpus import (
+    HEADLINE_CORPUS_ID,
     BenchmarkCandidate,
     BenchmarkCase,
     BenchmarkCorpus,
@@ -14,6 +18,7 @@ from src.agentic_repair.benchmark_runner import (
     run_benchmark,
     run_benchmark_case,
 )
+from src.agentic_repair.benchmark_scoring import BenchmarkAttempt
 
 
 class ScriptedModel:
@@ -54,7 +59,7 @@ def _candidate(value: str) -> BenchmarkCandidate:
         confidence=0.9,
         raw_text=value,
         same_line_text=f"Faktura VAT nr {value}",
-        rule="invoice_number_label",
+        rule=None,
         rejected_by=None,
     )
 
@@ -219,3 +224,63 @@ def test_run_benchmark_preserves_case_and_repeat_order() -> None:
         (1, "human-a"),
         (1, "human-b"),
     ]
+
+
+def test_main_writes_diagnostics_but_fails_systemic_model_errors(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """A fully failed model run must not finish with a successful exit code."""
+
+    corpus = BenchmarkCorpus(
+        schema_version=1,
+        corpus_id=HEADLINE_CORPUS_ID,
+        cases=(_repair_case(),),
+    )
+    attempts = (
+        BenchmarkAttempt(
+            case_id="repair",
+            run_index=0,
+            selections=(),
+            tool_called=False,
+            latency_ms=1.0,
+            error="RuntimeError: model unavailable",
+        ),
+    )
+    monkeypatch.setattr(
+        benchmark_runner_module,
+        "load_benchmark_corpus",
+        lambda path: corpus,
+    )
+    monkeypatch.setattr(
+        benchmark_runner_module,
+        "build_repair_model",
+        lambda **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        benchmark_runner_module,
+        "run_benchmark",
+        lambda *args, **kwargs: attempts,
+    )
+    json_path = tmp_path / "report.json"
+    markdown_path = tmp_path / "report.md"
+
+    exit_code = benchmark_runner_module.main(
+        [
+            "--corpus",
+            "ignored.json",
+            "--runs",
+            "1",
+            "--max-error-rate",
+            "1.0",
+            "--json-out",
+            str(json_path),
+            "--markdown-out",
+            str(markdown_path),
+        ]
+    )
+
+    assert exit_code == 1
+    assert json_path.is_file()
+    assert markdown_path.is_file()
+    assert "model unavailable" in json_path.read_text(encoding="utf-8")
