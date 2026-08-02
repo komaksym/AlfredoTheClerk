@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       runs:
-        description: "Repeated runs over all 200 persisted cases"
+        description: "Repeated runs over all 30 held-out hard cases"
         required: true
         default: "3"
         type: string
@@ -51,12 +51,13 @@ jobs:
               ;;
           esac
 
-      - name: Run benchmark
+      - name: Run held-out benchmark
         env:
           BENCHMARK_RUNS: ${{ inputs.runs }}
         run: |
           uv run python -m src.agentic_repair.benchmark_runner \
             --runs "$BENCHMARK_RUNS" \
+            --max-error-rate 0.05 \
             --json-out reports/agentic-repair-benchmark.json \
             --markdown-out reports/agentic-repair-benchmark.md
 
