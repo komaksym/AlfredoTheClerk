@@ -115,10 +115,7 @@ def _tool_call(candidate_index: int) -> AIMessage:
 def test_run_benchmark_case_uses_real_graph_and_records_selection() -> None:
     """A production tool call should become one auditable benchmark action."""
 
-    model = ScriptedModel(
-        _tool_call(1),
-        AIMessage(content="Repair complete."),
-    )
+    model = ScriptedModel(_tool_call(1))
 
     attempt = run_benchmark_case(_repair_case(), model, run_index=0)
 
@@ -129,7 +126,7 @@ def test_run_benchmark_case_uses_real_graph_and_records_selection() -> None:
     ]
     assert len(model.bound_tools) == 1
     assert model.bound_tools[0].name == "apply_repair_plan"
-    assert len(model.invocations) == 2
+    assert len(model.invocations) == 1
 
 
 def test_run_benchmark_case_records_safe_no_tool_decision() -> None:
