@@ -60,13 +60,15 @@ single-page, native/text-based PDF. Scans, OCR, photos, multi-page PDFs,
 correction invoices, advance invoices, non-domestic invoices, and arbitrary PDF
 layouts are outside this slice.
 
-Two deliberately broken smoke fixtures are available under
+Three deliberately broken smoke fixtures are available under
 `data/synthetic_data`:
 
 - `BROKEN_agent_ambiguous_seller_nip.pdf` routes an ambiguous seller NIP to the
   evidence-constrained agent.
 - `BROKEN_human_missing_buyer_nip.pdf` has no buyer-NIP candidate and requires a
   manual correction; its intended buyer NIP is `5423511615`.
+- `BROKEN_mixed_agent_and_human_nips.pdf` automatically repairs seller NIP
+  `8637940261`, then asks the reviewer to enter buyer NIP `5423511615`.
 
 ### Repair boundary
 
