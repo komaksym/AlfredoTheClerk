@@ -46,6 +46,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Build development environment snapshot
+        run: |
+          uv add --dev pyright playwright pytest-playwright
+          tar -czf dev-env.tgz pyproject.toml uv.lock .venv/lib/python3.13/site-packages
+
+      - name: Upload development environment snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-environment
+          path: dev-env.tgz
+          if-no-files-found: error
+
       - name: Lint
         run: uv run ruff check .
 
