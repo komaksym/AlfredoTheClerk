@@ -1,0 +1,351 @@
+"button" class="toolbar-button" data-fullscreen aria-label="Enter fullscreen">
++          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></svg>
++        </button>
+       </div>
+     </div>
+ 
+@@ -74,13 +74,13 @@
+           <span class="summary-icon summary-icon-agent" aria-hidden="true">
+             <svg viewBox="0 0 24 24"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+           </span>
+-          <span>Agent changes</span>
++          <span>Automated changes</span>
+         </span>
+         <span class="summary-side">
+-          {% if presentation.agent_changes %}
++          {% if presentation.automated_changes %}
+           <span class="success-chip">
+             <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 9.5l3 3 7-7"/></svg>
+-            {{ presentation.agent_changes|length }} change{% if presentation.agent_changes|length != 1 %}s{% endif %}
++            {{ presentation.automated_changes|length }} change{% if presentation.automated_changes|length != 1 %}s{% endif %}
+           </span>
+           {% else %}
+           <span class="neutral-chip">No changes</span>
+@@ -92,9 +92,9 @@
+         {% if session.agent_warning %}
+         <div class="agent-warning" role="status">{{ session.agent_warning }}</div>
+         {% endif %}
+-        {% if presentation.agent_changes %}
++        {% if presentation.automated_changes %}
+         <div class="change-list">
+-          {% for change in presentation.agent_changes %}
++          {% for change in presentation.automated_changes %}
+           <div class="change-row">
+             <div>
+               <strong>{{ change.label }}</strong>
+@@ -105,12 +105,12 @@
+               <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 9h11M10 5l4 4-4 4"/></svg>
+               <strong>{{ change.new_value }}</strong>
+             </div>
+-            <div class="meta-line">Candidate {{ change.candidate_index }}{% if change.confidence is not none %} · {{ "%.0f"|format(change.confidence * 100) }}% confidence{% endif %}</div>
++            <div class="meta-line">{{ change.origin_label }} · Candidate {{ change.candidate_index }}{% if change.confidence is not none %} · {{ "%.0f"|format(change.confidence * 100) }}% confidence{% endif %}</div>
+           </div>
+           {% endfor %}
+         </div>
+         {% elif not session.agent_warning %}
+-        <p class="empty-copy">The agent did not change any invoice fields.</p>
++        <p class="empty-copy">No automated invoice changes were accepted.</p>
+         {% endif %}
+       </div>
+     </details>
+diff --git a/tests/agentic_repair/test_agent_extraction_repair.py b/tests/agentic_repair/test_agent_extraction_repair.py
+index a09a78c..ffe888b 100644
+--- a/tests/agentic_repair/test_agent_extraction_repair.py
++++ b/tests/agentic_repair/test_agent_extraction_repair.py
+@@ -29,6 +29,7 @@ def test_system_prompt_describes_batch_repair_tool_contract() -> None:
+     assert "candidate_index" in prompt
+     assert "reason" in prompt
+     assert "do not invent" in prompt
++    assert "abstain" in prompt
+     assert "promote_candidate" not in prompt
+     assert "apply_repair_plan(path" not in prompt
+ 
+diff --git a/tests/agentic_repair/test_agent_failure_fallback.py b/tests/agentic_repair/test_agent_failure_fallback.py
+index 32c76f4..dbc9752 100644
+--- a/tests/agentic_repair/test_agent_failure_fallback.py
++++ b/tests/agentic_repair/test_agent_failure_fallback.py
+@@ -58,6 +58,19 @@ def test_agent_exception_returns_structured_failure(
+         validation_errors=[make_validation_error("invoice_number")],
+     )
+     _patch_extraction(monkeypatch, context)
++    deterministic_calls = 0
++
++    def no_deterministic_repair(*args: object, **kwargs: object) -> None:
++        """Record the single pre-agent deterministic decision attempt."""
++
++        nonlocal deterministic_calls
++        deterministic_calls += 1
++        return None
++
++    monkeypatch.setattr(
++        "src.agentic_repair.repair_orchestration._try_exact_label_fallback",
++        no_deterministic_repair,
++    )
+ 
+     def failing_runner(*args: object, **kwargs: object) -> None:
+         """Model a technical agent failure at the invocation boundary."""
+@@ -77,3 +90,4 @@ def test_agent_exception_returns_structured_failure(
+     assert result.agent_result is None
+     assert result.reason == "agent_exception"
+     assert result.correctness is None
++    assert deterministic_calls == 1
+diff --git a/tests/agentic_repair/test_ambiguous_fixture_agent_flow.py b/tests/agentic_repair/test_ambiguous_fixture_agent_flow.py
+index 7441b6f..fca3e61 100644
+--- a/tests/agentic_repair/test_ambiguous_fixture_agent_flow.py
++++ b/tests/agentic_repair/test_ambiguous_fixture_agent_flow.py
+@@ -9,6 +9,7 @@ import pdfplumber
+ import pytest
+ 
+ from src.agentic_repair.repair_orchestration import (
++    AutomatedRepairOrigin,
+     RepairWorkflowStatus,
+     run_shell_repair,
+ )
+@@ -43,6 +44,9 @@ def test_ambiguous_seller_nip_resolves_before_agent_invocation() -> None:
+ 
+     assert workflow.status is RepairWorkflowStatus.REPAIRED
+     assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
++    assert workflow.automated_repair is not None
++    assert workflow.automated_repair.origin is AutomatedRepairOrigin.DETERMINISTIC
++    assert workflow.agent_result is None
+     assert workflow.correctness is not None
+     assert workflow.correctness.status is CorrectnessStatus.READY_FOR_KSEF
+ 
+diff --git a/tests/agentic_repair/test_exact_label_fallback.py b/tests/agentic_repair/test_exact_label_fallback.py
+index 118edea..afb0df0 100644
+--- a/tests/agentic_repair/test_exact_label_fallback.py
++++ b/tests/agentic_repair/test_exact_label_fallback.py
+@@ -8,6 +8,7 @@ import pytest
+ 
+ from src.agentic_repair.agent_extraction_repair import AgentRepairResult
+ from src.agentic_repair.repair_orchestration import (
++    AutomatedRepairOrigin,
+     RepairWorkflowStatus,
+     run_shell_repair,
+ )
+@@ -17,6 +18,9 @@ from src.input_processing.invoice_text_field_extraction import (
+     FieldEvidence,
+ )
+ from src.input_processing.parse_pdf import ParsedDocument
++from src.invoice_gen.domain_shell import DomesticVatInvoiceShell
++from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
++from src.invoice_gen.invoice_correctness import CorrectnessResult, CorrectnessStatus
+ from tests.agentic_repair.factories import (
+     make_repair_context,
+     make_validation_error,
+@@ -90,3 +94,86 @@ def test_bare_nip_text_without_colon_does_not_bypass_agent(
+     assert len(calls) == 1
+     assert result.status is RepairWorkflowStatus.AGENT_FAILED
+     assert result.reason == "agent_no_tool_call"
++
++
++
++def test_exact_nip_line_records_deterministic_origin_without_agent_metadata(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    """An exact labelled repair must never be forged as an agent tool call."""
++
++    context = make_repair_context(
++        evidence={
++            "seller.nip": FieldEvidence(
++                value=None,
++                source="unresolved",
++                confidence=0.0,
++                bbox=None,
++                candidates=(
++                    Candidate(
++                        value="8637940261",
++                        source="regex",
++                        confidence=0.9,
++                        bbox=(0.0, 0.0, 10.0, 10.0),
++                        raw_text="8637940261",
++                        same_line_text="NIP: 8637940261",
++                    ),
++                ),
++            ),
++        },
++        validation_errors=[make_validation_error("seller.nip")],
++    )
++
++    def fake_run_full_extraction(
++        parsed_document: ParsedDocument,
++        *,
++        anchors: Any,
++    ) -> RepairContext:
++        """Return the exact-label context through the production seam."""
++
++        return context
++
++    monkeypatch.setattr(
++        "src.agentic_repair.repair_orchestration.run_full_extraction",
++        fake_run_full_extraction,
++    )
++
++    def fail_if_agent_runs(*args: object, **kwargs: object) -> None:
++        """Reject model use for deterministic evidence."""
++
++        raise AssertionError("deterministic repair must bypass the agent")
++
++    monkeypatch.setattr(
++        "src.agentic_repair.repair_orchestration.runner",
++        fail_if_agent_runs,
++    )
++
++    def ready_correctness(
++        shell: DomesticVatInvoiceShell,
++        extracted_summary: object,
++        generated_at: object = None,
++    ) -> CorrectnessResult:
++        """Accept the repaired shell at the shared correctness seam."""
++
++        return CorrectnessResult(
++            status=CorrectnessStatus.READY_FOR_KSEF,
++            shell=shell,
++            validation=ShellValidationResult(errors=[]),
++        )
++
++    monkeypatch.setattr(
++        "src.agentic_repair.repair_orchestration.check_invoice_correctness",
++        ready_correctness,
++    )
++
++    result = run_shell_repair(
++        ParsedDocument(sub_blocks=[], tables=[]),
++        model=object(),
++    )
++
++    assert result.status is RepairWorkflowStatus.REPAIRED
++    assert result.shell.seller.nip == "8637940261"
++    assert result.automated_repair is not None
++    assert result.automated_repair.origin is AutomatedRepairOrigin.DETERMINISTIC
++    assert result.automated_repair.agent_result is None
++    assert result.agent_result is None
+diff --git a/tests/agentic_repair/test_repair_orchestration.py b/tests/agentic_repair/test_repair_orchestration.py
+index f65695a..ee0f13c 100644
+--- a/tests/agentic_repair/test_repair_orchestration.py
++++ b/tests/agentic_repair/test_repair_orchestration.py
+@@ -13,6 +13,7 @@ import pytest
+ from src.agentic_repair.agent_extraction_repair import AgentRepairResult
+ from src.agentic_repair.repair_kernel import RepairResult
+ from src.agentic_repair.repair_orchestration import (
++    AutomatedRepairOrigin,
+     RepairWorkflowStatus,
+     run_shell_repair,
+ )
+@@ -145,6 +146,7 @@ def test_run_shell_repair_returns_no_repair_result_without_agent(
+     assert result.status is RepairWorkflowStatus.NO_REPAIR_NEEDED
+     assert result.context is context
+     assert result.shell is context.shell
++    assert result.automated_repair is None
+     assert result.agent_result is None
+     assert result.reason is None
+     assert result.correctness is correctness
+@@ -227,6 +229,10 @@ def test_run_shell_repair_returns_repaired_shell_from_agent(
+     assert result.shell is repaired_shell
+     assert result.shell.invoice_number == "FV/001"
+     assert context.shell.invoice_number == "BAD"
++    assert result.automated_repair is not None
++    assert result.automated_repair.origin is AutomatedRepairOrigin.AGENT
++    assert result.automated_repair.repair_result is agent_result.repair_result
++    assert result.automated_repair.agent_result is agent_result
+     assert result.agent_result is agent_result
+     assert result.reason is None
+     assert result.correctness is correctness
+@@ -347,6 +353,7 @@ def test_run_shell_repair_reports_agent_no_tool_call(
+     assert result.status is RepairWorkflowStatus.AGENT_FAILED
+     assert result.context is context
+     assert result.shell is context.shell
++    assert result.automated_repair is None
+     assert result.agent_result is agent_result
+     assert result.reason == "agent_no_tool_call"
+     assert result.correctness is None
+@@ -374,6 +381,7 @@ def test_run_shell_repair_reports_missing_repair_result_after_tool_call(
+     assert result.status is RepairWorkflowStatus.AGENT_FAILED
+     assert result.context is context
+     assert result.shell is context.shell
++    assert result.automated_repair is None
+     assert result.agent_result is agent_result
+     assert result.reason == "repair_result_is_missing"
+     assert result.correctness is None
+@@ -418,6 +426,8 @@ def test_run_shell_repair_routes_correctness_failure_to_manual_review(
+     assert result.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
+     assert result.context is context
+     assert result.shell is context.shell
++    assert result.automated_repair is not None
++    assert result.automated_repair.origin is AutomatedRepairOrigin.AGENT
+     assert result.agent_result is agent_result
+     assert result.correctness is correctness
+     assert result.reason == status.value
+@@ -447,3 +457,49 @@ def test_run_shell_repair_returns_manual_review_for_blocking_route(
+     assert result.agent_result is None
+     assert result.reason == "blocking_fields"
+     assert result.correctness is None
++
++
++@pytest.mark.parametrize(
++    ("agent_result", "expected_reason"),
++    [
++        (_agent_result(None, tool_called=False), "agent_no_tool_call"),
++        (_agent_result(None, tool_called=True), "repair_result_is_missing"),
++    ],
++)
++def test_unresolved_agent_result_does_not_retry_deterministic_repair(
++    monkeypatch: pytest.MonkeyPatch,
++    agent_result: AgentRepairResult,
++    expected_reason: str,
++) -> None:
++    """Unchanged evidence must not trigger a second deterministic pass."""
++
++    context = make_repair_context(
++        evidence={
++            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
++        },
++        validation_errors=[make_validation_error("invoice_number")],
++    )
++    _patch_extraction(monkeypatch, context)
++    deterministic_calls = 0
++
++    def no_deterministic_repair(*args: object, **kwargs: object) -> None:
++        """Record the only deterministic attempt allowed before the agent."""
++
++        nonlocal deterministic_calls
++        deterministic_calls += 1
++        return None
++
++    monkeypatch.setattr(
++        "src.agentic_repair.repair_orchestration._try_exact_label_fallback",
++        no_deterministic_repair,
++    )
++    monkeypatch.setattr(
++        "src.agentic_repair.repair_orchestration.runner",
++        lambda session, payload, model: agent_result,
++    )
++
++    result = run_shell_repair(_parsed_document(), model=object())
++
++    assert result.status is RepairWorkflowStatus.AGENT_FAILED
++    assert result.reason == expected_reason
++    assert deterministic_calls == 1
+diff --git a/tests/ksef/test_live_submission.py b/tests/ksef/test_live_submission.py
+index 0c06153..cf66829 100644
+--- a/tests/ksef/test_live_submission.py
++++ b/tests/ksef/test_live_submission.py
+@@ -1,8 +1,7 @@
+-"""Credential-gated integration test proving one synthetic invoice reaches KSeF TEST."""
++"""Strict CI integration test proving one synthetic invoice reaches KSeF TEST."""
+ 
+ from __future__ import annotations
+ 
+-import os
+ from datetime import date, datetime, timezone
+ from uuid import uuid4
+ 
+@@ -21,12 +20,8 @@ from src.ksef.submission import submit_ready_invoice
+ def test_synthetic_invoice_is_accepted_by_ksef_test() -> None:
+     """Submit one unique locally valid synthetic FA(3) invoice to real KSeF TEST."""
+ 
+-    if os.getenv("RUN_KSEF_LIVE") != "1":
+-        pytest.skip("set RUN_KSEF_LIVE=1 to enable the KSeF TEST proof")
+-
+     config = KsefTestConfig.from_env()
+-    if not confi

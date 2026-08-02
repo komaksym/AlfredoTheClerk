@@ -1,32 +1,20 @@
-name: PR 9 implementation bootstrap
+name: CI
 
 on:
+  pull_request:
   push:
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-and-verify:
-    if: github.ref_name == 'feat/review-ui-redesign'
+  main:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      KSEF_TEST_TOKEN: ${{ secrets.KSEF_TEST_TOKEN }}
-      KSEF_TEST_CONTEXT_NIP: ${{ secrets.KSEF_TEST_CONTEXT_NIP }}
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply approved implementation
-        run: |
-          cat .github/pr9-bootstrap/part*.patch > /tmp/pr9.patch
-          git apply --check /tmp/pr9.patch
-          git apply /tmp/pr9.patch
-          cp .github/pr9-bootstrap/ci-final.yml .github/workflows/ci.yml
-          rm -rf .github/pr9-bootstrap
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
@@ -38,17 +26,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13.0"
-
-      - name: Refresh dependency lock
-        run: uv lock
-
-      - name: Commit final implementation
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix(review): harden repair safety and CI"
-          git push origin HEAD:${GITHUB_REF_NAME}
 
       - name: Install dependencies
         run: uv sync --locked
@@ -151,6 +128,31 @@ jobs:
           uv run python tests/smoke_installed_xsd_validation.py
           dist/alfredotheclerk-*.whl
 
+  ksef-live:
+    needs: main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KSEF_TEST_TOKEN: ${{ secrets.KSEF_TEST_TOKEN }}
+      KSEF_TEST_CONTEXT_NIP: ${{ secrets.KSEF_TEST_CONTEXT_NIP }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.0"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
       - name: Require KSeF TEST credentials
         run: |
           test -n "$KSEF_TEST_TOKEN" || {
@@ -161,6 +163,9 @@ jobs:
             echo "::error::KSEF_TEST_CONTEXT_NIP repository secret is not configured"
             exit 1
           }
+
+      - name: Compile Python sources
+        run: uv run python -m compileall src tests
 
       - name: Run live KSeF TEST proof
         run: uv run pytest -m ksef_live -q

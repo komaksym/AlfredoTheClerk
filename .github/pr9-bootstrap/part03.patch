@@ -1,0 +1,396 @@
+g.token or not config.context_nip:
+-        pytest.skip("KSEF_TEST_TOKEN and KSEF_TEST_CONTEXT_NIP are required")
++    config.require_credentials()
+ 
+     shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
+     shell.seller.nip = config.context_nip
+diff --git a/tests/review_ui/test_app_routes.py b/tests/review_ui/test_app_routes.py
+index 8bbc2a9..40b27ac 100644
+--- a/tests/review_ui/test_app_routes.py
++++ b/tests/review_ui/test_app_routes.py
+@@ -163,6 +163,9 @@ def test_blocking_upload_renders_side_by_side_review_resources() -> None:
+ 
+     original = client.get("/review/original.pdf")
+     assert original.status_code == 200
++    assert original.headers["content-disposition"] == (
++        'attachment; filename="invoice.pdf"'
++    )
+     assert original.content.startswith(b"%PDF")
+ 
+     page = client.get("/review/page.png")
+diff --git a/tests/review_ui/test_mixed_fixture_flow.py b/tests/review_ui/test_mixed_fixture_flow.py
+index 1a73a32..766f061 100644
+--- a/tests/review_ui/test_mixed_fixture_flow.py
++++ b/tests/review_ui/test_mixed_fixture_flow.py
+@@ -8,7 +8,10 @@ from typing import Any
+ import pdfplumber
+ from fastapi.testclient import TestClient
+ 
+-from src.agentic_repair.repair_orchestration import RepairWorkflowStatus
++from src.agentic_repair.repair_orchestration import (
++    AutomatedRepairOrigin,
++    RepairWorkflowStatus,
++)
+ from src.agentic_repair.repair_routing import RepairRouteStatus, route_repair_context
+ from src.input_processing.extraction_comparison import run_full_extraction
+ from src.input_processing.parse_pdf import parse_data
+@@ -87,12 +90,14 @@ def test_mixed_fixture_preserves_agent_change_until_human_finishes() -> None:
+     )
+     assert [
+         (change.path, change.new_value)
+-        for change in presentation.agent_changes
++        for change in presentation.automated_changes
+     ] == [("seller.nip", SELLER_NIP)]
++    assert presentation.automated_changes[0].origin is AutomatedRepairOrigin.DETERMINISTIC
++    assert session.workflow.agent_result is None
+     assert [field.path for field in presentation.fields] == ["buyer.nip"]
+ 
+     review = client.get("/review")
+-    assert "Agent changes" in review.text
++    assert "Automated changes" in review.text
+     assert 'name="mode::buyer.nip"' in review.text
+     assert 'name="mode::seller.nip"' not in review.text
+ 
+diff --git a/tests/review_ui/test_presenter.py b/tests/review_ui/test_presenter.py
+index b14bdc4..d04c144 100644
+--- a/tests/review_ui/test_presenter.py
++++ b/tests/review_ui/test_presenter.py
+@@ -9,6 +9,8 @@ from src.agentic_repair.agent_extraction_repair import AgentRepairResult
+ from src.agentic_repair.human_review import build_human_review_case
+ from src.agentic_repair.repair_kernel import RepairDecision, RepairResult
+ from src.agentic_repair.repair_orchestration import (
++    AcceptedAutomatedRepair,
++    AutomatedRepairOrigin,
+     RepairWorkflowResult,
+     RepairWorkflowStatus,
+ )
+@@ -30,8 +32,8 @@ from tests.agentic_repair.factories import (
+ )
+ 
+ 
+-def test_presentation_separates_successful_agent_changes_from_residual_fields() -> None:
+-    """Resolved agent fields belong in the diff, not the editable residual list."""
++def test_presentation_separates_automated_changes_from_residual_fields() -> None:
++    """Resolved automated fields belong in the diff, not the editable residual list."""
+ 
+     from src.review_ui.presenter import build_review_presentation
+ 
+@@ -76,6 +78,11 @@ def test_presentation_separates_successful_agent_changes_from_residual_fields()
+         shell=context.shell,
+         route=route,
+         context=context,
++        automated_repair=AcceptedAutomatedRepair(
++            repair_result=repair_result,
++            origin=AutomatedRepairOrigin.AGENT,
++            agent_result=agent_result,
++        ),
+         agent_result=agent_result,
+         reason=CorrectnessStatus.INVALID_SHELL.value,
+         correctness=correctness,
+@@ -89,13 +96,15 @@ def test_presentation_separates_successful_agent_changes_from_residual_fields()
+         PdfPageView(image_png=b"png", width=100.0, height=100.0),
+     )
+ 
+-    assert len(presentation.agent_changes) == 1
+-    change = presentation.agent_changes[0]
++    assert len(presentation.automated_changes) == 1
++    change = presentation.automated_changes[0]
+     assert change.path == "invoice_number"
+     assert change.old_value == "BAD"
+     assert change.new_value == "FV/001"
+     assert change.candidate_index == 1
+     assert change.confidence == 0.9
++    assert change.origin is AutomatedRepairOrigin.AGENT
++    assert change.origin_label == "Agent"
+ 
+     assert [field.path for field in presentation.fields] == ["buyer.nip"]
+     assert presentation.fields[0].label == "Buyer NIP"
+diff --git a/tests/review_ui/test_review_ui_redesign.py b/tests/review_ui/test_review_ui_redesign.py
+index a1f8362..c3affc7 100644
+--- a/tests/review_ui/test_review_ui_redesign.py
++++ b/tests/review_ui/test_review_ui_redesign.py
+@@ -69,6 +69,9 @@ def test_review_page_uses_approved_product_shell() -> None:
+     assert "Needs review" in review.text
+     assert "invoice.pdf" in review.text
+     assert 'class="pdf-toolbar"' in review.text
++    assert 'data-document-card' in review.text
++    assert 'data-fullscreen' in review.text
++    assert 'aria-label="Enter fullscreen"' in review.text
+     assert 'class="agent-changes"' in review.text
+     assert "Unresolved fields" in review.text
+     assert "Invoice number" in review.text
+@@ -97,6 +100,11 @@ def test_review_page_uses_approved_product_shell() -> None:
+     assert page.status_code == 200
+     assert page.content.startswith(b"\x89PNG\r\n\x1a\n")
+ 
++    script = client.get("/static/review.js")
++    assert script.status_code == 200
++    assert "requestFullscreen" in script.text
++    assert "exitFullscreen" in script.text
++
+ 
+ def test_review_page_embeds_critical_light_workspace_style() -> None:
+     """The page response should own a light shell without extra static CSS."""
+diff --git a/tests/review_ui/test_workflow_integration.py b/tests/review_ui/test_workflow_integration.py
+index 73dda0a..d7e306d 100644
+--- a/tests/review_ui/test_workflow_integration.py
++++ b/tests/review_ui/test_workflow_integration.py
+@@ -13,6 +13,8 @@ from src.agentic_repair.agent_extraction_repair import AgentRepairResult
+ from src.agentic_repair.human_review import HumanReviewInputKind
+ from src.agentic_repair.repair_kernel import RepairDecision, RepairResult
+ from src.agentic_repair.repair_orchestration import (
++    AcceptedAutomatedRepair,
++    AutomatedRepairOrigin,
+     RepairWorkflowResult,
+     RepairWorkflowStatus,
+ )
+@@ -135,6 +137,11 @@ def test_fully_agent_repaired_result_skips_human_form_and_shows_diff() -> None:
+         shell=repaired_shell,
+         route=route_repair_context(context),
+         context=context,
++        automated_repair=AcceptedAutomatedRepair(
++            repair_result=repair_result,
++            origin=AutomatedRepairOrigin.AGENT,
++            agent_result=agent_result,
++        ),
+         agent_result=agent_result,
+         correctness=correctness,
+     )
+@@ -143,8 +150,8 @@ def test_fully_agent_repaired_result_skips_human_form_and_shows_diff() -> None:
+     _upload(client)
+     page = client.get("/result")
+ 
+-    assert "Agent repair successful" in page.text
+-    assert "Agent changes" in page.text
++    assert "Automated repair successful" in page.text
++    assert "Automated changes" in page.text
+     assert "BAD" in page.text
+     assert str(repaired_shell.invoice_number) in page.text
+     assert "Review &amp; Validate" not in page.text
+@@ -190,10 +197,14 @@ def test_mixed_agent_and_blocking_fields_show_only_residual_human_control() -> N
+         shell=original_shell,
+         route=route_repair_context(context),
+         context=context,
+-        agent_result=AgentRepairResult(
++        automated_repair=AcceptedAutomatedRepair(
+             repair_result=repair_result,
+-            tool_called=True,
+-            final_messages=(),
++            origin=AutomatedRepairOrigin.AGENT,
++            agent_result=AgentRepairResult(
++                repair_result=repair_result,
++                tool_called=True,
++                final_messages=(),
++            ),
+         ),
+         correctness=CorrectnessResult(
+             status=CorrectnessStatus.INVALID_SHELL,
+@@ -207,7 +218,7 @@ def test_mixed_agent_and_blocking_fields_show_only_residual_human_control() -> N
+     _upload(client)
+     page = client.get("/review")
+ 
+-    assert "Agent changes" in page.text
++    assert "Automated changes" in page.text
+     assert 'name="mode::buyer.nip"' in page.text
+     assert 'name="mode::invoice_number"' not in page.text
+ 
+diff --git a/tests/agentic_repair/test_agent_abstention.py b/tests/agentic_repair/test_agent_abstention.py
+new file mode 100644
+index 0000000..1ddf50c
+--- /dev/null
++++ b/tests/agentic_repair/test_agent_abstention.py
+@@ -0,0 +1,75 @@
++"""Regression tests for safe agent abstention on ambiguous evidence."""
++
++from __future__ import annotations
++
++from typing import Any
++
++from langchain.messages import AIMessage
++
++from src.agentic_repair.agent_extraction_repair import runner
++from src.agentic_repair.repair_payload import (
++    AgentRepairCandidate,
++    AgentRepairField,
++    AgentRepairPayload,
++)
++from tests.agentic_repair.factories import make_repair_session
++
++
++class _AbstainingModel:
++    """Return no tool call while recording the tool-binding contract."""
++
++    def __init__(self) -> None:
++        self.bind_kwargs: dict[str, Any] | None = None
++
++    def bind_tools(self, tools: list[Any], **kwargs: Any) -> _AbstainingModel:
++        """Record whether the runner forced a particular tool."""
++
++        self.bind_kwargs = kwargs
++        return self
++
++    def invoke(self, messages: list[Any]) -> AIMessage:
++        """Abstain because the candidates are semantically indistinguishable."""
++
++        return AIMessage(content="Evidence is insufficient to choose safely.")
++
++
++def test_runner_allows_model_to_abstain_without_forcing_a_tool() -> None:
++    """Ambiguous valid candidates must remain unresolved instead of guessed."""
++
++    model = _AbstainingModel()
++    payload = AgentRepairPayload(
++        payload=(
++            AgentRepairField(
++                path="seller.nip",
++                current_value=None,
++                diagnostic_status=None,
++                validation_errors=(),
++                candidates=(
++                    AgentRepairCandidate(
++                        index=0,
++                        value="8637940261",
++                        confidence=0.9,
++                        raw_text="8637940261",
++                        same_line_text="Kontrahent: 8637940261",
++                        rule=None,
++                        rejected_by=None,
++                    ),
++                    AgentRepairCandidate(
++                        index=1,
++                        value="6690743910",
++                        confidence=0.9,
++                        raw_text="6690743910",
++                        same_line_text="Kontrahent: 6690743910",
++                        rule=None,
++                        rejected_by=None,
++                    ),
++                ),
++            ),
++        )
++    )
++
++    result = runner(make_repair_session(), payload, model)
++
++    assert model.bind_kwargs == {}
++    assert result.tool_called is False
++    assert result.repair_result is None
+diff --git a/tests/ksef/test_ksef_config.py b/tests/ksef/test_ksef_config.py
+new file mode 100644
+index 0000000..95c8b42
+--- /dev/null
++++ b/tests/ksef/test_ksef_config.py
+@@ -0,0 +1,36 @@
++"""Tests for strict KSeF TEST runtime configuration."""
++
++from __future__ import annotations
++
++import pytest
++
++from src.ksef.config import KsefTestConfig
++
++
++def test_require_credentials_accepts_complete_test_configuration() -> None:
++    """Strict live CI may proceed only when both credentials are present."""
++
++    KsefTestConfig(token="token", context_nip="1234567890").require_credentials()
++
++
++@pytest.mark.parametrize(
++    ("config", "missing_names"),
++    [
++        (KsefTestConfig(), ("KSEF_TEST_TOKEN", "KSEF_TEST_CONTEXT_NIP")),
++        (KsefTestConfig(context_nip="1234567890"), ("KSEF_TEST_TOKEN",)),
++        (KsefTestConfig(token="token"), ("KSEF_TEST_CONTEXT_NIP",)),
++    ],
++)
++def test_require_credentials_names_every_missing_secret(
++    config: KsefTestConfig,
++    missing_names: tuple[str, ...],
++) -> None:
++    """Credential failures must be actionable without exposing secret values."""
++
++    with pytest.raises(ValueError) as raised:
++        config.require_credentials()
++
++    message = str(raised.value)
++    for name in missing_names:
++        assert name in message
++    assert "token=<redacted>" not in message
+diff --git a/tests/review_ui/test_browser_e2e.py b/tests/review_ui/test_browser_e2e.py
+new file mode 100644
+index 0000000..fd625db
+--- /dev/null
++++ b/tests/review_ui/test_browser_e2e.py
+@@ -0,0 +1,163 @@
++"""Real-browser coverage for the complete local human-review workflow."""
++
++from __future__ import annotations
++
++from collections.abc import Iterator
++from pathlib import Path
++import os
++import socket
++from threading import Thread
++from time import monotonic, sleep
++from typing import Any
++
++import httpx
++from playwright.sync_api import Page, expect
++import pytest
++import uvicorn
++
++from src.review_ui.app import create_app
++from src.review_ui.session import ReviewSession
++
++
++_REPO_ROOT = Path(__file__).resolve().parents[2]
++_FIXTURE = (
++    _REPO_ROOT
++    / "data/synthetic_data/BROKEN_human_missing_buyer_nip.pdf"
++)
++_BUYER_NIP = "5423511615"
++
++
++class _AgentMustNotRun:
++    """Reject model use for the manual-only browser fixture."""
++
++    def bind_tools(self, tools: list[Any], **kwargs: Any) -> None:
++        """Fail if the no-candidate fixture reaches the agent boundary."""
++
++        raise AssertionError("manual-only browser fixture must bypass the agent")
++
++
++def _unused_port() -> int:
++    """Reserve and release one loopback port for the test server."""
++
++    with socket.socket() as listener:
++        listener.bind(("127.0.0.1", 0))
++        return int(listener.getsockname()[1])
++
++
++@pytest.fixture(scope="session")
++def browser_type_launch_args() -> dict[str, object]:
++    """Use a system Chromium override only when the environment supplies one."""
++
++    executable = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE")
++    if executable:
++        return {"executable_path": executable, "args": ["--no-sandbox"]}
++    return {}
++
++
++@pytest.fixture(scope="module")
++def review_server_url() -> Iterator[str]:
++    """Serve one empty real FastAPI review app for browser interaction."""
++
++    port = _unused_port()
++    session = ReviewSession(model=_AgentMustNotRun())
++    server = uvicorn.Server(
++        uvicorn.Config(
++            create_app(session=session),
++            host="127.0.0.1",
++            port=port,
++            log_level="warning",
++        )
++    )
++    thread = Thread(tar

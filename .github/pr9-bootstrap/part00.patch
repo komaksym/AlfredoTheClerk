@@ -1,0 +1,378 @@
+diff --git a/README.md b/README.md
+index f2efbee..18493b3 100644
+--- a/README.md
++++ b/README.md
+@@ -12,10 +12,11 @@ The current local product path is:
+ ```text
+ single-page native-text PDF
+ -> deterministic extraction + evidence
+--> evidence-constrained agent repair when legal
+--> shared correctness pipeline
+-   -> READY_FOR_KSEF -> download FA(3) XML
+-   -> unresolved     -> human review -> correctness -> READY_FOR_KSEF
++-> exact-label deterministic repair when uniquely proven
++-> optional evidence-constrained agent repair when ambiguity remains
++   -> safe selection -> shared correctness pipeline
++   -> abstain/fail   -> human review
++-> READY_FOR_KSEF -> download FA(3) XML
+ ```
+ 
+ The app is intentionally single-user, in-memory, and bound to `127.0.0.1`.
+@@ -63,8 +64,8 @@ layouts are outside this slice.
+ Three deliberately broken smoke fixtures are available under
+ `data/synthetic_data`:
+ 
+-- `BROKEN_agent_ambiguous_seller_nip.pdf` routes an ambiguous seller NIP to the
+-  evidence-constrained agent.
++- `BROKEN_agent_ambiguous_seller_nip.pdf` contains competing seller-NIP
++  candidates; the unique literal `NIP:` evidence is resolved deterministically.
+ - `BROKEN_human_missing_buyer_nip.pdf` has no buyer-NIP candidate and requires a
+   manual correction; its intended buyer NIP is `5423511615`.
+ - `BROKEN_mixed_agent_and_human_nips.pdf` automatically repairs seller NIP
+@@ -74,11 +75,15 @@ Three deliberately broken smoke fixtures are available under
+ 
+ The agent receives only fields with usable extracted candidates and may only
+ promote one of those existing values. It cannot invent replacements or edit
+-`summary.*` source totals. Fields with no legal candidate go directly to human
+-review; mixed invoices let the agent repair its safe subset first.
+-
+-The human-review screen shows the original invoice beside unresolved fields,
+-keeps successful agent changes as a read-only diff, and allows the reviewer to
++`summary.*` source totals. Tool use is optional: when the supplied evidence does
++not safely distinguish candidates, the model must abstain and the invoice moves
++to human review without promoting a value. Fields with no legal candidate go
++directly to human review.
++
++Accepted automated repairs record truthful provenance as either
++`Deterministic rule` or `Agent`; deterministic work is never counted as a model tool call. The
++human-review screen shows the original invoice beside unresolved fields, keeps
++successful automated changes as a read-only diff, and allows the reviewer to
+ select an extracted candidate or enter an explicit canonical correction. Human
+ changes are applied as one attributed batch and rerun through the same
+ correctness pipeline. Source-total mismatches keep their extracted totals
+@@ -93,16 +98,37 @@ Remote KSeF submission remains an explicit separate capability.
+ Repository gates:
+ 
+ ```bash
+-uv run ruff check src tests
+-uv run pytest
++uv run ruff check .
++uv run pyright src tests
++uv run pytest -q -m "not browser_e2e and not ksef_live"
++uv run playwright install chromium
++uv run pytest -q -m browser_e2e
+ uv run python -m compileall src tests
++uv build --wheel
++uv run python tests/smoke_installed_xsd_validation.py \
++  dist/alfredotheclerk-*.whl
+ ```
+ 
+-CI additionally:
+-
+-- captures a headless-Chrome human-fallback screenshot;
+-- submits the manual correction and captures the resulting `READY_FOR_KSEF`
+-  screen;
+-- uploads both screenshots as the `human-review-browser-smoke` artifact;
+-- builds the wheel; and
+-- smoke-tests the installed FA(3) schema and packaged UI resources.
++Pyright checks the full `src` and `tests` trees in basic mode. The configuration
++contains a narrow explicit ignore list for known pre-existing type debt; all new
++and modified files remain inside the gate.
++
++CI runs the gates in lint → typecheck → tests → browser E2E → screenshot → build
++order. The Playwright test uploads a PDF, focuses and fills the manual correction,
++verifies JavaScript selected the correct hidden mode, uses the PDF download and
++fullscreen controls, submits through the visible button, reaches
++`READY_FOR_KSEF`, and downloads the generated XML.
++
++CI also captures normal and forced-dark Chrome screenshots and uploads them as
++the `human-review-browser-smoke` artifact, builds the wheel, and smoke-tests the
++installed FA(3) schema and packaged UI resources.
++
++### Strict KSeF TEST gate
++
++Every push, pull request, and manual workflow run executes a real synthetic
++invoice submission to KSeF TEST after the local `main` job succeeds. The
++`ksef-live` job requires `KSEF_TEST_TOKEN` and `KSEF_TEST_CONTEXT_NIP`; missing
++credentials, transport failures, rejection, or timeout fail CI rather than
++skipping the proof. Each invoice number is unique to avoid duplicate collisions.
++Fork pull requests cannot pass unless GitHub makes the required repository
++secrets available, which is intentional for this strict gate.
+diff --git a/pyproject.toml b/pyproject.toml
+index f931942..a83b258 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -32,12 +32,40 @@ major_version_zero = true
+ [tool.pytest.ini_options]
+ pythonpath = ["."]
+ markers = [
+-    "ksef_live: opt-in test that submits a synthetic invoice to KSeF TEST",
++    "ksef_live: strict test that submits a synthetic invoice to KSeF TEST",
++    "browser_e2e: real Chromium interaction against the FastAPI review app",
+ ]
+ 
+ [tool.ruff]
+ line-length = 80
+ 
++[tool.pyright]
++typeCheckingMode = "basic"
++pythonVersion = "3.13"
++include = ["src", "tests"]
++ignore = [
++    "src/agentic_repair/human_review.py",
++    "src/input_processing/extraction_comparison.py",
++    "src/input_processing/invoice_text_field_extraction.py",
++    "src/input_processing/parse_pdf.py",
++    "src/input_processing/populate_shell.py",
++    "src/invoice_gen/domestic_vat_faktura_mapping.py",
++    "src/invoice_gen/domestic_vat_shell_summary.py",
++    "src/invoice_gen/fa3_xsd_validation.py",
++    "src/invoice_gen/invoice_correctness.py",
++    "src/invoice_gen/pdf_rendering.py",
++    "src/ksef/crypto.py",
++    "tests/agentic_repair/factories.py",
++    "tests/input_processing/test_extraction_comparison.py",
++    "tests/input_processing/test_parse.py",
++    "tests/invoice_gen/test_domestic_vat_seed.py",
++    "tests/invoice_gen/test_domestic_vat_shell_validation.py",
++    "tests/invoice_gen/test_invoice_correctness.py",
++    "tests/review_ui/test_pdf_view.py",
++]
++venvPath = "."
++venv = ".venv"
++
+ [tool.setuptools.packages.find]
+ where = ["."]
+ include = ["src", "src.*"]
+@@ -49,6 +77,9 @@ include = ["src", "src.*"]
+ [dependency-groups]
+ dev = [
+     "detect-secrets>=1.5.0",
++    "playwright>=1.62.0",
++    "pyright>=1.1.411",
+     "pytest>=9.0.2",
++    "pytest-playwright>=0.8.0",
+     "ruff>=0.15.8",
+ ]
+diff --git a/src/agentic_repair/agent_extraction_repair.py b/src/agentic_repair/agent_extraction_repair.py
+index 05e9c2d..24baade 100644
+--- a/src/agentic_repair/agent_extraction_repair.py
++++ b/src/agentic_repair/agent_extraction_repair.py
+@@ -8,6 +8,7 @@ from typing import Any, Callable, Literal
+ from dataclasses import dataclass, asdict
+ 
+ from langchain.messages import (
++    AIMessage,
+     AnyMessage,
+     HumanMessage,
+     SystemMessage,
+@@ -32,8 +33,10 @@ You repair extracted invoice fields by selecting from existing candidates.
+ 
+ The payload contains only fields that deterministic routing has classified as
+ repairable and every field has at least one legal evidence candidate. Call
+-apply_repair_plan exactly once. Pass repair_commands as a JSON list and include
+-one selection for every field in the payload. Each item must contain:
++apply_repair_plan at most once. Pass repair_commands as a JSON list and include
++one selection for every field only when the evidence safely distinguishes them.
++If any field remains ambiguous, abstain and do not call a tool. Each item must
++contain:
+ - path: exact field path from the payload
+ - candidate_index: zero-based index of an existing candidate for that path
+ - reason: brief evidence-based explanation for the selected candidate
+@@ -90,13 +93,7 @@ def runner(
+     tools, get_latest_result = build_repair_tools(session)
+ 
+     tools_by_name = {tool.name: tool for tool in tools}
+-    model_with_tools = model.bind_tools(
+-        tools,
+-        tool_choice={
+-            "type": "function",
+-            "function": {"name": tools[0].name},
+-        },
+-    )
++    model_with_tools = model.bind_tools(tools)
+ 
+     # Build workflow
+     agent_builder = StateGraph(MessagesState)
+@@ -104,8 +101,12 @@ def runner(
+     # Add nodes
+     llm_call = make_llm_call_node(model_with_tools)
+     tool_node = make_llm_tool_node(tools_by_name)
+-    agent_builder.add_node("llm_call", llm_call)
+-    agent_builder.add_node("tool_node", tool_node)
++    agent_builder.add_node(
++        "llm_call", llm_call  # pyright: ignore[reportArgumentType]
++    )
++    agent_builder.add_node(
++        "tool_node", tool_node  # pyright: ignore[reportArgumentType]
++    )
+ 
+     # Add edges to connect nodes
+     agent_builder.add_edge(START, "llm_call")
+@@ -247,6 +248,7 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyrig
+ 
+     messages = state["messages"]
+     last_message = messages[-1]
++    tool_calls = last_message.tool_calls if isinstance(last_message, AIMessage) else []
+     tool_calls_used = sum(1 for m in messages if isinstance(m, ToolMessage))
+ 
+     if state["llm_calls"] > MAX_LLM_CALLS:
+@@ -255,7 +257,7 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyrig
+     if tool_calls_used >= MAX_TOOL_CALLS:
+         return END
+ 
+-    if last_message.tool_calls:
++    if tool_calls:
+         return "tool_node"
+ 
+     return END
+@@ -270,18 +272,21 @@ def make_llm_tool_node(
+         """Run requested tools and return their observations as messages."""
+ 
+         last_message = state["messages"][-1]
++        if not isinstance(last_message, AIMessage):
++            raise ValueError("Tool node requires an AI message")
++        tool_calls = last_message.tool_calls
+ 
+         tool_calls_used = sum(
+             1 for m in state["messages"] if isinstance(m, ToolMessage)
+         )
+         remaining = MAX_TOOL_CALLS - tool_calls_used
+-        requested = len(last_message.tool_calls)
++        requested = len(tool_calls)
+ 
+         if requested > remaining:
+             raise ValueError("Tool call budget exceeded")
+ 
+         result: list[ToolMessage] = []
+-        for tool_call in last_message.tool_calls:
++        for tool_call in tool_calls:
+             if tool_call["name"] not in tools_by_name:
+                 raise ValueError("The tool is not in the tool whitelist")
+ 
+diff --git a/src/agentic_repair/repair_orchestration.py b/src/agentic_repair/repair_orchestration.py
+index 5da6fe1..a8bbac9 100644
+--- a/src/agentic_repair/repair_orchestration.py
++++ b/src/agentic_repair/repair_orchestration.py
+@@ -46,6 +46,44 @@ class RepairWorkflowStatus(Enum):
+     AGENT_FAILED = "agent_failed"
+ 
+ 
++class AutomatedRepairOrigin(Enum):
++    """Source that selected an accepted automated repair plan."""
++
++    DETERMINISTIC = "deterministic"
++    AGENT = "agent"
++
++    @property
++    def label(self) -> str:
++        """Return the human-facing provenance label for this origin."""
++
++        if self is AutomatedRepairOrigin.DETERMINISTIC:
++            return "Deterministic rule"
++        return "Agent"
++
++
++@dataclass(kw_only=True, frozen=True)
++class AcceptedAutomatedRepair:
++    """One accepted automated repair with truthful selection provenance."""
++
++    repair_result: RepairResult
++    origin: AutomatedRepairOrigin
++    agent_result: AgentRepairResult | None = None
++
++    def __post_init__(self) -> None:
++        """Reject provenance combinations that could misstate model use."""
++
++        if (
++            self.origin is AutomatedRepairOrigin.DETERMINISTIC
++            and self.agent_result is not None
++        ):
++            raise ValueError("deterministic repair cannot have agent metadata")
++        if (
++            self.origin is AutomatedRepairOrigin.AGENT
++            and self.agent_result is None
++        ):
++            raise ValueError("agent repair requires agent metadata")
++
++
+ @dataclass(kw_only=True, frozen=True)
+ class RepairWorkflowResult:
+     """Application-level repair result returned to production callers."""
+@@ -54,6 +92,7 @@ class RepairWorkflowResult:
+     shell: DomesticVatInvoiceShell
+     route: RepairRoute
+     context: RepairContext
++    automated_repair: AcceptedAutomatedRepair | None = None
+     agent_result: AgentRepairResult | None = None
+     reason: str | None = None
+     correctness: CorrectnessResult | None = None
+@@ -77,6 +116,7 @@ def run_shell_repair(
+             route=route,
+             candidate_shell=context.shell,
+             success_status=RepairWorkflowStatus.NO_REPAIR_NEEDED,
++            automated_repair=None,
+             agent_result=None,
+             generated_at=generated_at,
+         )
+@@ -90,7 +130,6 @@ def run_shell_repair(
+             shell=context.shell,
+             route=route,
+             context=context,
+-            agent_result=None,
+             reason="blocking_fields",
+         )
+ 
+@@ -108,17 +147,17 @@ def _run_agent_repair(
+     session = RepairSession.from_context(context)
+     deterministic_result = _try_exact_label_fallback(session, context, route)
+     if deterministic_result is not None:
+-        deterministic_agent_result = AgentRepairResult(
++        accepted = AcceptedAutomatedRepair(
+             repair_result=deterministic_result,
+-            tool_called=True,
+-            final_messages=(),
++            origin=AutomatedRepairOrigin.DETERMINISTIC,
+         )
+         return _finish_correctness(
+             context=context,
+             route=route,
+             candidate_shell=deterministic_result.shell,
+             success_status=RepairWorkflowStatus.REPAIRED,
+-            agent_result=deterministic_agent_result,
++            automated_repair=accepted,
++            agent_result=None,
+             generated_at=generated_at,
+         )
+ 
+@@ -126,17 +165,14 @@ def _run_agent_repair(
+     try:
+         agent_result = runner(session, payload, model)
+     except Exception:
+-        return _fallback_or_agent_failure(
+-            session=session,
++        return _agent_failed(
+             context=context,
+             route=route,
+             agent_result=None,
+             reason="agent_exception",
+-            generated_at=generated_at,
+         )
+ 
+     return _agent_result_to_workflow_result(
+-        session=session,
+         context=context,
+         route=route,
+         agent_result=agent_result,
+@@ -146,76 +182,42 @@ def _run_agent_repair(
+ 
+ def _agent_result_to_workflow_result(
+     *,
+-    session: RepairSession,
+     context: RepairContext,
+     route: RepairRoute,
+     agent_result: AgentRepairResult,
+     generated_at: datetime | None,
+ ) -> RepairWorkflowResult:
+-    """Classify an agent run as repaired, failed, or manual-review needed."""
++   
