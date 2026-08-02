@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 from src.agentic_repair.agent_extraction_repair import runner
 from src.agentic_repair.benchmark_corpus import (
-    AGENTIC_REPAIR_CORPUS_PATH,
     BenchmarkCase,
     BenchmarkCorpus,
     build_agent_payload,
-    load_benchmark_corpus,
+)
+from src.agentic_repair.benchmark_publication import (
+    HEADLINE_CORPUS_PATH,
+    load_headline_corpus,
 )
 from src.agentic_repair.benchmark_scoring import (
     BenchmarkAttempt,
+    BenchmarkReport,
     BenchmarkSelection,
     report_to_json,
     report_to_markdown,
@@ -31,9 +35,13 @@ from src.agentic_repair.repair_kernel import (
     RepairDecision,
     RepairPlanCommand,
     RepairResult,
+    RepairSession,
 )
 from src.invoice_gen.domain_shell import build_domestic_vat_shell
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
+
+
+DEFAULT_MAX_ERROR_RATE = 0.05
 
 
 class BenchmarkRunnerError(ValueError):
@@ -111,7 +119,7 @@ def run_benchmark_case(
     started = perf_counter()
     try:
         result = runner(
-            _BenchmarkRecordingSession(case),
+            cast(RepairSession, _BenchmarkRecordingSession(case)),
             build_agent_payload(case),
             model,
         )
@@ -172,13 +180,55 @@ def run_benchmark(
     return tuple(attempts)
 
 
+def validate_benchmark_publishability(
+    corpus: BenchmarkCorpus,
+    report: BenchmarkReport,
+    *,
+    max_error_rate: float,
+) -> None:
+    """Reject reports whose model-evaluated attempts are not trustworthy."""
+
+    if not 0.0 <= max_error_rate <= 1.0:
+        raise BenchmarkRunnerError(
+            "max_error_rate must be between zero and one"
+        )
+
+    model_case_ids = {
+        case.case_id for case in corpus.cases if case.fields
+    }
+    model_attempts = tuple(
+        attempt
+        for attempt in report.attempts
+        if attempt.case_id in model_case_ids
+    )
+    if not model_attempts:
+        raise BenchmarkRunnerError(
+            "benchmark contains no model-evaluated attempts"
+        )
+
+    errored_attempts = tuple(
+        attempt for attempt in model_attempts if attempt.error is not None
+    )
+    if len(errored_attempts) == len(model_attempts):
+        raise BenchmarkRunnerError(
+            "all model-evaluated attempts failed"
+        )
+
+    error_rate = len(errored_attempts) / len(model_attempts)
+    if error_rate > max_error_rate:
+        raise BenchmarkRunnerError(
+            "model-attempt error rate "
+            f"{error_rate:.1%} exceeds allowed {max_error_rate:.1%}"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the live benchmark and write JSON and Markdown reports."""
 
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    corpus = load_benchmark_corpus(Path(args.corpus))
+    corpus = load_headline_corpus(Path(args.corpus))
     selected = _select_corpus(corpus, limit=args.limit)
     model = build_repair_model(
         model_name=args.model,
@@ -204,6 +254,16 @@ def main(argv: list[str] | None = None) -> int:
     markdown = report_to_markdown(report)
     markdown_output.write_text(markdown, encoding="utf-8")
     print(markdown)
+
+    try:
+        validate_benchmark_publishability(
+            selected,
+            report,
+            max_error_rate=args.max_error_rate,
+        )
+    except BenchmarkRunnerError as exc:
+        print(f"Benchmark is not publishable: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -217,8 +277,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--corpus",
-        default=str(AGENTIC_REPAIR_CORPUS_PATH),
-        help="Path to the persisted benchmark corpus.",
+        default=str(HEADLINE_CORPUS_PATH),
+        help="Path to the held-out hard benchmark corpus.",
     )
     parser.add_argument(
         "--runs",
@@ -242,6 +302,14 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=REPAIR_MODEL_TEMPERATURE,
         help="Model temperature used for every case.",
+    )
+    parser.add_argument(
+        "--max-error-rate",
+        type=float,
+        default=DEFAULT_MAX_ERROR_RATE,
+        help=(
+            "Maximum allowed error rate across model-evaluated attempts."
+        ),
     )
     parser.add_argument(
         "--json-out",
