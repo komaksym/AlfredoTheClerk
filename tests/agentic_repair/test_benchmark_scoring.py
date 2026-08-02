@@ -23,7 +23,12 @@ from src.agentic_repair.benchmark_scoring import (
 
 
 def _candidate(value: str) -> BenchmarkCandidate:
-    """Build one compact candidate for scoring-only fixtures."""
+    """Build a minimal deterministic candidate for scoring fixtures.
+
+    Uses the supplied value for both raw and same-line evidence, fixed
+    confidence, a test-only rule, and no rejection marker so scoring tests can
+    focus on indexes.
+    """
 
     return BenchmarkCandidate(
         value=value,
@@ -36,7 +41,12 @@ def _candidate(value: str) -> BenchmarkCandidate:
 
 
 def _field(path: str, expected_index: int | None) -> BenchmarkField:
-    """Build one field with three deterministic candidates."""
+    """Build a corrupt field with three predictable candidate indexes.
+
+    Derives candidate values from the path and stores the supplied expected
+    index, including None for ambiguous fields, so tests can construct mixed
+    scoring cases concisely.
+    """
 
     return BenchmarkField(
         path=path,
@@ -51,7 +61,12 @@ def _field(path: str, expected_index: int | None) -> BenchmarkField:
 
 
 def _human_attempt(case_id: str, run_index: int) -> BenchmarkAttempt:
-    """Build one complete no-model attempt for matrix validation."""
+    """Build one successful no-model attempt for a human-only case-run.
+
+    Sets the requested case and run identity with no selections, no tool call,
+    zero latency, and no error, providing complete matrix entries without model
+    behavior.
+    """
 
     return BenchmarkAttempt(
         case_id=case_id,
@@ -64,7 +79,14 @@ def _human_attempt(case_id: str, run_index: int) -> BenchmarkAttempt:
 
 
 def test_scoring_counts_only_correct_repairs_as_human_work_removed() -> None:
-    """Wrong and missing actions must remain in the human-work denominator."""
+    """Verify every core metric on a mix of correct, wrong, missing, ambiguous,
+    and human work.
+
+    Scores three cases and asserts defect totals, candidate accuracy, safe
+    escalation, remaining corrections, straight-through behavior, error counts,
+    and median and p95 latency. Only the exact ground-truth selection receives
+    automation credit.
+    """
 
     corpus = BenchmarkCorpus(
         schema_version=1,
@@ -153,7 +175,13 @@ def test_scoring_counts_only_correct_repairs_as_human_work_removed() -> None:
 
 
 def test_error_attempt_never_counts_as_safe_escalation() -> None:
-    """A model exception is not a correct decision to defer to a human."""
+    """Verify that a model failure on an ambiguous field is not credited as safe
+    abstention.
+
+    Scores an errored no-selection attempt and asserts zero correct
+    escalations, one errored attempt, and one correction still requiring a
+    human.
+    """
 
     corpus = BenchmarkCorpus(
         schema_version=1,
@@ -190,7 +218,13 @@ def test_error_attempt_never_counts_as_safe_escalation() -> None:
 
 
 def test_errored_attempt_never_gets_credit_for_a_correct_selection() -> None:
-    """Partial output from a failed attempt must not inflate work reduction."""
+    """Verify that partial matching output from a failed attempt receives zero
+    repair credit.
+
+    Supplies the correct candidate together with an error and asserts it is
+    counted as a missed repair with the human correction and zero reduction
+    preserved.
+    """
 
     corpus = BenchmarkCorpus(
         schema_version=1,
@@ -233,7 +267,12 @@ def test_errored_attempt_never_gets_credit_for_a_correct_selection() -> None:
 
 
 def test_scoring_rejects_incomplete_case_run_matrix() -> None:
-    """Headline metrics must cover every configured case and repeat."""
+    """Verify that headline scoring requires every configured case in every
+    repeat.
+
+    Omits one of four required identities from a two-case, two-run corpus and
+    expects BenchmarkScoringError describing an incomplete attempt matrix.
+    """
 
     corpus = BenchmarkCorpus(
         schema_version=1,
@@ -269,7 +308,13 @@ def test_scoring_rejects_incomplete_case_run_matrix() -> None:
 
 
 def test_report_formats_publish_scope_and_raw_attempts() -> None:
-    """Public reports should remain auditable and label the data synthetic."""
+    """Verify that both report formats preserve auditability and the synthetic
+    claim boundary.
+
+    Checks that JSON labels the data synthetic and includes the raw case
+    attempt, while Markdown contains the benchmark title and explicit non-
+    generalization limitation.
+    """
 
     corpus = BenchmarkCorpus(
         schema_version=1,

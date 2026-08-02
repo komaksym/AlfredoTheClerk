@@ -29,7 +29,13 @@ CHECKED_IN_SANITY_CORPUS_PATH = REPO_ROOT / SANITY_CORPUS_PATH
 
 
 def test_checked_in_headline_corpus_has_curated_distribution() -> None:
-    """Headline metrics should use the separately authored hard split."""
+    """Verify that headline metrics use the separately authored 30-case hard
+    split.
+
+    Loads the checked-in headline artifact and asserts its dedicated corpus ID
+    plus the exact single, multi, mixed, human-only, and ambiguous category
+    counts.
+    """
 
     corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     counts = Counter(case.category for case in corpus.cases)
@@ -46,7 +52,12 @@ def test_checked_in_headline_corpus_has_curated_distribution() -> None:
 
 
 def test_generated_sanity_corpus_has_declared_distribution() -> None:
-    """The original 200 generated cases remain a tool-contract sanity split."""
+    """Verify that the generated sanity artifact retains its declared 200-case
+    mix.
+
+    Loads the checked-in sanity corpus and asserts the exact category counts
+    used to exercise the repair tool contract independently of headline claims.
+    """
 
     corpus = load_benchmark_corpus(CHECKED_IN_SANITY_CORPUS_PATH)
     counts = Counter(case.category for case in corpus.cases)
@@ -62,7 +73,13 @@ def test_generated_sanity_corpus_has_declared_distribution() -> None:
 
 
 def test_checked_in_sanity_corpus_matches_deterministic_builder() -> None:
-    """Regeneration should reproduce only the generated sanity artifact."""
+    """Prove that intentional sanity-corpus regeneration is byte-for-byte
+    reproducible.
+
+    Reads the checked-in JSON text and compares it with canonical serialization
+    of a fresh deterministic build, catching seed, ordering, or formatting
+    drift.
+    """
 
     checked_in = CHECKED_IN_SANITY_CORPUS_PATH.read_text(encoding="utf-8")
 
@@ -70,7 +87,12 @@ def test_checked_in_sanity_corpus_matches_deterministic_builder() -> None:
 
 
 def test_headline_corpus_hides_answer_metadata() -> None:
-    """Expected choices must not be exposed through rules or rejection flags."""
+    """Ensure the held-out headline corpus does not expose candidate answer
+    labels.
+
+    Flattens every candidate, first proving the corpus contains candidates,
+    then asserts that both rule and rejected_by are absent everywhere.
+    """
 
     corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     candidates = [
@@ -86,7 +108,13 @@ def test_headline_corpus_hides_answer_metadata() -> None:
 
 
 def test_headline_ground_truth_is_not_candidate_position_or_confidence() -> None:
-    """The hard split should require context rather than one index or score."""
+    """Ensure simple position or confidence heuristics cannot solve the hard
+    split.
+
+    Checks that correct candidates appear at all three indexes and at first,
+    second, and third confidence ranks, forcing evaluation to use contextual
+    evidence rather than a fixed index or maximum score.
+    """
 
     corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     fields = [
@@ -112,7 +140,13 @@ def test_headline_ground_truth_is_not_candidate_position_or_confidence() -> None
 
 
 def test_build_agent_payload_preserves_complete_candidate_evidence() -> None:
-    """The live runner should receive every persisted candidate attribute."""
+    """Verify that benchmark cases reach the production agent without evidence
+    loss.
+
+    Converts a non-empty headline case and compares field count, paths, current
+    values, candidate values, and same-line evidence against the persisted
+    source in the same order.
+    """
 
     corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     case = next(case for case in corpus.cases if case.fields)
@@ -138,7 +172,13 @@ def test_build_agent_payload_preserves_complete_candidate_evidence() -> None:
 def test_loader_rejects_answer_leaking_headline_metadata(
     tmp_path: Path,
 ) -> None:
-    """A headline corpus cannot expose the expected field role as a rule."""
+    """Verify that a headline corpus containing semantic answer metadata is
+    rejected.
+
+    Writes a minimal otherwise-valid hard-split case whose candidate rule
+    reveals the seller-NIP role, then expects BenchmarkCorpusError before the
+    data can be used for publication.
+    """
 
     payload = {
         "schema_version": 1,
@@ -178,7 +218,12 @@ def test_loader_rejects_answer_leaking_headline_metadata(
 def test_loader_rejects_expected_index_outside_candidates(
     tmp_path: Path,
 ) -> None:
-    """A malformed ground-truth index must fail before benchmark execution."""
+    """Verify that impossible persisted ground-truth indexes fail during loading.
+
+    Writes a field with one candidate but expected index two and asserts that
+    the loader raises BenchmarkCorpusError instead of deferring the malformed
+    contract to benchmark execution.
+    """
 
     payload = {
         "schema_version": 1,
@@ -219,7 +264,11 @@ def test_loader_rejects_expected_index_outside_candidates(
 
 
 def test_loader_rejects_duplicate_case_ids(tmp_path: Path) -> None:
-    """Case IDs are stable report keys and therefore must be unique."""
+    """Verify that persisted case IDs remain unique report and matrix keys.
+
+    Writes two identical human-only cases with the same ID and expects
+    BenchmarkCorpusError, preventing later attempts from becoming ambiguous.
+    """
 
     case = {
         "case_id": "duplicate",

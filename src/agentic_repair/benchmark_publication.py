@@ -21,7 +21,13 @@ SANITY_CORPUS_PATH = Path(
 
 
 def load_headline_corpus(path: Path) -> BenchmarkCorpus:
-    """Load and validate a corpus eligible for headline metrics."""
+    """Load a corpus after verifying that it is safe for headline reporting.
+
+    First applies the generic persisted-corpus schema validation, then enforces
+    the stricter publication boundary for the held-out hard split. Returns the
+    validated corpus; any file, schema, corpus-identity, emptiness, or answer-
+    leakage violation propagates as BenchmarkCorpusError.
+    """
 
     corpus = load_benchmark_corpus(path)
     validate_headline_corpus(corpus)
@@ -29,7 +35,13 @@ def load_headline_corpus(path: Path) -> BenchmarkCorpus:
 
 
 def validate_headline_corpus(corpus: BenchmarkCorpus) -> None:
-    """Reject generated or answer-leaking data from headline evaluation."""
+    """Enforce the non-leaking contract for headline benchmark data.
+
+    Requires the dedicated held-out corpus ID, at least one case, and no
+    candidate rule or rejected_by metadata anywhere in the corpus. Those fields
+    can reveal the expected answer, so their presence makes the corpus
+    ineligible and raises BenchmarkCorpusError.
+    """
 
     if corpus.corpus_id != HEADLINE_CORPUS_ID:
         raise BenchmarkCorpusError(
