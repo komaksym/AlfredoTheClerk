@@ -309,7 +309,7 @@ def _validate_attempts(
     *,
     runs: int,
 ) -> None:
-    """Reject ambiguous or impossible raw attempt records."""
+    """Reject ambiguous, impossible, or incomplete raw attempt records."""
 
     identities: set[tuple[str, int]] = set()
     for attempt in attempts:
@@ -334,6 +334,19 @@ def _validate_attempts(
                 raise BenchmarkScoringError(
                     f"selection path is not in case: {selection.path}"
                 )
+
+    expected_identities = {
+        (case_id, run_index)
+        for case_id in cases_by_id
+        for run_index in range(runs)
+    }
+    missing = sorted(expected_identities - identities)
+    if missing:
+        examples = ", ".join(repr(identity) for identity in missing[:5])
+        raise BenchmarkScoringError(
+            "incomplete attempt matrix: "
+            f"missing {len(missing)} case-run records; examples: {examples}"
+        )
 
 
 def _is_straight_through(
