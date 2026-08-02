@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from src.agentic_repair.benchmark_corpus import (
     BenchmarkCandidate,
     BenchmarkCase,
@@ -12,6 +14,7 @@ from src.agentic_repair.benchmark_corpus import (
 )
 from src.agentic_repair.benchmark_scoring import (
     BenchmarkAttempt,
+    BenchmarkScoringError,
     BenchmarkSelection,
     report_to_json,
     report_to_markdown,
@@ -44,6 +47,19 @@ def _field(path: str, expected_index: int | None) -> BenchmarkField:
             _candidate(f"{path}-1"),
             _candidate(f"{path}-2"),
         ),
+    )
+
+
+def _human_attempt(case_id: str, run_index: int) -> BenchmarkAttempt:
+    """Build one complete no-model attempt for matrix validation."""
+
+    return BenchmarkAttempt(
+        case_id=case_id,
+        run_index=run_index,
+        selections=(),
+        tool_called=False,
+        latency_ms=0.0,
+        error=None,
     )
 
 
@@ -214,6 +230,42 @@ def test_errored_attempt_never_gets_credit_for_a_correct_selection() -> None:
     assert report.metrics.missed_agent_repairs == 1
     assert report.metrics.human_corrections_remaining == 1
     assert report.metrics.manual_correction_reduction == 0.0
+
+
+def test_scoring_rejects_incomplete_case_run_matrix() -> None:
+    """Headline metrics must cover every configured case and repeat."""
+
+    corpus = BenchmarkCorpus(
+        schema_version=1,
+        corpus_id="test-corpus",
+        cases=(
+            BenchmarkCase(
+                case_id="human-a",
+                category="human_only",
+                human_only_defects=1,
+                fields=(),
+            ),
+            BenchmarkCase(
+                case_id="human-b",
+                category="human_only",
+                human_only_defects=1,
+                fields=(),
+            ),
+        ),
+    )
+    attempts = (
+        _human_attempt("human-a", 0),
+        _human_attempt("human-b", 0),
+        _human_attempt("human-a", 1),
+    )
+
+    with pytest.raises(BenchmarkScoringError, match="incomplete attempt matrix"):
+        score_benchmark(
+            corpus,
+            attempts,
+            model_name="scripted-model",
+            runs=2,
+        )
 
 
 def test_report_formats_publish_scope_and_raw_attempts() -> None:
