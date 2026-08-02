@@ -86,6 +86,41 @@ totals.
 A successful local run ends at `READY_FOR_KSEF` with downloadable FA(3) XML.
 Remote KSeF submission remains an explicit separate capability.
 
+## Controlled repair benchmark
+
+Alfredo reports agent effectiveness as removed **required human corrections**,
+not estimated accountant time. An external benchmark runner records known
+injected defects, ground-truth-correct repairs, correct escalations, unsafe
+mutations, and whether each invoice reached readiness without review.
+
+Generate deterministic JSON and Markdown reports from persisted JSON or JSONL
+observations:
+
+```bash
+uv run alfredo-benchmark-report observations.jsonl \
+  --json-output artifacts/benchmark-results.json \
+  --markdown-output artifacts/benchmark-results.md
+```
+
+The primary formulas are:
+
+```text
+manual-correction reduction = correct agent repairs / injected defects
+candidate accuracy          = correct repairs / attempted repairs
+safe-escalation recall      = correct escalations / non-repairable defects
+straight-through rate       = ready invoices / evaluated invoices
+```
+
+Only correct automated repairs count as removed work. Incorrect, blocked, or
+failed actions remain residual human corrections. The reporter rejects
+internally impossible records and explicitly states that controlled synthetic
+results do not establish production processing-time savings or arbitrary-PDF
+generalization.
+
+The persisted schema and resume-safe claim format are documented in
+`data/repair_benchmark/README.md`. No percentage is published until a real run
+produces its observation file.
+
 ## Validation
 
 Repository gates:
