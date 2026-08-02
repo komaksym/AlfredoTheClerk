@@ -187,7 +187,7 @@ def _agent_result_to_workflow_result(
     agent_result: AgentRepairResult,
     generated_at: datetime | None,
 ) -> RepairWorkflowResult:
-     """Classify an agent run as repaired or unresolved."""
+    """Classify an agent run as repaired or unresolved."""
 
     if not agent_result.tool_called:
         return _agent_failed(
