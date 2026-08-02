@@ -21,7 +21,7 @@ SANITY_CORPUS_PATH = Path(
 
 
 def load_headline_corpus(path: Path) -> BenchmarkCorpus:
-    """Load a corpus and prove that it is eligible for headline reporting.
+    """Load a corpus after verifying that it is safe for headline reporting.
 
     First applies the generic persisted-corpus schema validation, then enforces
     the stricter publication boundary for the held-out hard split. Returns the
