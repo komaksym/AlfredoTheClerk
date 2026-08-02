@@ -4,12 +4,6 @@ on:
   pull_request:
   push:
   workflow_dispatch:
-    inputs:
-      run_ksef_live:
-        description: "Run the real KSeF TEST submission proof"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -17,7 +11,7 @@ permissions:
 jobs:
   main:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -33,20 +27,23 @@ jobs:
         with:
           python-version: "3.13.0"
 
-      - name: Install xmllint
-        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
-
       - name: Install dependencies
         run: uv sync --locked
+
+      - name: Install Chromium for browser E2E
+        run: uv run playwright install --with-deps chromium
 
       - name: Lint
         run: uv run ruff check .
 
-      - name: Test
-        run: uv run pytest -q
+      - name: Typecheck
+        run: uv run pyright src tests
 
-      - name: Verify active-slice docstrings
-        run: uv run pytest tests/ksef/test_docstrings.py -q
+      - name: Test
+        run: uv run pytest -q -m "not browser_e2e and not ksef_live"
+
+      - name: Run browser E2E
+        run: uv run pytest -q -m browser_e2e
 
       - name: Capture browser smoke evidence
         run: |
@@ -67,23 +64,50 @@ jobs:
           test "$ready" -eq 1
 
           google-chrome --headless --no-sandbox --disable-gpu \
-            --window-size=1440,1000 \
+            --window-size=1536,960 \
             --screenshot=browser-smoke/human-fallback.png \
             http://127.0.0.1:8001/review
+
+          google-chrome --headless --no-sandbox --disable-gpu \
+            --force-dark-mode \
+            --window-size=1536,960 \
+            --screenshot=browser-smoke/human-fallback-dark-preference.png \
+            http://127.0.0.1:8001/review
+
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          from PIL import Image
+
+          expected = (251, 250, 248)
+          sample = (225, 20)
+          screenshots = (
+              Path("browser-smoke/human-fallback.png"),
+              Path("browser-smoke/human-fallback-dark-preference.png"),
+          )
+          for screenshot in screenshots:
+              with Image.open(screenshot) as image:
+                  actual = image.convert("RGB").getpixel(sample)
+              assert actual == expected, (
+                  f"{screenshot} workspace pixel {sample} was {actual}; "
+                  f"expected {expected}"
+              )
+          PY
 
           curl --fail --silent --show-error \
             --request POST \
             --data-urlencode "reviewer_id=CI browser smoke" \
-            --data-urlencode "mode::seller.nip=manual" \
-            --data-urlencode "manual::seller.nip=8637940261" \
+            --data-urlencode "mode::buyer.nip=manual" \
+            --data-urlencode "manual::buyer.nip=5423511615" \
             http://127.0.0.1:8001/review >/dev/null
 
           google-chrome --headless --no-sandbox --disable-gpu \
-            --window-size=1440,1000 \
+            --window-size=1536,960 \
             --screenshot=browser-smoke/ready-for-ksef.png \
             http://127.0.0.1:8001/result
 
           test -s browser-smoke/human-fallback.png
+          test -s browser-smoke/human-fallback-dark-preference.png
           test -s browser-smoke/ready-for-ksef.png
 
       - name: Upload browser smoke evidence
@@ -104,15 +128,11 @@ jobs:
           uv run python tests/smoke_installed_xsd_validation.py
           dist/alfredotheclerk-*.whl
 
-  # Manual-only proof. Configure KSEF_TEST_TOKEN and KSEF_TEST_CONTEXT_NIP as
-  # repository secrets, dispatch this workflow on the feature branch, and set
-  # run_ksef_live=true. Push and pull-request events always skip this job.
   ksef-live:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ksef_live }}
+    needs: main
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      RUN_KSEF_LIVE: "1"
       KSEF_TEST_TOKEN: ${{ secrets.KSEF_TEST_TOKEN }}
       KSEF_TEST_CONTEXT_NIP: ${{ secrets.KSEF_TEST_CONTEXT_NIP }}
     steps:
@@ -129,9 +149,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13.0"
-
-      - name: Install xmllint
-        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
 
       - name: Install dependencies
         run: uv sync --locked

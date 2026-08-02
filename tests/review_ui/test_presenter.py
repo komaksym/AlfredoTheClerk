@@ -9,6 +9,8 @@ from src.agentic_repair.agent_extraction_repair import AgentRepairResult
 from src.agentic_repair.human_review import build_human_review_case
 from src.agentic_repair.repair_kernel import RepairDecision, RepairResult
 from src.agentic_repair.repair_orchestration import (
+    AcceptedAutomatedRepair,
+    AutomatedRepairOrigin,
     RepairWorkflowResult,
     RepairWorkflowStatus,
 )
@@ -30,8 +32,8 @@ from tests.agentic_repair.factories import (
 )
 
 
-def test_presentation_separates_successful_agent_changes_from_residual_fields() -> None:
-    """Resolved agent fields belong in the diff, not the editable residual list."""
+def test_presentation_separates_automated_changes_from_residual_fields() -> None:
+    """Resolved automated fields belong in the diff, not the editable residual list."""
 
     from src.review_ui.presenter import build_review_presentation
 
@@ -76,6 +78,11 @@ def test_presentation_separates_successful_agent_changes_from_residual_fields() 
         shell=context.shell,
         route=route,
         context=context,
+        automated_repair=AcceptedAutomatedRepair(
+            repair_result=repair_result,
+            origin=AutomatedRepairOrigin.AGENT,
+            agent_result=agent_result,
+        ),
         agent_result=agent_result,
         reason=CorrectnessStatus.INVALID_SHELL.value,
         correctness=correctness,
@@ -89,13 +96,15 @@ def test_presentation_separates_successful_agent_changes_from_residual_fields() 
         PdfPageView(image_png=b"png", width=100.0, height=100.0),
     )
 
-    assert len(presentation.agent_changes) == 1
-    change = presentation.agent_changes[0]
+    assert len(presentation.automated_changes) == 1
+    change = presentation.automated_changes[0]
     assert change.path == "invoice_number"
     assert change.old_value == "BAD"
     assert change.new_value == "FV/001"
     assert change.candidate_index == 1
     assert change.confidence == 0.9
+    assert change.origin is AutomatedRepairOrigin.AGENT
+    assert change.origin_label == "Agent"
 
     assert [field.path for field in presentation.fields] == ["buyer.nip"]
     assert presentation.fields[0].label == "Buyer NIP"

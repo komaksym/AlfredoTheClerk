@@ -8,6 +8,7 @@ from typing import Any, Callable, Literal
 from dataclasses import dataclass, asdict
 
 from langchain.messages import (
+    AIMessage,
     AnyMessage,
     HumanMessage,
     SystemMessage,
@@ -30,17 +31,22 @@ from src.agentic_repair.repair_payload import AgentRepairPayload
 SYSTEM_PROMPT = """
 You repair extracted invoice fields by selecting from existing candidates.
 
-Call apply_repair_plan once when repairs are needed. Pass repair_commands as a
-JSON list. Each item must contain:
+The payload contains only fields that deterministic routing has classified as
+repairable and every field has at least one legal evidence candidate. Call
+apply_repair_plan at most once. Pass repair_commands as a JSON list and include
+one selection for every field only when the evidence safely distinguishes them.
+If any field remains ambiguous, abstain and do not call a tool. Each item must
+contain:
 - path: exact field path from the payload
 - candidate_index: zero-based index of an existing candidate for that path
 - reason: brief evidence-based explanation for the selected candidate
 
-Include every selected repair in that one list. Do not invent paths, candidate
-indexes, or values. If no evidence-backed repair is possible, do not call a tool.
+Use raw_text, same_line_text, field role, and labels to choose the candidate that
+best matches the requested invoice field. Do not invent paths, candidate indexes,
+or values.
 """
 
-MAX_LLM_CALLS = 2
+MAX_LLM_CALLS = 1
 MAX_TOOL_CALLS = 1
 
 
@@ -95,15 +101,19 @@ def runner(
     # Add nodes
     llm_call = make_llm_call_node(model_with_tools)
     tool_node = make_llm_tool_node(tools_by_name)
-    agent_builder.add_node("llm_call", llm_call)
-    agent_builder.add_node("tool_node", tool_node)
+    agent_builder.add_node(
+        "llm_call", llm_call  # pyright: ignore[reportArgumentType]
+    )
+    agent_builder.add_node(
+        "tool_node", tool_node  # pyright: ignore[reportArgumentType]
+    )
 
     # Add edges to connect nodes
     agent_builder.add_edge(START, "llm_call")
     agent_builder.add_conditional_edges(
         "llm_call", should_continue, ["tool_node", END]
     )
-    agent_builder.add_edge("tool_node", "llm_call")
+    agent_builder.add_edge("tool_node", END)
 
     # Compile the agent
     agent = agent_builder.compile()
@@ -234,23 +244,22 @@ def make_llm_call_node(
 
 
 def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyright: ignore[reportInvalidTypeForm]
-    """Route to tools only while call budgets allow pending tool calls."""
+    """Route one valid model tool request to the deterministic repair node."""
 
     messages = state["messages"]
     last_message = messages[-1]
+    tool_calls = last_message.tool_calls if isinstance(last_message, AIMessage) else []
     tool_calls_used = sum(1 for m in messages if isinstance(m, ToolMessage))
 
-    # If the LLM makes a tool call, then perform an action
+    if state["llm_calls"] > MAX_LLM_CALLS:
+        return END
+
     if tool_calls_used >= MAX_TOOL_CALLS:
         return END
 
-    if state["llm_calls"] >= MAX_LLM_CALLS:
-        return END
-
-    if last_message.tool_calls:
+    if tool_calls:
         return "tool_node"
 
-    # Otherwise, we stop (reply to the user)
     return END
 
 
@@ -263,18 +272,21 @@ def make_llm_tool_node(
         """Run requested tools and return their observations as messages."""
 
         last_message = state["messages"][-1]
+        if not isinstance(last_message, AIMessage):
+            raise ValueError("Tool node requires an AI message")
+        tool_calls = last_message.tool_calls
 
         tool_calls_used = sum(
             1 for m in state["messages"] if isinstance(m, ToolMessage)
         )
         remaining = MAX_TOOL_CALLS - tool_calls_used
-        requested = len(last_message.tool_calls)
+        requested = len(tool_calls)
 
         if requested > remaining:
             raise ValueError("Tool call budget exceeded")
 
         result: list[ToolMessage] = []
-        for tool_call in last_message.tool_calls:
+        for tool_call in tool_calls:
             if tool_call["name"] not in tools_by_name:
                 raise ValueError("The tool is not in the tool whitelist")
 

@@ -76,7 +76,6 @@ def main() -> None:
                 "install",
                 "--python",
                 str(python),
-                "--no-deps",
                 str(wheel),
             ],
             check=True,

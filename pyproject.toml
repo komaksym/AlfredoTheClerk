@@ -12,6 +12,7 @@ dependencies = [
     "jinja2",
     "langchain>=1.3.2",
     "langchain-deepseek>=1.0.1",
+    "lxml>=6.0.0",
     "pdfplumber>=0.11.9",
     "python-multipart",
     "rapidfuzz>=3.0",
@@ -31,11 +32,39 @@ major_version_zero = true
 [tool.pytest.ini_options]
 pythonpath = ["."]
 markers = [
-    "ksef_live: opt-in test that submits a synthetic invoice to KSeF TEST",
+    "ksef_live: strict test that submits a synthetic invoice to KSeF TEST",
+    "browser_e2e: real Chromium interaction against the FastAPI review app",
 ]
 
 [tool.ruff]
 line-length = 80
+
+[tool.pyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.13"
+include = ["src", "tests"]
+ignore = [
+    "src/agentic_repair/human_review.py",
+    "src/input_processing/extraction_comparison.py",
+    "src/input_processing/invoice_text_field_extraction.py",
+    "src/input_processing/parse_pdf.py",
+    "src/input_processing/populate_shell.py",
+    "src/invoice_gen/domestic_vat_faktura_mapping.py",
+    "src/invoice_gen/domestic_vat_shell_summary.py",
+    "src/invoice_gen/fa3_xsd_validation.py",
+    "src/invoice_gen/invoice_correctness.py",
+    "src/invoice_gen/pdf_rendering.py",
+    "src/ksef/crypto.py",
+    "tests/agentic_repair/factories.py",
+    "tests/input_processing/test_extraction_comparison.py",
+    "tests/input_processing/test_parse.py",
+    "tests/invoice_gen/test_domestic_vat_seed.py",
+    "tests/invoice_gen/test_domestic_vat_shell_validation.py",
+    "tests/invoice_gen/test_invoice_correctness.py",
+    "tests/review_ui/test_pdf_view.py",
+]
+venvPath = "."
+venv = ".venv"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -48,6 +77,9 @@ include = ["src", "src.*"]
 [dependency-groups]
 dev = [
     "detect-secrets>=1.5.0",
+    "playwright>=1.62.0",
+    "pyright>=1.1.411",
     "pytest>=9.0.2",
+    "pytest-playwright>=0.8.0",
     "ruff>=0.15.8",
 ]

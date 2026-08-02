@@ -58,6 +58,19 @@ def test_agent_exception_returns_structured_failure(
         validation_errors=[make_validation_error("invoice_number")],
     )
     _patch_extraction(monkeypatch, context)
+    deterministic_calls = 0
+
+    def no_deterministic_repair(*args: object, **kwargs: object) -> None:
+        """Record the single pre-agent deterministic decision attempt."""
+
+        nonlocal deterministic_calls
+        deterministic_calls += 1
+        return None
+
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_orchestration._try_exact_label_fallback",
+        no_deterministic_repair,
+    )
 
     def failing_runner(*args: object, **kwargs: object) -> None:
         """Model a technical agent failure at the invocation boundary."""
@@ -77,3 +90,4 @@ def test_agent_exception_returns_structured_failure(
     assert result.agent_result is None
     assert result.reason == "agent_exception"
     assert result.correctness is None
+    assert deterministic_calls == 1

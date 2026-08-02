@@ -146,18 +146,26 @@ def test_blocking_upload_renders_side_by_side_review_resources() -> None:
 
     review = client.get("/review")
     assert review.status_code == 200
-    assert "review-layout" in review.text
-    assert "Original invoice" in review.text
+    assert 'class="app-sidebar"' in review.text
+    assert 'class="document-header"' in review.text
+    assert 'class="review-workspace"' in review.text
+    assert 'class="document-card"' in review.text
+    assert 'class="pdf-toolbar"' in review.text
+    assert 'class="agent-changes"' in review.text
+    assert "Needs review" in review.text
+    assert "invoice.pdf" in review.text
     assert "Unresolved fields" in review.text
     assert "Invoice number" in review.text
-    assert "Review &amp; Validate" in review.text
-    assert "Open original PDF" in review.text
+    assert "Confirm &amp; continue" in review.text
     assert 'name="reviewer_id"' in review.text
     assert 'name="mode::invoice_number"' in review.text
     assert 'name="manual::invoice_number"' in review.text
 
     original = client.get("/review/original.pdf")
     assert original.status_code == 200
+    assert original.headers["content-disposition"] == (
+        'attachment; filename="invoice.pdf"'
+    )
     assert original.content.startswith(b"%PDF")
 
     page = client.get("/review/page.png")

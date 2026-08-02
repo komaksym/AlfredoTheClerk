@@ -13,6 +13,8 @@ from src.agentic_repair.agent_extraction_repair import AgentRepairResult
 from src.agentic_repair.human_review import HumanReviewInputKind
 from src.agentic_repair.repair_kernel import RepairDecision, RepairResult
 from src.agentic_repair.repair_orchestration import (
+    AcceptedAutomatedRepair,
+    AutomatedRepairOrigin,
     RepairWorkflowResult,
     RepairWorkflowStatus,
 )
@@ -135,6 +137,11 @@ def test_fully_agent_repaired_result_skips_human_form_and_shows_diff() -> None:
         shell=repaired_shell,
         route=route_repair_context(context),
         context=context,
+        automated_repair=AcceptedAutomatedRepair(
+            repair_result=repair_result,
+            origin=AutomatedRepairOrigin.AGENT,
+            agent_result=agent_result,
+        ),
         agent_result=agent_result,
         correctness=correctness,
     )
@@ -143,8 +150,8 @@ def test_fully_agent_repaired_result_skips_human_form_and_shows_diff() -> None:
     _upload(client)
     page = client.get("/result")
 
-    assert "Agent repair successful" in page.text
-    assert "Agent changes" in page.text
+    assert "Automated repair successful" in page.text
+    assert "Automated changes" in page.text
     assert "BAD" in page.text
     assert str(repaired_shell.invoice_number) in page.text
     assert "Review &amp; Validate" not in page.text
@@ -190,10 +197,14 @@ def test_mixed_agent_and_blocking_fields_show_only_residual_human_control() -> N
         shell=original_shell,
         route=route_repair_context(context),
         context=context,
-        agent_result=AgentRepairResult(
+        automated_repair=AcceptedAutomatedRepair(
             repair_result=repair_result,
-            tool_called=True,
-            final_messages=(),
+            origin=AutomatedRepairOrigin.AGENT,
+            agent_result=AgentRepairResult(
+                repair_result=repair_result,
+                tool_called=True,
+                final_messages=(),
+            ),
         ),
         correctness=CorrectnessResult(
             status=CorrectnessStatus.INVALID_SHELL,
@@ -207,7 +218,7 @@ def test_mixed_agent_and_blocking_fields_show_only_residual_human_control() -> N
     _upload(client)
     page = client.get("/review")
 
-    assert "Agent changes" in page.text
+    assert "Automated changes" in page.text
     assert 'name="mode::buyer.nip"' in page.text
     assert 'name="mode::invoice_number"' not in page.text
 
