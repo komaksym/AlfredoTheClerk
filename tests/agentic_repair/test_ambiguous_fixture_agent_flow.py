@@ -1,12 +1,10 @@
-"""Integration coverage for the agent-repairable ambiguous seller-NIP PDF."""
+"""Integration coverage for the ambiguous seller-NIP PDF."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
-from langchain.messages import AIMessage
 import pdfplumber
 
 from src.agentic_repair.repair_orchestration import (
@@ -25,108 +23,22 @@ _FIXTURE = (
 _EXPECTED_SELLER_NIP = "8637940261"
 
 
-class _PayloadSelectingModel:
-    """Select the known seller candidate while recording the binding contract."""
+class _AgentMustNotRun:
+    """Reject model use when exact labelled evidence is sufficient."""
 
-    def __init__(self) -> None:
-        """Initialize invocation and binding observations."""
+    def bind_tools(self, tools: list[Any], **kwargs: Any) -> None:
+        """Fail if deterministic evidence resolution reaches the model."""
 
-        self.invoke_count = 0
-        self.tool_choice: object = None
-        self.tool_name = ""
-
-    def bind_tools(
-        self,
-        tools: list[Any],
-        *,
-        tool_choice: object = None,
-    ) -> _PayloadSelectingModel:
-        """Record whether the repair tool is mandatory and singular."""
-
-        assert len(tools) == 1
-        self.tool_name = tools[0].name
-        self.tool_choice = tool_choice
-        return self
-
-    def invoke(self, messages: list[Any]) -> AIMessage:
-        """Choose the expected candidate from the real serialized payload."""
-
-        self.invoke_count += 1
-        payload = json.loads(messages[1].content)
-        fields = payload["payload"]
-        assert [field["path"] for field in fields] == ["seller.nip"]
-
-        candidates = fields[0]["candidates"]
-        candidate_index = next(
-            candidate["index"]
-            for candidate in candidates
-            if candidate["value"] == _EXPECTED_SELLER_NIP
-        )
-        return AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": self.tool_name,
-                    "args": {
-                        "repair_commands": [
-                            {
-                                "path": "seller.nip",
-                                "candidate_index": candidate_index,
-                                "reason": "candidate is on the seller NIP line",
-                            }
-                        ]
-                    },
-                    "id": "fixture-repair-call",
-                    "type": "tool_call",
-                }
-            ],
-        )
+        raise AssertionError("exact NIP-labelled evidence must bypass the model")
 
 
-def test_ambiguous_seller_nip_repairs_in_one_required_tool_call() -> None:
-    """The real ambiguous fixture should be repaired without human review."""
+def test_ambiguous_seller_nip_resolves_before_agent_invocation() -> None:
+    """The real fixture should repair from its unique exact NIP line."""
 
     with pdfplumber.open(_FIXTURE) as pdf:
         parsed = parse_data(pdf)
 
-    model = _PayloadSelectingModel()
-    workflow = run_shell_repair(parsed, model)
-
-    assert model.tool_choice == {
-        "type": "function",
-        "function": {"name": "apply_repair_plan"},
-    }
-    assert model.invoke_count == 1
-    assert workflow.status is RepairWorkflowStatus.REPAIRED
-    assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
-    assert workflow.correctness is not None
-    assert workflow.correctness.status is CorrectnessStatus.READY_FOR_KSEF
-
-
-class _UnavailableRepairModel:
-    """Model double that reproduces an unavailable provider after binding."""
-
-    def bind_tools(self, tools: list[Any], **kwargs: Any) -> _UnavailableRepairModel:
-        """Accept the production binding before failing at invocation."""
-
-        assert tools
-        assert kwargs["tool_choice"]["function"]["name"] == "apply_repair_plan"
-        return self
-
-    def invoke(self, messages: list[Any]) -> AIMessage:
-        """Simulate the provider failure seen by the local application."""
-
-        assert messages
-        raise RuntimeError("provider unavailable")
-
-
-def test_ambiguous_seller_nip_uses_exact_label_fallback_when_agent_fails() -> None:
-    """The real fixture must not require review during a provider failure."""
-
-    with pdfplumber.open(_FIXTURE) as pdf:
-        parsed = parse_data(pdf)
-
-    workflow = run_shell_repair(parsed, _UnavailableRepairModel())
+    workflow = run_shell_repair(parsed, _AgentMustNotRun())
 
     assert workflow.status is RepairWorkflowStatus.REPAIRED
     assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
