@@ -81,14 +81,14 @@ to human review without promoting a value. Fields with no legal candidate go
 directly to human review.
 
 Accepted automated repairs record truthful provenance as either
-`Deterministic rule` or `Agent`; deterministic work is never counted as a model tool call. The
-human-review screen shows the original invoice beside unresolved fields, keeps
-successful automated changes as a read-only diff, and allows the reviewer to
-select an extracted candidate or enter an explicit canonical correction. Human
-changes are applied as one attributed batch and rerun through the same
-correctness pipeline. Source-total mismatches keep their extracted totals
-immutable while exposing the canonical line-item inputs that determine those
-totals.
+`Deterministic rule` or `Agent`; deterministic work is never counted as a model
+tool call. The human-review screen shows the original invoice beside unresolved
+fields, keeps successful automated changes as a read-only diff, and allows the
+reviewer to select an extracted candidate or enter an explicit canonical
+correction. Human changes are applied as one attributed batch and rerun through
+the same correctness pipeline. Source-total mismatches keep their extracted
+totals immutable while exposing the canonical line-item inputs that determine
+those totals.
 
 A successful local run ends at `READY_FOR_KSEF` with downloadable FA(3) XML.
 Remote KSeF submission remains an explicit separate capability.
