@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from langchain.messages import AIMessage
+import pytest
 
 import src.agentic_repair.benchmark_runner as benchmark_runner_module
 from src.agentic_repair.benchmark_corpus import (
-    HEADLINE_CORPUS_ID,
     BenchmarkCandidate,
     BenchmarkCase,
     BenchmarkCorpus,
     BenchmarkField,
 )
+from src.agentic_repair.benchmark_publication import HEADLINE_CORPUS_ID
 from src.agentic_repair.benchmark_runner import (
     run_benchmark,
     run_benchmark_case,
@@ -27,9 +29,9 @@ class ScriptedModel:
     def __init__(self, *responses: AIMessage) -> None:
         self.responses = list(responses)
         self.invocations: list[object] = []
-        self.bound_tools: list[object] = []
+        self.bound_tools: list[Any] = []
 
-    def bind_tools(self, tools: list[object]) -> "ScriptedModel":
+    def bind_tools(self, tools: list[Any]) -> "ScriptedModel":
         """Record production tools and return the scripted model."""
 
         self.bound_tools = tools
@@ -228,7 +230,7 @@ def test_run_benchmark_preserves_case_and_repeat_order() -> None:
 
 def test_main_writes_diagnostics_but_fails_systemic_model_errors(
     tmp_path: Path,
-    monkeypatch: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A fully failed model run must not finish with a successful exit code."""
 
@@ -249,7 +251,7 @@ def test_main_writes_diagnostics_but_fails_systemic_model_errors(
     )
     monkeypatch.setattr(
         benchmark_runner_module,
-        "load_benchmark_corpus",
+        "load_headline_corpus",
         lambda path: corpus,
     )
     monkeypatch.setattr(
