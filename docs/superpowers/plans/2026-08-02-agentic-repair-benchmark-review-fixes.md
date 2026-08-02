@@ -22,8 +22,8 @@ production repair policy:
 - [x] Add the post-report publication gate with a default 5% error threshold.
 - [x] Keep the original generated 200-case corpus as byte-reproducible sanity
   coverage only.
-- [ ] Run the complete repository gates on the final merge commit.
-- [ ] Update the PR description with final verification evidence.
+- [x] Run the complete repository gates on the synchronized pull-request tree.
+- [x] Update the PR description with final verification evidence.
 
 ## Verification commands
 
@@ -38,5 +38,5 @@ uv run python tests/smoke_installed_xsd_validation.py \
   dist/alfredotheclerk-*.whl
 ```
 
-The strict KSeF TEST job remains inherited from `main` and must also pass on the
-final pull-request merge commit.
+The strict KSeF TEST job inherited from `main` also passed on the synchronized
+pull-request tree.
