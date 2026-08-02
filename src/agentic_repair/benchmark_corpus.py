@@ -6,7 +6,7 @@ import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from src.agentic_repair.repair_payload import (
     AgentRepairCandidate,
@@ -113,13 +113,14 @@ def load_benchmark_corpus(path: Path) -> BenchmarkCorpus:
     """Load and strictly validate one persisted benchmark corpus."""
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        raw_payload = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise BenchmarkCorpusError(f"cannot read corpus: {path}") from exc
     except json.JSONDecodeError as exc:
         raise BenchmarkCorpusError(f"invalid corpus JSON: {exc}") from exc
 
-    _require_object(payload, "corpus")
+    _require_object(raw_payload, "corpus")
+    payload = cast(dict[str, Any], raw_payload)
     _require_exact_keys(payload, _CORPUS_KEYS, "corpus")
 
     schema_version = payload["schema_version"]
@@ -308,17 +309,18 @@ def _case_from_mapping(item: object, *, index: int) -> BenchmarkCase:
 
     label = f"corpus.cases[{index}]"
     _require_object(item, label)
-    _require_exact_keys(item, _CASE_KEYS, label)
+    mapping = cast(dict[str, Any], item)
+    _require_exact_keys(mapping, _CASE_KEYS, label)
 
-    case_id = item["case_id"]
+    case_id = mapping["case_id"]
     if not isinstance(case_id, str) or not case_id:
         raise BenchmarkCorpusError(f"{label}.case_id must be non-empty")
 
-    category = item["category"]
+    category = mapping["category"]
     if category not in _CATEGORY_COUNTS:
         raise BenchmarkCorpusError(f"{label}.category is unsupported")
 
-    human_only_defects = item["human_only_defects"]
+    human_only_defects = mapping["human_only_defects"]
     if (
         not isinstance(human_only_defects, int)
         or isinstance(human_only_defects, bool)
@@ -328,7 +330,7 @@ def _case_from_mapping(item: object, *, index: int) -> BenchmarkCase:
             f"{label}.human_only_defects must be a non-negative integer"
         )
 
-    raw_fields = item["fields"]
+    raw_fields = mapping["fields"]
     if not isinstance(raw_fields, list):
         raise BenchmarkCorpusError(f"{label}.fields must be a list")
     fields = tuple(
@@ -358,18 +360,19 @@ def _field_from_mapping(item: object, *, label: str) -> BenchmarkField:
     """Decode and validate one field mapping."""
 
     _require_object(item, label)
-    _require_exact_keys(item, _FIELD_KEYS, label)
+    mapping = cast(dict[str, Any], item)
+    _require_exact_keys(mapping, _FIELD_KEYS, label)
 
-    path = item["path"]
+    path = mapping["path"]
     if not isinstance(path, str) or not path:
         raise BenchmarkCorpusError(f"{label}.path must be non-empty")
     current_value = _require_json_scalar(
-        item["current_value"],
+        mapping["current_value"],
         f"{label}.current_value",
         allow_none=True,
     )
 
-    raw_candidates = item["candidates"]
+    raw_candidates = mapping["candidates"]
     if not isinstance(raw_candidates, list) or not raw_candidates:
         raise BenchmarkCorpusError(
             f"{label}.candidates must be a non-empty list"
@@ -382,7 +385,7 @@ def _field_from_mapping(item: object, *, label: str) -> BenchmarkField:
         for candidate_index, candidate in enumerate(raw_candidates)
     )
 
-    expected_index = item["expected_candidate_index"]
+    expected_index = mapping["expected_candidate_index"]
     if expected_index is not None:
         if (
             not isinstance(expected_index, int)
@@ -409,9 +412,10 @@ def _candidate_from_mapping(
     """Decode and validate one candidate mapping."""
 
     _require_object(item, label)
-    _require_exact_keys(item, _CANDIDATE_KEYS, label)
+    mapping = cast(dict[str, Any], item)
+    _require_exact_keys(mapping, _CANDIDATE_KEYS, label)
 
-    confidence = item["confidence"]
+    confidence = mapping["confidence"]
     if (
         not isinstance(confidence, (int, float))
         or isinstance(confidence, bool)
@@ -423,20 +427,22 @@ def _candidate_from_mapping(
 
     return BenchmarkCandidate(
         value=_require_json_scalar(
-            item["value"],
+            mapping["value"],
             f"{label}.value",
             allow_none=False,
         ),
         confidence=float(confidence),
-        raw_text=_require_optional_string(item["raw_text"], label, "raw_text"),
+        raw_text=_require_optional_string(
+            mapping["raw_text"], label, "raw_text"
+        ),
         same_line_text=_require_optional_string(
-            item["same_line_text"],
+            mapping["same_line_text"],
             label,
             "same_line_text",
         ),
-        rule=_require_optional_string(item["rule"], label, "rule"),
+        rule=_require_optional_string(mapping["rule"], label, "rule"),
         rejected_by=_require_optional_string(
-            item["rejected_by"],
+            mapping["rejected_by"],
             label,
             "rejected_by",
         ),
