@@ -110,7 +110,14 @@ class BenchmarkCorpus:
 
 
 def load_benchmark_corpus(path: Path) -> BenchmarkCorpus:
-    """Load and strictly validate one persisted benchmark corpus."""
+    """Load a persisted benchmark corpus and enforce the complete v1 schema.
+
+    Reads UTF-8 JSON, validates every exact key set and nested value, converts
+    the data into immutable benchmark dataclasses, and rejects unsupported
+    versions, malformed fields, duplicate case IDs, or cases whose contents
+    contradict their declared category. All read, JSON, and contract failures
+    are reported as BenchmarkCorpusError.
+    """
 
     try:
         raw_payload = json.loads(path.read_text(encoding="utf-8"))
@@ -153,7 +160,13 @@ def load_benchmark_corpus(path: Path) -> BenchmarkCorpus:
 
 
 def corpus_to_json(corpus: BenchmarkCorpus) -> str:
-    """Serialize a benchmark corpus deterministically."""
+    """Serialize a benchmark corpus into its canonical JSON representation.
+
+    Recursively converts cases, fields, and candidates into JSON-compatible
+    mappings, sorts object keys, uses two-space indentation, preserves Unicode,
+    and appends one trailing newline. The stable output is used for checked-in
+    artifact comparisons and corpus hashing.
+    """
 
     payload = {
         "schema_version": corpus.schema_version,
@@ -167,7 +180,14 @@ def corpus_to_json(corpus: BenchmarkCorpus) -> str:
 
 
 def build_agent_payload(case: BenchmarkCase) -> AgentRepairPayload:
-    """Project one persisted case into the production agent payload."""
+    """Convert one benchmark case into the production repair-agent payload.
+
+    Preserves each field's current value and all candidate evidence, assigns
+    candidate indexes from their persisted order, and attaches a synthetic
+    validation error so the normal repair graph sees the field as broken. The
+    function only constructs input data; it does not run the model or mutate an
+    invoice.
+    """
 
     fields: list[AgentRepairField] = []
     for field in case.fields:
@@ -202,7 +222,14 @@ def build_agent_payload(case: BenchmarkCase) -> AgentRepairPayload:
 
 
 def build_benchmark_corpus() -> BenchmarkCorpus:
-    """Build the deterministic v1 corpus for intentional regeneration."""
+    """Regenerate the deterministic 200-case sanity corpus.
+
+    Uses a fixed random seed and declared category counts to create single-
+    field, multi-field, mixed, human-only, and ambiguous scenarios. Candidate
+    order is shuffled reproducibly while the correct post-shuffle index is
+    retained. This builder exists for intentional artifact regeneration, not
+    normal benchmark loading.
+    """
 
     rng = random.Random(20260802)
     cases: list[BenchmarkCase] = []
@@ -305,7 +332,13 @@ def build_benchmark_corpus() -> BenchmarkCorpus:
 
 
 def _case_from_mapping(item: object, *, index: int) -> BenchmarkCase:
-    """Decode and validate one case mapping."""
+    """Validate and decode one raw case object from the persisted corpus.
+
+    Checks the exact case keys, non-empty ID, supported category, non-negative
+    human-only defect count, valid field list, unique field paths, and the
+    category-specific relationship between fields and expected actions. Returns
+    a BenchmarkCase or raises BenchmarkCorpusError with the indexed JSON label.
+    """
 
     label = f"corpus.cases[{index}]"
     _require_object(item, label)
@@ -357,7 +390,13 @@ def _case_from_mapping(item: object, *, index: int) -> BenchmarkCase:
 
 
 def _field_from_mapping(item: object, *, label: str) -> BenchmarkField:
-    """Decode and validate one field mapping."""
+    """Validate and decode one corrupted benchmark field.
+
+    Requires the exact field keys, a non-empty path, a JSON-scalar current
+    value, at least one valid candidate, and either no expected candidate or an
+    integer index within the candidate tuple. Returns a BenchmarkField while
+    preserving the persisted candidate order.
+    """
 
     _require_object(item, label)
     mapping = cast(dict[str, Any], item)
@@ -409,7 +448,13 @@ def _candidate_from_mapping(
     *,
     label: str,
 ) -> BenchmarkCandidate:
-    """Decode and validate one candidate mapping."""
+    """Validate and decode one agent-visible repair candidate.
+
+    Requires the exact candidate keys, a non-null JSON-scalar value, numeric
+    confidence between zero and one while excluding booleans, and string-or-
+    null evidence metadata. Returns a normalized BenchmarkCandidate with
+    confidence stored as float.
+    """
 
     _require_object(item, label)
     mapping = cast(dict[str, Any], item)
@@ -456,7 +501,14 @@ def _validate_category_shape(
     human_only_defects: int,
     label: str,
 ) -> None:
-    """Enforce the declared v1 case-category semantics."""
+    """Enforce the semantic contract for a benchmark case category.
+
+    Verifies the required field count, whether expected candidate indexes must
+    be present or absent, and whether human-only defects are allowed for each
+    of the single-repair, multi-repair, mixed, human-only, and ambiguous
+    categories. Raises BenchmarkCorpusError when the supplied case shape is
+    impossible.
+    """
 
     expected_indexes = tuple(
         field.expected_candidate_index for field in fields
@@ -495,7 +547,13 @@ def _validate_category_shape(
 
 
 def _case_to_mapping(case: BenchmarkCase) -> dict[str, Any]:
-    """Encode one benchmark case as JSON-compatible data."""
+    """Convert one benchmark case into JSON-compatible nested data.
+
+    Copies case metadata and recursively emits every field and candidate,
+    including expected indexes and evidence metadata, without reordering any
+    sequence. The returned mapping is consumed by corpus_to_json for canonical
+    serialization.
+    """
 
     return {
         "case_id": case.case_id,
@@ -530,7 +588,14 @@ def _build_field(
     rng: random.Random,
     ambiguous: bool = False,
 ) -> BenchmarkField:
-    """Build one complete field scenario and randomize candidate order."""
+    """Create one deterministic synthetic field-repair scenario.
+
+    Obtains field-specific corrupt and candidate values, assigns a rotating
+    confidence pattern, attaches either anchored evidence or deliberately
+    unanchored ambiguity metadata, then shuffles candidates with the supplied
+    random generator. For repairable fields it locates the correct candidate's
+    new index; ambiguous fields intentionally receive no expected selection.
+    """
 
     current, values, labels, rules = _field_semantics(path, serial)
     patterns = (
@@ -589,7 +654,15 @@ def _field_semantics(
     tuple[str, str, str],
     tuple[str, str, str],
 ]:
-    """Return current value and semantic candidate triples for one path."""
+    """Describe the synthetic values and evidence roles for one supported field
+    path.
+
+    Returns the corrupt current value plus three candidate values, matching
+    same-line label templates, and semantic rule identifiers for seller or
+    buyer NIP, invoice number, issue or sale date, payment due date, and seller
+    bank account. Unsupported paths raise AssertionError because callers select
+    paths from a closed internal list.
+    """
 
     if path == "seller.nip":
         return (
@@ -731,7 +804,14 @@ def _field_semantics(
 
 
 def _pick_paths(start: int, count: int) -> tuple[str, ...]:
-    """Return distinct field paths from a deterministic rotation."""
+    """Select a deterministic wraparound sequence of distinct benchmark field
+    paths.
+
+    Starts at the requested offset in the fixed field-path tuple and returns
+    the next count entries, wrapping at the end. Corpus generation passes
+    counts no larger than the available paths, so the returned paths remain
+    distinct.
+    """
 
     return tuple(
         _FIELD_PATHS[(start + offset) % len(_FIELD_PATHS)]
@@ -740,7 +820,13 @@ def _pick_paths(start: int, count: int) -> tuple[str, ...]:
 
 
 def _build_nip(seed: int) -> str:
-    """Build one checksum-valid Polish NIP candidate."""
+    """Generate a deterministic checksum-valid Polish NIP from a seed.
+
+    Draws nine digits from a local seeded random generator, computes the
+    official weighted checksum, retries checksum value ten, and rejects
+    identifiers with a leading zero. The same seed always produces the same
+    valid ten-digit NIP.
+    """
 
     rng = random.Random(seed)
     while True:
@@ -757,7 +843,12 @@ def _build_nip(seed: int) -> str:
 
 
 def _build_iban(seed: int) -> str:
-    """Build one checksum-valid Polish IBAN candidate."""
+    """Generate a deterministic checksum-valid Polish IBAN from a seed.
+
+    Builds a seeded 24-digit BBAN, computes the two Polish check digits with
+    the modulo-97 rule, and returns the complete account number prefixed with
+    PL. The same seed always yields the same account.
+    """
 
     rng = random.Random(seed)
     bban = "".join(str(rng.randint(0, 9)) for _ in range(24))
@@ -767,7 +858,12 @@ def _build_iban(seed: int) -> str:
 
 
 def _require_object(value: object, label: str) -> None:
-    """Raise unless ``value`` is a JSON object."""
+    """Require a decoded JSON value to be an object mapping.
+
+    Returns normally for dictionaries and otherwise raises BenchmarkCorpusError
+    using the supplied JSON-path label so callers can identify the malformed
+    location.
+    """
 
     if not isinstance(value, dict):
         raise BenchmarkCorpusError(f"{label} must be an object")
@@ -778,7 +874,13 @@ def _require_exact_keys(
     expected: frozenset[str],
     label: str,
 ) -> None:
-    """Reject missing and unknown keys in one JSON object."""
+    """Require a JSON object to contain exactly the expected keys.
+
+    Compares the actual and expected key sets and accepts only an exact match.
+    On failure it raises BenchmarkCorpusError that lists sorted missing and
+    unknown keys, preventing silent schema drift in persisted benchmark
+    artifacts.
+    """
 
     actual = frozenset(value)
     if actual != expected:
@@ -795,7 +897,12 @@ def _require_json_scalar(
     *,
     allow_none: bool,
 ) -> object:
-    """Return one JSON scalar or raise for containers and forbidden nulls."""
+    """Validate and return a JSON scalar with explicit null handling.
+
+    Accepts strings, integers, floats, and booleans, and accepts None only when
+    allow_none is true. Containers and forbidden nulls raise
+    BenchmarkCorpusError with the supplied field label.
+    """
 
     if value is None:
         if allow_none:
@@ -811,7 +918,12 @@ def _require_optional_string(
     label: str,
     field_name: str,
 ) -> str | None:
-    """Return a string-or-null candidate metadata field."""
+    """Validate optional string metadata and return it unchanged.
+
+    Accepts either a string or None for candidate evidence fields. Any other
+    type raises BenchmarkCorpusError naming both the containing JSON label and
+    the specific metadata field.
+    """
 
     if value is not None and not isinstance(value, str):
         raise BenchmarkCorpusError(

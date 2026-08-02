@@ -15,7 +15,12 @@ WORKFLOW_PATH = (
 
 
 def test_package_description_explains_the_product() -> None:
-    """Published package metadata must not retain scaffold placeholder text."""
+    """Verify that published package metadata describes Alfredo rather than a
+    scaffold.
+
+    Parses pyproject.toml and asserts the exact product description covering
+    evidence-constrained agentic repair and KSeF-ready FA(3) invoices.
+    """
 
     project = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))[
         "project"
@@ -27,7 +32,13 @@ def test_package_description_explains_the_product() -> None:
 
 
 def test_readme_documents_reproducible_synthetic_benchmark() -> None:
-    """The README should define the claim boundary and exact live command."""
+    """Verify that the README documents methodology, claim limits, and a
+    reproducible command.
+
+    Requires the synthetic and agent-disabled baseline language, all headline
+    metric names, the non-generalization warning, and the exact module, repeat,
+    JSON, and Markdown CLI arguments.
+    """
 
     readme = README_PATH.read_text(encoding="utf-8")
     lower = readme.lower()
@@ -45,7 +56,12 @@ def test_readme_documents_reproducible_synthetic_benchmark() -> None:
 
 
 def test_live_benchmark_workflow_is_manual_only() -> None:
-    """Ordinary CI must never spend model credits or require a secret."""
+    """Verify that the credit-spending benchmark workflow cannot run during
+    ordinary CI.
+
+    Requires workflow_dispatch and the DeepSeek secret, runner module, and
+    artifact upload while explicitly forbidding pull_request and push triggers.
+    """
 
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
