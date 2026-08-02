@@ -1,0 +1,33 @@
+name: Sync PR 11 with main
+
+on:
+  push:
+    branches:
+      - feat/agentic-repair-benchmark
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR 11 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/agentic-repair-benchmark
+          fetch-depth: 0
+
+      - name: Merge current main without retaining this workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff origin/main
+          git rm .github/workflows/sync-pr11-with-main.yml
+          git diff --check
+          git commit \
+            -m "chore: sync benchmark branch with main" \
+            -m "Bring in the merged review-agent graph changes required by the benchmark integration tests while keeping the benchmark PR diff focused."
+          git push origin HEAD:feat/agentic-repair-benchmark
