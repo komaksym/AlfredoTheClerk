@@ -103,9 +103,25 @@ def _run_agent_repair(
     model: Any,
     generated_at: datetime | None,
 ) -> RepairWorkflowResult:
-    """Run the agent branch and translate its output to workflow status."""
+    """Resolve exact evidence first, then run the agent for real ambiguity."""
 
     session = RepairSession.from_context(context)
+    deterministic_result = _try_exact_label_fallback(session, context, route)
+    if deterministic_result is not None:
+        deterministic_agent_result = AgentRepairResult(
+            repair_result=deterministic_result,
+            tool_called=True,
+            final_messages=(),
+        )
+        return _finish_correctness(
+            context=context,
+            route=route,
+            candidate_shell=deterministic_result.shell,
+            success_status=RepairWorkflowStatus.REPAIRED,
+            agent_result=deterministic_agent_result,
+            generated_at=generated_at,
+        )
+
     payload = build_agent_repair_payload(context, route)
     try:
         agent_result = runner(session, payload, model)
