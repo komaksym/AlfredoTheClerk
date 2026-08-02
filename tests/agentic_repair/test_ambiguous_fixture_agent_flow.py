@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pdfplumber
+import pytest
 
 from src.agentic_repair.repair_orchestration import (
     RepairWorkflowStatus,
@@ -44,3 +45,37 @@ def test_ambiguous_seller_nip_resolves_before_agent_invocation() -> None:
     assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
     assert workflow.correctness is not None
     assert workflow.correctness.status is CorrectnessStatus.READY_FOR_KSEF
+
+
+def test_ambiguous_seller_nip_upload_does_not_require_system_xmllint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real upload path must finish without a host ``xmllint`` binary."""
+
+    from fastapi.testclient import TestClient
+
+    from src.review_ui.app import create_app
+    from src.review_ui.session import ReviewSession
+
+    monkeypatch.setenv("PATH", "")
+    session = ReviewSession(model=_AgentMustNotRun())
+    client = TestClient(create_app(session=session))
+
+    response = client.post(
+        "/invoice",
+        files={
+            "invoice": (
+                _FIXTURE.name,
+                _FIXTURE.read_bytes(),
+                "application/pdf",
+            )
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/result"
+    assert session.is_ready is True
+    assert session.workflow is not None
+    assert session.workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
+    assert client.get("/result/invoice.xml").status_code == 200
