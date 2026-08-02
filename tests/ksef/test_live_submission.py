@@ -1,8 +1,7 @@
-"""Credential-gated integration test proving one synthetic invoice reaches KSeF TEST."""
+"""Strict CI integration test proving one synthetic invoice reaches KSeF TEST."""
 
 from __future__ import annotations
 
-import os
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
@@ -21,12 +20,8 @@ from src.ksef.submission import submit_ready_invoice
 def test_synthetic_invoice_is_accepted_by_ksef_test() -> None:
     """Submit one unique locally valid synthetic FA(3) invoice to real KSeF TEST."""
 
-    if os.getenv("RUN_KSEF_LIVE") != "1":
-        pytest.skip("set RUN_KSEF_LIVE=1 to enable the KSeF TEST proof")
-
     config = KsefTestConfig.from_env()
-    if not config.token or not config.context_nip:
-        pytest.skip("KSEF_TEST_TOKEN and KSEF_TEST_CONTEXT_NIP are required")
+    config.require_credentials()
 
     shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
     shell.seller.nip = config.context_nip

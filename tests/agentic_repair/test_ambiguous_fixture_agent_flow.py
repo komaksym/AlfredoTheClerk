@@ -9,6 +9,7 @@ import pdfplumber
 import pytest
 
 from src.agentic_repair.repair_orchestration import (
+    AutomatedRepairOrigin,
     RepairWorkflowStatus,
     run_shell_repair,
 )
@@ -43,6 +44,9 @@ def test_ambiguous_seller_nip_resolves_before_agent_invocation() -> None:
 
     assert workflow.status is RepairWorkflowStatus.REPAIRED
     assert workflow.shell.seller.nip == _EXPECTED_SELLER_NIP
+    assert workflow.automated_repair is not None
+    assert workflow.automated_repair.origin is AutomatedRepairOrigin.DETERMINISTIC
+    assert workflow.agent_result is None
     assert workflow.correctness is not None
     assert workflow.correctness.status is CorrectnessStatus.READY_FOR_KSEF
 

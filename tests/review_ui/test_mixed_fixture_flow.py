@@ -8,7 +8,10 @@ from typing import Any
 import pdfplumber
 from fastapi.testclient import TestClient
 
-from src.agentic_repair.repair_orchestration import RepairWorkflowStatus
+from src.agentic_repair.repair_orchestration import (
+    AutomatedRepairOrigin,
+    RepairWorkflowStatus,
+)
 from src.agentic_repair.repair_routing import RepairRouteStatus, route_repair_context
 from src.input_processing.extraction_comparison import run_full_extraction
 from src.input_processing.parse_pdf import parse_data
@@ -87,12 +90,14 @@ def test_mixed_fixture_preserves_agent_change_until_human_finishes() -> None:
     )
     assert [
         (change.path, change.new_value)
-        for change in presentation.agent_changes
+        for change in presentation.automated_changes
     ] == [("seller.nip", SELLER_NIP)]
+    assert presentation.automated_changes[0].origin is AutomatedRepairOrigin.DETERMINISTIC
+    assert session.workflow.agent_result is None
     assert [field.path for field in presentation.fields] == ["buyer.nip"]
 
     review = client.get("/review")
-    assert "Agent changes" in review.text
+    assert "Automated changes" in review.text
     assert 'name="mode::buyer.nip"' in review.text
     assert 'name="mode::seller.nip"' not in review.text
 

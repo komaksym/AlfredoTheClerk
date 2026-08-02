@@ -8,8 +8,8 @@
 
   {% if session.case and session.case.attempts %}
   <p class="lead">Human review complete. The corrected canonical invoice passed local FA(3) and XSD validation.</p>
-  {% elif agent_changes %}
-  <p class="lead">Agent repair successful. The evidence-backed corrections passed the shared correctness pipeline.</p>
+  {% elif automated_changes %}
+  <p class="lead">Automated repair successful. The evidence-backed corrections passed the shared correctness pipeline.</p>
   {% else %}
   <p class="lead">Invoice valid. No human correction was required.</p>
   {% endif %}
@@ -21,15 +21,16 @@
     <span>XSD valid</span>
   </div>
 
-  {% if agent_changes %}
+  {% if automated_changes %}
   <details class="agent-changes result-changes">
-    <summary>Agent changes <span class="count-pill">{{ agent_changes|length }}</span></summary>
+    <summary>Automated changes <span class="count-pill">{{ automated_changes|length }}</span></summary>
     <div class="change-list">
-      {% for change in agent_changes %}
+      {% for change in automated_changes %}
       <div class="change-row">
         <div>
           <strong>{{ change.label }}</strong>
           <code>{{ change.path }}</code>
+          <span class="meta-line">{{ change.origin_label }}</span>
         </div>
         <div class="change-values">
           <span>{{ change.old_value }}</span>

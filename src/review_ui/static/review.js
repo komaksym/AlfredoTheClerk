@@ -7,6 +7,8 @@
   const zoomIn = document.querySelector("[data-zoom-in]");
   const zoomOut = document.querySelector("[data-zoom-out]");
   const zoomValue = document.querySelector("[data-zoom-value]");
+  const documentCard = document.querySelector("[data-document-card]");
+  const fullscreenButton = document.querySelector("[data-fullscreen]");
   let pdfScale = 1;
 
   function activateField(path, scrollTarget) {
@@ -114,6 +116,25 @@
   zoomIn?.addEventListener("click", () => {
     pdfScale = Math.min(1.5, Number((pdfScale + 0.1).toFixed(2)));
     renderZoom();
+  });
+
+
+  fullscreenButton?.addEventListener("click", async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen?.();
+      return;
+    }
+    await documentCard?.requestFullscreen?.();
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    if (!fullscreenButton) {
+      return;
+    }
+    fullscreenButton.setAttribute(
+      "aria-label",
+      document.fullscreenElement ? "Exit fullscreen" : "Enter fullscreen",
+    );
   });
 
   updateRepairControls();

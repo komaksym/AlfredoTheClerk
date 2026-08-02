@@ -163,6 +163,9 @@ def test_blocking_upload_renders_side_by_side_review_resources() -> None:
 
     original = client.get("/review/original.pdf")
     assert original.status_code == 200
+    assert original.headers["content-disposition"] == (
+        'attachment; filename="invoice.pdf"'
+    )
     assert original.content.startswith(b"%PDF")
 
     page = client.get("/review/page.png")

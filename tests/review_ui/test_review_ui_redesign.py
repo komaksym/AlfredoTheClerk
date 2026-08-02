@@ -69,6 +69,9 @@ def test_review_page_uses_approved_product_shell() -> None:
     assert "Needs review" in review.text
     assert "invoice.pdf" in review.text
     assert 'class="pdf-toolbar"' in review.text
+    assert 'data-document-card' in review.text
+    assert 'data-fullscreen' in review.text
+    assert 'aria-label="Enter fullscreen"' in review.text
     assert 'class="agent-changes"' in review.text
     assert "Unresolved fields" in review.text
     assert "Invoice number" in review.text
@@ -96,6 +99,11 @@ def test_review_page_uses_approved_product_shell() -> None:
     page = client.get("/review/page.png")
     assert page.status_code == 200
     assert page.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    script = client.get("/static/review.js")
+    assert script.status_code == 200
+    assert "requestFullscreen" in script.text
+    assert "exitFullscreen" in script.text
 
 
 def test_review_page_embeds_critical_light_workspace_style() -> None:

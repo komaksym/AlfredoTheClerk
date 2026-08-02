@@ -29,6 +29,7 @@ def test_system_prompt_describes_batch_repair_tool_contract() -> None:
     assert "candidate_index" in prompt
     assert "reason" in prompt
     assert "do not invent" in prompt
+    assert "abstain" in prompt
     assert "promote_candidate" not in prompt
     assert "apply_repair_plan(path" not in prompt
 

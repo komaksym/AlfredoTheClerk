@@ -13,6 +13,7 @@ import pytest
 from src.agentic_repair.agent_extraction_repair import AgentRepairResult
 from src.agentic_repair.repair_kernel import RepairResult
 from src.agentic_repair.repair_orchestration import (
+    AutomatedRepairOrigin,
     RepairWorkflowStatus,
     run_shell_repair,
 )
@@ -145,6 +146,7 @@ def test_run_shell_repair_returns_no_repair_result_without_agent(
     assert result.status is RepairWorkflowStatus.NO_REPAIR_NEEDED
     assert result.context is context
     assert result.shell is context.shell
+    assert result.automated_repair is None
     assert result.agent_result is None
     assert result.reason is None
     assert result.correctness is correctness
@@ -227,6 +229,10 @@ def test_run_shell_repair_returns_repaired_shell_from_agent(
     assert result.shell is repaired_shell
     assert result.shell.invoice_number == "FV/001"
     assert context.shell.invoice_number == "BAD"
+    assert result.automated_repair is not None
+    assert result.automated_repair.origin is AutomatedRepairOrigin.AGENT
+    assert result.automated_repair.repair_result is agent_result.repair_result
+    assert result.automated_repair.agent_result is agent_result
     assert result.agent_result is agent_result
     assert result.reason is None
     assert result.correctness is correctness
@@ -347,6 +353,7 @@ def test_run_shell_repair_reports_agent_no_tool_call(
     assert result.status is RepairWorkflowStatus.AGENT_FAILED
     assert result.context is context
     assert result.shell is context.shell
+    assert result.automated_repair is None
     assert result.agent_result is agent_result
     assert result.reason == "agent_no_tool_call"
     assert result.correctness is None
@@ -374,6 +381,7 @@ def test_run_shell_repair_reports_missing_repair_result_after_tool_call(
     assert result.status is RepairWorkflowStatus.AGENT_FAILED
     assert result.context is context
     assert result.shell is context.shell
+    assert result.automated_repair is None
     assert result.agent_result is agent_result
     assert result.reason == "repair_result_is_missing"
     assert result.correctness is None
@@ -418,6 +426,8 @@ def test_run_shell_repair_routes_correctness_failure_to_manual_review(
     assert result.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
     assert result.context is context
     assert result.shell is context.shell
+    assert result.automated_repair is not None
+    assert result.automated_repair.origin is AutomatedRepairOrigin.AGENT
     assert result.agent_result is agent_result
     assert result.correctness is correctness
     assert result.reason == status.value
@@ -447,3 +457,49 @@ def test_run_shell_repair_returns_manual_review_for_blocking_route(
     assert result.agent_result is None
     assert result.reason == "blocking_fields"
     assert result.correctness is None
+
+
+@pytest.mark.parametrize(
+    ("agent_result", "expected_reason"),
+    [
+        (_agent_result(None, tool_called=False), "agent_no_tool_call"),
+        (_agent_result(None, tool_called=True), "repair_result_is_missing"),
+    ],
+)
+def test_unresolved_agent_result_does_not_retry_deterministic_repair(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_result: AgentRepairResult,
+    expected_reason: str,
+) -> None:
+    """Unchanged evidence must not trigger a second deterministic pass."""
+
+    context = make_repair_context(
+        evidence={
+            "invoice_number": make_evidence_with_candidates("BAD", "FV/001"),
+        },
+        validation_errors=[make_validation_error("invoice_number")],
+    )
+    _patch_extraction(monkeypatch, context)
+    deterministic_calls = 0
+
+    def no_deterministic_repair(*args: object, **kwargs: object) -> None:
+        """Record the only deterministic attempt allowed before the agent."""
+
+        nonlocal deterministic_calls
+        deterministic_calls += 1
+        return None
+
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_orchestration._try_exact_label_fallback",
+        no_deterministic_repair,
+    )
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_orchestration.runner",
+        lambda session, payload, model: agent_result,
+    )
+
+    result = run_shell_repair(_parsed_document(), model=object())
+
+    assert result.status is RepairWorkflowStatus.AGENT_FAILED
+    assert result.reason == expected_reason
+    assert deterministic_calls == 1

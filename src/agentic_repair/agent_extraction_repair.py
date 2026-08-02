@@ -8,6 +8,7 @@ from typing import Any, Callable, Literal
 from dataclasses import dataclass, asdict
 
 from langchain.messages import (
+    AIMessage,
     AnyMessage,
     HumanMessage,
     SystemMessage,
@@ -32,8 +33,10 @@ You repair extracted invoice fields by selecting from existing candidates.
 
 The payload contains only fields that deterministic routing has classified as
 repairable and every field has at least one legal evidence candidate. Call
-apply_repair_plan exactly once. Pass repair_commands as a JSON list and include
-one selection for every field in the payload. Each item must contain:
+apply_repair_plan at most once. Pass repair_commands as a JSON list and include
+one selection for every field only when the evidence safely distinguishes them.
+If any field remains ambiguous, abstain and do not call a tool. Each item must
+contain:
 - path: exact field path from the payload
 - candidate_index: zero-based index of an existing candidate for that path
 - reason: brief evidence-based explanation for the selected candidate
@@ -90,13 +93,7 @@ def runner(
     tools, get_latest_result = build_repair_tools(session)
 
     tools_by_name = {tool.name: tool for tool in tools}
-    model_with_tools = model.bind_tools(
-        tools,
-        tool_choice={
-            "type": "function",
-            "function": {"name": tools[0].name},
-        },
-    )
+    model_with_tools = model.bind_tools(tools)
 
     # Build workflow
     agent_builder = StateGraph(MessagesState)
@@ -104,8 +101,12 @@ def runner(
     # Add nodes
     llm_call = make_llm_call_node(model_with_tools)
     tool_node = make_llm_tool_node(tools_by_name)
-    agent_builder.add_node("llm_call", llm_call)
-    agent_builder.add_node("tool_node", tool_node)
+    agent_builder.add_node(
+        "llm_call", llm_call  # pyright: ignore[reportArgumentType]
+    )
+    agent_builder.add_node(
+        "tool_node", tool_node  # pyright: ignore[reportArgumentType]
+    )
 
     # Add edges to connect nodes
     agent_builder.add_edge(START, "llm_call")
@@ -247,6 +248,7 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyrig
 
     messages = state["messages"]
     last_message = messages[-1]
+    tool_calls = last_message.tool_calls if isinstance(last_message, AIMessage) else []
     tool_calls_used = sum(1 for m in messages if isinstance(m, ToolMessage))
 
     if state["llm_calls"] > MAX_LLM_CALLS:
@@ -255,7 +257,7 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyrig
     if tool_calls_used >= MAX_TOOL_CALLS:
         return END
 
-    if last_message.tool_calls:
+    if tool_calls:
         return "tool_node"
 
     return END
@@ -270,18 +272,21 @@ def make_llm_tool_node(
         """Run requested tools and return their observations as messages."""
 
         last_message = state["messages"][-1]
+        if not isinstance(last_message, AIMessage):
+            raise ValueError("Tool node requires an AI message")
+        tool_calls = last_message.tool_calls
 
         tool_calls_used = sum(
             1 for m in state["messages"] if isinstance(m, ToolMessage)
         )
         remaining = MAX_TOOL_CALLS - tool_calls_used
-        requested = len(last_message.tool_calls)
+        requested = len(tool_calls)
 
         if requested > remaining:
             raise ValueError("Tool call budget exceeded")
 
         result: list[ToolMessage] = []
-        for tool_call in last_message.tool_calls:
+        for tool_call in tool_calls:
             if tool_call["name"] not in tools_by_name:
                 raise ValueError("The tool is not in the tool whitelist")
 

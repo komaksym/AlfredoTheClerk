@@ -22,7 +22,7 @@
 {% endif %}
 
 <div class="review-workspace">
-  <section class="document-card" aria-label="Original invoice">
+  <section class="document-card" data-document-card aria-label="Original invoice">
     <div class="pdf-toolbar">
       <div class="toolbar-group">
         <span class="toolbar-icon" aria-hidden="true">
@@ -40,12 +40,12 @@
         </button>
       </div>
       <div class="toolbar-group toolbar-actions">
-        <a class="toolbar-button" href="/review/original.pdf" target="_blank" rel="noopener" aria-label="Download original PDF">
+        <a class="toolbar-button" href="/review/original.pdf" download aria-label="Download original PDF">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 10l4 4 4-4M5 18v2h14v-2"/></svg>
         </a>
-        <span class="toolbar-button toolbar-button-static" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></svg>
-        </span>
+        <button type="button" class="toolbar-button" data-fullscreen aria-label="Enter fullscreen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></svg>
+        </button>
       </div>
     </div>
 
@@ -74,13 +74,13 @@
           <span class="summary-icon summary-icon-agent" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
           </span>
-          <span>Agent changes</span>
+          <span>Automated changes</span>
         </span>
         <span class="summary-side">
-          {% if presentation.agent_changes %}
+          {% if presentation.automated_changes %}
           <span class="success-chip">
             <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 9.5l3 3 7-7"/></svg>
-            {{ presentation.agent_changes|length }} change{% if presentation.agent_changes|length != 1 %}s{% endif %}
+            {{ presentation.automated_changes|length }} change{% if presentation.automated_changes|length != 1 %}s{% endif %}
           </span>
           {% else %}
           <span class="neutral-chip">No changes</span>
@@ -92,9 +92,9 @@
         {% if session.agent_warning %}
         <div class="agent-warning" role="status">{{ session.agent_warning }}</div>
         {% endif %}
-        {% if presentation.agent_changes %}
+        {% if presentation.automated_changes %}
         <div class="change-list">
-          {% for change in presentation.agent_changes %}
+          {% for change in presentation.automated_changes %}
           <div class="change-row">
             <div>
               <strong>{{ change.label }}</strong>
@@ -105,12 +105,12 @@
               <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 9h11M10 5l4 4-4 4"/></svg>
               <strong>{{ change.new_value }}</strong>
             </div>
-            <div class="meta-line">Candidate {{ change.candidate_index }}{% if change.confidence is not none %} · {{ "%.0f"|format(change.confidence * 100) }}% confidence{% endif %}</div>
+            <div class="meta-line">{{ change.origin_label }} · Candidate {{ change.candidate_index }}{% if change.confidence is not none %} · {{ "%.0f"|format(change.confidence * 100) }}% confidence{% endif %}</div>
           </div>
           {% endfor %}
         </div>
         {% elif not session.agent_warning %}
-        <p class="empty-copy">The agent did not change any invoice fields.</p>
+        <p class="empty-copy">No automated invoice changes were accepted.</p>
         {% endif %}
       </div>
     </details>
