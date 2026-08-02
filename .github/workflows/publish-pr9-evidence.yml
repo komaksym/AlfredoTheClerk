@@ -1,0 +1,84 @@
+name: Publish PR 9 browser evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.head_ref == 'feat/review-ui-redesign'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/review-ui-redesign
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.0"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Capture canonical evidence
+        run: |
+          mkdir -p browser-smoke docs/evidence/pr9
+          PYTHONPATH=. uv run python tests/review_ui/browser_smoke_server.py &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:8001/review >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+
+          google-chrome --headless --no-sandbox --disable-gpu \
+            --window-size=1536,960 \
+            --screenshot=browser-smoke/human-fallback.png \
+            http://127.0.0.1:8001/review
+
+          google-chrome --headless --no-sandbox --disable-gpu \
+            --force-dark-mode \
+            --window-size=1536,960 \
+            --screenshot=browser-smoke/human-fallback-dark-preference.png \
+            http://127.0.0.1:8001/review
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --data-urlencode "reviewer_id=CI browser smoke" \
+            --data-urlencode "mode::buyer.nip=manual" \
+            --data-urlencode "manual::buyer.nip=5423511615" \
+            http://127.0.0.1:8001/review >/dev/null
+
+          google-chrome --headless --no-sandbox --disable-gpu \
+            --window-size=1536,960 \
+            --screenshot=browser-smoke/ready-for-ksef.png \
+            http://127.0.0.1:8001/result
+
+          cp browser-smoke/*.png docs/evidence/pr9/
+
+      - name: Commit canonical evidence
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/evidence/pr9/*.png
+          git commit -m "docs(ui): preserve PR 9 browser evidence"
+          git push origin HEAD:feat/review-ui-redesign
