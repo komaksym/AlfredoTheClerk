@@ -33,9 +33,6 @@ jobs:
         with:
           python-version: "3.13.0"
 
-      - name: Install xmllint
-        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
-
       - name: Install dependencies
         run: uv sync --locked
 
@@ -156,9 +153,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13.0"
-
-      - name: Install xmllint
-        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
 
       - name: Install dependencies
         run: uv sync --locked
