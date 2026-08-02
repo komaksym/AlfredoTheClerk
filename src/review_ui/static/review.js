@@ -3,6 +3,13 @@
 
   const cards = Array.from(document.querySelectorAll("[data-field-path]"));
   const overlays = Array.from(document.querySelectorAll("[data-evidence-path]"));
+  const pdfStage = document.querySelector("[data-pdf-stage]");
+  const zoomIn = document.querySelector("[data-zoom-in]");
+  const zoomOut = document.querySelector("[data-zoom-out]");
+  const zoomValue = document.querySelector("[data-zoom-value]");
+  const documentCard = document.querySelector("[data-document-card]");
+  const fullscreenButton = document.querySelector("[data-fullscreen]");
+  let pdfScale = 1;
 
   function activateField(path, scrollTarget) {
     cards.forEach((card) => {
@@ -72,25 +79,64 @@
 
   function updateRepairControls() {
     cards.forEach((card) => {
-      const path = card.dataset.fieldPath;
       const selected = card.querySelector('input[name^="mode::"]:checked');
       const candidateList = card.querySelector("[data-candidate-controls]");
-      const candidateInputs = card.querySelectorAll('[name^="candidate::"]');
       const manualInput = card.querySelector("[data-manual-input]");
-      const useCandidates = selected?.value === "candidate";
-      const useManual = selected?.value === "manual";
 
-      candidateList?.classList.toggle("is-disabled", !useCandidates);
-      candidateInputs.forEach((input) => {
-        if (!input.closest(".candidate-disabled")) {
-          input.disabled = !useCandidates;
-        }
-      });
-      if (manualInput) {
-        manualInput.disabled = !useManual;
-      }
+      candidateList?.classList.toggle(
+        "is-selected-mode",
+        selected?.value === "candidate",
+      );
+      manualInput?.classList.toggle(
+        "is-selected-mode",
+        selected?.value === "manual",
+      );
     });
   }
 
+  function renderZoom() {
+    if (!pdfStage || !zoomValue) {
+      return;
+    }
+    pdfStage.style.transform = `scale(${pdfScale})`;
+    zoomValue.textContent = `${Math.round(pdfScale * 100)}%`;
+    if (zoomOut) {
+      zoomOut.disabled = pdfScale <= 0.75;
+    }
+    if (zoomIn) {
+      zoomIn.disabled = pdfScale >= 1.5;
+    }
+  }
+
+  zoomOut?.addEventListener("click", () => {
+    pdfScale = Math.max(0.75, Number((pdfScale - 0.1).toFixed(2)));
+    renderZoom();
+  });
+
+  zoomIn?.addEventListener("click", () => {
+    pdfScale = Math.min(1.5, Number((pdfScale + 0.1).toFixed(2)));
+    renderZoom();
+  });
+
+
+  fullscreenButton?.addEventListener("click", async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen?.();
+      return;
+    }
+    await documentCard?.requestFullscreen?.();
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    if (!fullscreenButton) {
+      return;
+    }
+    fullscreenButton.setAttribute(
+      "aria-label",
+      document.fullscreenElement ? "Exit fullscreen" : "Enter fullscreen",
+    );
+  });
+
   updateRepairControls();
+  renderZoom();
 })();

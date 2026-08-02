@@ -26,6 +26,18 @@ class KsefTestConfig:
             context_nip=os.getenv("KSEF_TEST_CONTEXT_NIP", "").strip(),
         )
 
+    def require_credentials(self) -> None:
+        """Raise a clear error unless both strict TEST credentials exist."""
+
+        missing = []
+        if not self.token:
+            missing.append("KSEF_TEST_TOKEN")
+        if not self.context_nip:
+            missing.append("KSEF_TEST_CONTEXT_NIP")
+        if missing:
+            names = ", ".join(missing)
+            raise ValueError(f"Missing required KSeF TEST credentials: {names}")
+
     def __repr__(self) -> str:
         """Return a representation that redacts the KSeF token."""
 

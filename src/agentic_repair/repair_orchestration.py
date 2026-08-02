@@ -8,7 +8,12 @@ from enum import Enum
 from typing import Any
 
 from src.agentic_repair.agent_extraction_repair import AgentRepairResult, runner
-from src.agentic_repair.repair_kernel import RepairSession
+from src.agentic_repair.repair_kernel import (
+    RepairCommand,
+    RepairPlanCommand,
+    RepairResult,
+    RepairSession,
+)
 from src.agentic_repair.repair_payload import build_agent_repair_payload
 from src.agentic_repair.repair_routing import (
     RepairRoute,
@@ -41,6 +46,44 @@ class RepairWorkflowStatus(Enum):
     AGENT_FAILED = "agent_failed"
 
 
+class AutomatedRepairOrigin(Enum):
+    """Source that selected an accepted automated repair plan."""
+
+    DETERMINISTIC = "deterministic"
+    AGENT = "agent"
+
+    @property
+    def label(self) -> str:
+        """Return the human-facing provenance label for this origin."""
+
+        if self is AutomatedRepairOrigin.DETERMINISTIC:
+            return "Deterministic rule"
+        return "Agent"
+
+
+@dataclass(kw_only=True, frozen=True)
+class AcceptedAutomatedRepair:
+    """One accepted automated repair with truthful selection provenance."""
+
+    repair_result: RepairResult
+    origin: AutomatedRepairOrigin
+    agent_result: AgentRepairResult | None = None
+
+    def __post_init__(self) -> None:
+        """Reject provenance combinations that could misstate model use."""
+
+        if (
+            self.origin is AutomatedRepairOrigin.DETERMINISTIC
+            and self.agent_result is not None
+        ):
+            raise ValueError("deterministic repair cannot have agent metadata")
+        if (
+            self.origin is AutomatedRepairOrigin.AGENT
+            and self.agent_result is None
+        ):
+            raise ValueError("agent repair requires agent metadata")
+
+
 @dataclass(kw_only=True, frozen=True)
 class RepairWorkflowResult:
     """Application-level repair result returned to production callers."""
@@ -49,6 +92,7 @@ class RepairWorkflowResult:
     shell: DomesticVatInvoiceShell
     route: RepairRoute
     context: RepairContext
+    automated_repair: AcceptedAutomatedRepair | None = None
     agent_result: AgentRepairResult | None = None
     reason: str | None = None
     correctness: CorrectnessResult | None = None
@@ -72,6 +116,7 @@ def run_shell_repair(
             route=route,
             candidate_shell=context.shell,
             success_status=RepairWorkflowStatus.NO_REPAIR_NEEDED,
+            automated_repair=None,
             agent_result=None,
             generated_at=generated_at,
         )
@@ -85,7 +130,6 @@ def run_shell_repair(
             shell=context.shell,
             route=route,
             context=context,
-            agent_result=None,
             reason="blocking_fields",
         )
 
@@ -98,9 +142,25 @@ def _run_agent_repair(
     model: Any,
     generated_at: datetime | None,
 ) -> RepairWorkflowResult:
-    """Run the agent branch and translate its output to workflow status."""
+    """Resolve exact evidence first, then run the agent for real ambiguity."""
 
     session = RepairSession.from_context(context)
+    deterministic_result = _try_exact_label_fallback(session, context, route)
+    if deterministic_result is not None:
+        accepted = AcceptedAutomatedRepair(
+            repair_result=deterministic_result,
+            origin=AutomatedRepairOrigin.DETERMINISTIC,
+        )
+        return _finish_correctness(
+            context=context,
+            route=route,
+            candidate_shell=deterministic_result.shell,
+            success_status=RepairWorkflowStatus.REPAIRED,
+            automated_repair=accepted,
+            agent_result=None,
+            generated_at=generated_at,
+        )
+
     payload = build_agent_repair_payload(context, route)
     try:
         agent_result = runner(session, payload, model)
@@ -127,7 +187,7 @@ def _agent_result_to_workflow_result(
     agent_result: AgentRepairResult,
     generated_at: datetime | None,
 ) -> RepairWorkflowResult:
-    """Classify an agent run as repaired, failed, or manual-review needed."""
+    """Classify an agent run as repaired or unresolved."""
 
     if not agent_result.tool_called:
         return _agent_failed(
@@ -146,13 +206,63 @@ def _agent_result_to_workflow_result(
             reason="repair_result_is_missing",
         )
 
+    accepted = AcceptedAutomatedRepair(
+        repair_result=repair_result,
+        origin=AutomatedRepairOrigin.AGENT,
+        agent_result=agent_result,
+    )
     return _finish_correctness(
         context=context,
         route=route,
         candidate_shell=repair_result.shell,
         success_status=RepairWorkflowStatus.REPAIRED,
+        automated_repair=accepted,
         agent_result=agent_result,
         generated_at=generated_at,
+    )
+
+
+def _try_exact_label_fallback(
+    session: RepairSession,
+    context: RepairContext,
+    route: RepairRoute,
+) -> RepairResult | None:
+    """Repair only when every routed NIP has one exact ``NIP:`` candidate."""
+
+    commands: list[RepairCommand] = []
+    for field in route.repairable_fields:
+        if not field.path.endswith(".nip"):
+            return None
+
+        evidence = context.evidence.get(field.path)
+        candidates = evidence.candidates if evidence is not None else None
+        if not candidates:
+            return None
+
+        exact_indexes = [
+            index
+            for index, candidate in enumerate(candidates)
+            if candidate.same_line_text is not None
+            and candidate.same_line_text.partition(":")[1] == ":"
+            and candidate.same_line_text.partition(":")[0].strip().casefold()
+            == "nip"
+        ]
+        if len(exact_indexes) != 1:
+            return None
+
+        commands.append(
+            RepairCommand(
+                path=field.path,
+                candidate_index=exact_indexes[0],
+                reason="unique candidate on the exact NIP-labelled line",
+            )
+        )
+
+    if not commands:
+        return None
+
+    return session.apply_repair_plan(
+        RepairPlanCommand(repair_commands=tuple(commands))
     )
 
 
@@ -162,6 +272,7 @@ def _finish_correctness(
     route: RepairRoute,
     candidate_shell: DomesticVatInvoiceShell,
     success_status: RepairWorkflowStatus,
+    automated_repair: AcceptedAutomatedRepair | None,
     agent_result: AgentRepairResult | None,
     generated_at: datetime | None,
 ) -> RepairWorkflowResult:
@@ -178,6 +289,7 @@ def _finish_correctness(
             shell=candidate_shell,
             route=route,
             context=context,
+            automated_repair=automated_repair,
             agent_result=agent_result,
             reason=None,
             correctness=correctness,
@@ -188,6 +300,7 @@ def _finish_correctness(
         shell=context.shell,
         route=route,
         context=context,
+        automated_repair=automated_repair,
         agent_result=agent_result,
         reason=correctness.status.value,
         correctness=correctness,

@@ -5,13 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import re
+from typing import cast
 
 from src.agentic_repair.human_review import (
+    CanonicalReviewValue,
     HumanReviewCandidate,
     HumanReviewCase,
     HumanReviewField,
 )
-from src.agentic_repair.repair_orchestration import RepairWorkflowResult
+from src.agentic_repair.repair_orchestration import (
+    AutomatedRepairOrigin,
+    RepairWorkflowResult,
+)
 from src.agentic_repair.shell_fields import read_shell_field, supports_shell_field
 from src.invoice_gen.invoice_correctness import CorrectnessStatus
 from src.review_ui.pdf_view import OverlayBox, PdfPageView, overlay_from_bbox
@@ -25,8 +30,8 @@ _TOTAL_INPUT_FIELDS = ("discount", "quantity", "unit_price_net", "vat_rate")
 
 
 @dataclass(frozen=True, kw_only=True)
-class AgentChangeView:
-    """One accepted evidence-backed agent change shown for audit."""
+class AutomatedChangeView:
+    """One accepted automated change shown with truthful provenance."""
 
     path: str
     label: str
@@ -34,6 +39,8 @@ class AgentChangeView:
     new_value: object
     candidate_index: int
     confidence: float | None
+    origin: AutomatedRepairOrigin
+    origin_label: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -82,7 +89,7 @@ class TotalsMismatchView:
 class ReviewPresentation:
     """Complete view model for the side-by-side review page."""
 
-    agent_changes: tuple[AgentChangeView, ...]
+    automated_changes: tuple[AutomatedChangeView, ...]
     fields: tuple[ReviewFieldView, ...]
     mismatches: tuple[TotalsMismatchView, ...]
 
@@ -94,12 +101,12 @@ def build_review_presentation(
 ) -> ReviewPresentation:
     """Build audit, residual-field, and mismatch views for one review case."""
 
-    agent_changes = build_agent_change_views(workflow)
-    change_paths = {change.path for change in agent_changes}
+    automated_changes = build_automated_change_views(workflow)
+    change_paths = {change.path for change in automated_changes}
     field_views = {
         field.path: _field_view(field, case, page)
         for field in case.fields
-        if not _is_resolved_agent_field(field.path, case, change_paths)
+        if not _is_resolved_automated_field(field.path, case, change_paths)
     }
     for field in _totals_mismatch_fields(case):
         field_views.setdefault(field.path, _field_view(field, case, page))
@@ -119,24 +126,23 @@ def build_review_presentation(
         )
 
     return ReviewPresentation(
-        agent_changes=agent_changes,
+        automated_changes=automated_changes,
         fields=fields,
         mismatches=mismatches,
     )
 
 
-def build_agent_change_views(
+def build_automated_change_views(
     workflow: RepairWorkflowResult,
-) -> tuple[AgentChangeView, ...]:
-    """Read accepted agent decisions and enrich them with candidate confidence."""
+) -> tuple[AutomatedChangeView, ...]:
+    """Read accepted automated decisions and attach truthful provenance."""
 
-    if workflow.agent_result is None:
+    automated_repair = workflow.automated_repair
+    if automated_repair is None:
         return ()
-    repair_result = workflow.agent_result.repair_result
-    if repair_result is None:
-        return ()
+    repair_result = automated_repair.repair_result
 
-    changes: list[AgentChangeView] = []
+    changes: list[AutomatedChangeView] = []
     for decision in repair_result.decisions:
         confidence = None
         evidence = workflow.context.evidence.get(decision.path)
@@ -145,13 +151,15 @@ def build_agent_change_views(
             if 0 <= decision.candidate_index < len(candidates):
                 confidence = candidates[decision.candidate_index].confidence
         changes.append(
-            AgentChangeView(
+            AutomatedChangeView(
                 path=decision.path,
                 label=field_label(decision.path),
                 old_value=decision.old_value,
                 new_value=decision.new_value,
                 candidate_index=decision.candidate_index,
                 confidence=confidence,
+                origin=automated_repair.origin,
+                origin_label=automated_repair.origin.label,
             )
         )
     return tuple(changes)
@@ -304,7 +312,9 @@ def _totals_mismatch_field(
 
     return HumanReviewField(
         path=path,
-        current_value=read_shell_field(case.shell, path),
+        current_value=cast(
+            CanonicalReviewValue, read_shell_field(case.shell, path)
+        ),
         diagnostic_status=(diagnostic.status if diagnostic is not None else None),
         validation_errors=(),
         blocking_reason="source_total_mismatch",
@@ -314,12 +324,12 @@ def _totals_mismatch_field(
     )
 
 
-def _is_resolved_agent_field(
+def _is_resolved_automated_field(
     path: str,
     case: HumanReviewCase,
     change_paths: set[str],
 ) -> bool:
-    """Hide agent-fixed fields when shell validation proves them resolved."""
+    """Hide automatically fixed fields when validation proves them resolved."""
 
     if path not in change_paths or case.correctness is None:
         return False
