@@ -29,7 +29,7 @@ jobs:
           cat .github/pr9-bootstrap/part*.patch > /tmp/pr9.patch
           git apply --check /tmp/pr9.patch
           git apply /tmp/pr9.patch
-          cp .github/pr9-bootstrap/ci-final.yml .github/workflows/ci.yml
+          cp .github/pr9-bootstrap/ci-final.yml /tmp/ci-final.yml
           rm -rf .github/pr9-bootstrap
 
       - name: Set up uv
@@ -48,6 +48,7 @@ jobs:
 
       - name: Commit final implementation
         run: |
+          git restore --source=HEAD -- .github/workflows/ci.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
