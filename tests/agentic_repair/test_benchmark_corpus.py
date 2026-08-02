@@ -9,26 +9,29 @@ from pathlib import Path
 import pytest
 
 from src.agentic_repair.benchmark_corpus import (
-    AGENTIC_REPAIR_CORPUS_PATH,
-    HEADLINE_CORPUS_ID,
-    SANITY_CORPUS_PATH,
     BenchmarkCorpusError,
     build_agent_payload,
     build_benchmark_corpus,
     corpus_to_json,
     load_benchmark_corpus,
 )
+from src.agentic_repair.benchmark_publication import (
+    HEADLINE_CORPUS_ID,
+    HEADLINE_CORPUS_PATH,
+    SANITY_CORPUS_PATH,
+    load_headline_corpus,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HEADLINE_CORPUS_PATH = REPO_ROOT / AGENTIC_REPAIR_CORPUS_PATH
-GENERATED_SANITY_CORPUS_PATH = REPO_ROOT / SANITY_CORPUS_PATH
+CHECKED_IN_HEADLINE_CORPUS_PATH = REPO_ROOT / HEADLINE_CORPUS_PATH
+CHECKED_IN_SANITY_CORPUS_PATH = REPO_ROOT / SANITY_CORPUS_PATH
 
 
 def test_checked_in_headline_corpus_has_curated_distribution() -> None:
     """Headline metrics should use the separately authored hard split."""
 
-    corpus = load_benchmark_corpus(HEADLINE_CORPUS_PATH)
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     counts = Counter(case.category for case in corpus.cases)
 
     assert corpus.corpus_id == HEADLINE_CORPUS_ID
@@ -45,7 +48,7 @@ def test_checked_in_headline_corpus_has_curated_distribution() -> None:
 def test_generated_sanity_corpus_has_declared_distribution() -> None:
     """The original 200 generated cases remain a tool-contract sanity split."""
 
-    corpus = load_benchmark_corpus(GENERATED_SANITY_CORPUS_PATH)
+    corpus = load_benchmark_corpus(CHECKED_IN_SANITY_CORPUS_PATH)
     counts = Counter(case.category for case in corpus.cases)
 
     assert len(corpus.cases) == 200
@@ -61,7 +64,7 @@ def test_generated_sanity_corpus_has_declared_distribution() -> None:
 def test_checked_in_sanity_corpus_matches_deterministic_builder() -> None:
     """Regeneration should reproduce only the generated sanity artifact."""
 
-    checked_in = GENERATED_SANITY_CORPUS_PATH.read_text(encoding="utf-8")
+    checked_in = CHECKED_IN_SANITY_CORPUS_PATH.read_text(encoding="utf-8")
 
     assert checked_in == corpus_to_json(build_benchmark_corpus())
 
@@ -69,7 +72,7 @@ def test_checked_in_sanity_corpus_matches_deterministic_builder() -> None:
 def test_headline_corpus_hides_answer_metadata() -> None:
     """Expected choices must not be exposed through rules or rejection flags."""
 
-    corpus = load_benchmark_corpus(HEADLINE_CORPUS_PATH)
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     candidates = [
         candidate
         for case in corpus.cases
@@ -85,7 +88,7 @@ def test_headline_corpus_hides_answer_metadata() -> None:
 def test_headline_ground_truth_is_not_candidate_position_or_confidence() -> None:
     """The hard split should require context rather than one index or score."""
 
-    corpus = load_benchmark_corpus(HEADLINE_CORPUS_PATH)
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     fields = [
         field
         for case in corpus.cases
@@ -111,7 +114,7 @@ def test_headline_ground_truth_is_not_candidate_position_or_confidence() -> None
 def test_build_agent_payload_preserves_complete_candidate_evidence() -> None:
     """The live runner should receive every persisted candidate attribute."""
 
-    corpus = load_benchmark_corpus(HEADLINE_CORPUS_PATH)
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
     case = next(case for case in corpus.cases if case.fields)
 
     payload = build_agent_payload(case)
@@ -169,7 +172,7 @@ def test_loader_rejects_answer_leaking_headline_metadata(
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(BenchmarkCorpusError, match="answer-leaking metadata"):
-        load_benchmark_corpus(path)
+        load_headline_corpus(path)
 
 
 def test_loader_rejects_expected_index_outside_candidates(
