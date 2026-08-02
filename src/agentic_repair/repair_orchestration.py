@@ -241,7 +241,9 @@ def _try_exact_label_fallback(
             index
             for index, candidate in enumerate(candidates)
             if candidate.same_line_text is not None
-            and candidate.same_line_text.partition(":")[0].strip().casefold() == "nip"
+            and candidate.same_line_text.partition(":")[1] == ":"
+            and candidate.same_line_text.partition(":")[0].strip().casefold()
+            == "nip"
         ]
         if len(exact_indexes) != 1:
             return None
