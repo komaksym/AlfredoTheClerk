@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
+
+from lxml import etree
 
 
 _SCHEMA_DIR = files("src.invoice_gen.schemas")
@@ -46,45 +46,39 @@ class XsdValidationError(RuntimeError):
 
 
 def validate_xml_against_local_schema_bundle(xml: str) -> XsdValidationResult:
-    """Validate one FA(3) XML payload without network access."""
+    """Validate one FA(3) XML payload in-process without network access."""
 
-    xmllint_path = shutil.which("xmllint")
-    if xmllint_path is None:
-        raise XsdValidationError(
-            "xmllint is required for local FA(3) validation"
-        )
-
+    parser = etree.XMLParser(no_network=True, resolve_entities=False)
     try:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
-            tmp_dir = Path(tmp_dir_name)
-            schema_path = _build_local_schema_bundle(tmp_dir)
-            xml_path = tmp_dir / "candidate.xml"
-            xml_path.write_text(xml, encoding="utf-8")
-
-            result = subprocess.run(
-                [
-                    xmllint_path,
-                    "--nonet",
-                    "--noout",
-                    "--schema",
-                    str(schema_path),
-                    str(xml_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-    except OSError as exc:
+            schema_path = _build_local_schema_bundle(Path(tmp_dir_name))
+            schema_document = etree.parse(str(schema_path), parser)
+            schema = etree.XMLSchema(schema_document)
+    except (OSError, etree.XMLSchemaParseError, etree.XMLSyntaxError) as exc:
         raise XsdValidationError(
-            f"local FA(3) validation failed: {exc}"
+            f"local FA(3) validation failed: {_first_error(exc)}"
         ) from exc
 
-    if result.returncode == 0:
+    try:
+        document = etree.fromstring(xml.encode("utf-8"), parser)
+    except etree.XMLSyntaxError as exc:
+        return XsdValidationResult(is_valid=False, error=_first_error(exc))
+
+    if schema.validate(document):
         return XsdValidationResult(is_valid=True)
 
-    output = result.stderr.strip() or result.stdout.strip()
-    first_error = output.splitlines()[0] if output else ""
-    return XsdValidationResult(is_valid=False, error=first_error or None)
+    error = schema.error_log.last_error
+    return XsdValidationResult(
+        is_valid=False,
+        error=_first_error(error) if error is not None else None,
+    )
+
+
+def _first_error(error: object) -> str:
+    """Return one stable single-line validator diagnostic."""
+
+    text = str(error).strip()
+    return text.splitlines()[0] if text else "unknown validation error"
 
 
 def _build_local_schema_bundle(tmp_path: Path) -> Path:
