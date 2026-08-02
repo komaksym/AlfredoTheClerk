@@ -1,7 +1,7 @@
 [project]
 name = "alfredotheclerk"
 version = "0.1.0"
-description = "Add your description here"
+description = "Evidence-constrained agentic repair for KSeF-ready invoices"
 readme = "README.md"
 requires-python = ">=3.13.0"
 dependencies = [
@@ -19,6 +19,9 @@ dependencies = [
     "weasyprint>=68.1",
     "xsdata[cli]>=26.2",
 ]
+
+[project.scripts]
+alfredo-benchmark-report = "src.agentic_repair.benchmark_cli:main"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
