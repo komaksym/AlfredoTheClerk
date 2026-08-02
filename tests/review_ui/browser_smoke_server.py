@@ -1,4 +1,4 @@
-"""Serve a real extraction-to-agent-failure browser smoke flow."""
+"""Serve the real no-candidate human-review browser smoke flow."""
 
 from __future__ import annotations
 
@@ -14,34 +14,27 @@ from src.review_ui.session import ReviewSession
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SAMPLE_PDF = (
     _REPO_ROOT
-    / "data/synthetic_data/BROKEN_agent_ambiguous_seller_nip.pdf"
+    / "data/synthetic_data/BROKEN_human_missing_buyer_nip.pdf"
 )
 
 
-class _FailingRepairModel:
-    """Minimal model boundary that fails only when the real agent invokes it."""
+class _AgentMustNotRun:
+    """Fail if a blocking no-candidate fixture reaches the agent boundary."""
 
-    def bind_tools(self, tools: list[Any]) -> _FailingRepairModel:
-        """Accept the production tool binding while preserving this test double."""
+    def bind_tools(self, tools: list[Any], **kwargs: Any) -> None:
+        """Reject any attempt to bind tools for a manual-only fixture."""
 
-        assert tools
-        return self
-
-    def invoke(self, messages: list[Any]) -> object:
-        """Prove the agent reached the model boundary, then simulate an outage."""
-
-        assert messages
-        raise RuntimeError("browser smoke agent failure")
+        raise AssertionError("manual-only browser fixture must bypass the agent")
 
 
 def main() -> None:
-    """Start the loopback server after processing the real ambiguous-NIP PDF."""
+    """Start the loopback server after processing the missing-buyer-NIP PDF."""
 
-    session = ReviewSession(model=_FailingRepairModel())
+    session = ReviewSession(model=_AgentMustNotRun())
     session.process_upload("browser-smoke.pdf", _SAMPLE_PDF.read_bytes())
-    assert session.agent_warning is not None
+    assert session.agent_warning is None
     assert session.case is not None
-    assert [field.path for field in session.case.fields] == ["seller.nip"]
+    assert [field.path for field in session.case.fields] == ["buyer.nip"]
 
     uvicorn.run(
         create_app(session=session),

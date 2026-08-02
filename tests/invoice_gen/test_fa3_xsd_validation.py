@@ -35,23 +35,19 @@ def test_invalid_xml_returns_first_local_schema_error() -> None:
     assert result.error
 
 
-def test_missing_xmllint_raises_structured_validation_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An unavailable validator should not look like invalid invoice XML."""
+def test_malformed_xml_returns_first_parser_error() -> None:
+    """Malformed XML should be rejected without becoming an operational error."""
 
-    monkeypatch.setattr(xsd.shutil, "which", lambda name: None)
+    result = xsd.validate_xml_against_local_schema_bundle("<Faktura>")
 
-    with pytest.raises(xsd.XsdValidationError, match="xmllint"):
-        xsd.validate_xml_against_local_schema_bundle("<Faktura/>")
+    assert result.is_valid is False
+    assert result.error
 
 
 def test_local_validation_io_failure_is_structured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Schema, temporary-file, and subprocess I/O failures should fail closed."""
-
-    monkeypatch.setattr(xsd.shutil, "which", lambda name: "/usr/bin/xmllint")
+    """Schema bundle I/O failures should fail closed as operational errors."""
 
     def fail_bundle(*args: object, **kwargs: object) -> None:
         raise OSError("schema bundle unavailable")

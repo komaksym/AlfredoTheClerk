@@ -24,7 +24,7 @@ from src.review_ui.form_values import parse_manual_value
 from src.review_ui.pdf_view import PdfInputError
 from src.review_ui.presenter import (
     ReviewPresentation,
-    build_agent_change_views,
+    build_automated_change_views,
     build_review_presentation,
 )
 from src.review_ui.session import ReviewSession, ReviewSessionError
@@ -165,7 +165,7 @@ def create_app(
         return Response(
             content=active_session.pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="invoice.pdf"'},
+            headers={"Content-Disposition": 'attachment; filename="invoice.pdf"'},
         )
 
     @app.get("/review/page.png")
@@ -183,15 +183,17 @@ def create_app(
         if not active_session.is_ready:
             target = "/review" if active_session.case is not None else "/"
             return RedirectResponse(target, status_code=303)
-        agent_changes = ()
+        automated_changes = ()
         if active_session.workflow is not None:
-            agent_changes = build_agent_change_views(active_session.workflow)
+            automated_changes = build_automated_change_views(
+                active_session.workflow
+            )
         return TEMPLATES.TemplateResponse(
             request=request,
             name="result.html",
             context={
                 "session": active_session,
-                "agent_changes": agent_changes,
+                "automated_changes": automated_changes,
             },
         )
 
