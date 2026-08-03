@@ -134,12 +134,14 @@ def test_mixed_agent_result_preserves_clear_repair_and_requires_review(
     assert workflow.reason == "agent_partial_abstention"
     assert workflow.shell is original_shell
     assert workflow.correctness is correctness
+    assert workflow.correctness is not None
     assert workflow.correctness.shell is repaired_shell
     assert checked_shells == [repaired_shell]
     assert workflow.automated_repair is not None
     assert workflow.automated_repair.origin is AutomatedRepairOrigin.AGENT
     assert workflow.automated_repair.repair_result is repair_result
     assert workflow.agent_result is agent_result
+    assert workflow.agent_result is not None
     assert workflow.agent_result.human_review_decisions[0].path == (
         "invoice_number"
     )
