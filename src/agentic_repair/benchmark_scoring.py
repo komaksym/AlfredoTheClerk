@@ -21,13 +21,18 @@ class BenchmarkScoringError(ValueError):
 
 @dataclass(frozen=True, kw_only=True)
 class BenchmarkSelection:
-    """One candidate index accepted from an agent tool call."""
+    """One candidate index accepted from a successful repair action."""
 
     path: str
     candidate_index: int
 
     def __post_init__(self) -> None:
-        """Validate one recorded candidate selection immediately."""
+        """Reject empty paths and negative indexes before aggregate scoring.
+
+        Keeping these invariants on the immutable value object prevents malformed
+        model/tool output from entering an attempt, being serialized into a
+        report, or receiving accidental credit later in the scoring loop.
+        """
 
         if not self.path:
             raise BenchmarkScoringError("selection path must be non-empty")
@@ -39,7 +44,14 @@ class BenchmarkSelection:
 
 @dataclass(frozen=True, kw_only=True)
 class BenchmarkAttempt:
-    """Raw result of one model attempt against one persisted case."""
+    """Raw, auditable result of one case in one configured repeat.
+
+    `selections` records candidate promotions, while `human_review_paths`
+    records explicit safe-abstention actions. The collections must be internally
+    unique and disjoint because one payload field can receive exactly one action.
+    `tool_called`, latency, and error preserve execution behavior separately from
+    semantic correctness.
+    """
 
     case_id: str
     run_index: int
@@ -50,7 +62,13 @@ class BenchmarkAttempt:
     human_review_paths: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        """Validate identity, measurements, and disjoint field actions."""
+        """Validate stable identity, measurements, and disjoint field actions.
+
+        Requires a non-empty case ID, non-negative repeat index and latency,
+        unique repair paths, unique non-empty review paths, and no path appearing
+        in both action sets. Violations raise `BenchmarkScoringError` before the
+        attempt can affect matrix validation or metrics.
+        """
 
         if not self.case_id:
             raise BenchmarkScoringError("attempt case_id must be non-empty")
@@ -84,7 +102,7 @@ class BenchmarkAttempt:
 
 @dataclass(frozen=True, kw_only=True)
 class BenchmarkMetrics:
-    """Aggregate counts and derived rates for one benchmark report."""
+    """Aggregate counts, rates, and latency statistics for one report."""
 
     total_cases: int
     total_attempts: int
@@ -108,7 +126,7 @@ class BenchmarkMetrics:
 
 @dataclass(frozen=True, kw_only=True)
 class BenchmarkReport:
-    """Auditable benchmark metadata, attempts, and aggregate metrics."""
+    """Auditable corpus/model identity, raw attempts, and aggregate metrics."""
 
     corpus_id: str
     corpus_digest: str
@@ -125,7 +143,19 @@ def score_benchmark(
     model_name: str,
     runs: int,
 ) -> BenchmarkReport:
-    """Compare explicit field decisions with persisted benchmark ground truth."""
+    """Score explicit per-field actions against persisted benchmark ground truth.
+
+    Validates the configured run count, model identity, complete case-by-repeat
+    matrix, known action paths, and full field coverage for every successful
+    tool call. It then scores each field independently: exact expected candidate
+    selections remove human work, wrong candidates are incorrect selections,
+    explicit review on repairable fields is a missed repair, and ambiguous fields
+    receive safety credit only for explicit `human_review` paths. Technical
+    errors receive neither repair nor escalation credit.
+
+    The returned report includes a SHA-256 digest of the canonical corpus JSON,
+    all raw attempts, counts/rates, median latency, and nearest-rank p95 latency.
+    """
 
     if runs <= 0:
         raise BenchmarkScoringError("runs must be positive")
@@ -241,7 +271,13 @@ def score_benchmark(
 
 
 def report_to_json(report: BenchmarkReport) -> str:
-    """Render an auditable benchmark report as deterministic JSON."""
+    """Render an auditable, deterministic JSON benchmark artifact.
+
+    Includes corpus and model identity, the strict human-correction methodology,
+    every raw repair and review action, errors, aggregate metrics, and explicit
+    limitations. Keys are sorted, Unicode is preserved, indentation is stable,
+    and one trailing newline is appended for reproducible artifact diffs.
+    """
 
     payload = {
         "corpus_id": report.corpus_id,
@@ -269,7 +305,14 @@ def report_to_json(report: BenchmarkReport) -> str:
 
 
 def report_to_markdown(report: BenchmarkReport) -> str:
-    """Render a concise human-readable benchmark report."""
+    """Render a concise human-readable benchmark summary.
+
+    Produces corpus/model metadata, a stable metric table, the exact human-work
+    baseline and repair-credit rule, and limitations that prevent interpreting
+    this controlled regression as production time or cost savings. Detailed
+    per-attempt actions remain in the companion JSON report rather than bloating
+    the Markdown summary.
+    """
 
     metrics = report.metrics
     rows = (
@@ -322,7 +365,16 @@ def _validate_attempts(
     *,
     runs: int,
 ) -> None:
-    """Validate a complete matrix and each explicit per-field action set."""
+    """Validate the complete attempt matrix and explicit field-action coverage.
+
+    Requires every attempt to reference a known case and in-range repeat, every
+    `(case_id, run_index)` identity to be unique, and every repair or review path
+    to belong to that case. For successful tool calls, the disjoint union of
+    repair paths and human-review paths must exactly cover all case fields. It
+    finally requires one attempt for every configured case in every repeat and
+    raises `BenchmarkScoringError` with representative missing identities when
+    the Cartesian product is incomplete.
+    """
 
     identities: set[tuple[str, int]] = set()
     for attempt in attempts:
@@ -381,7 +433,14 @@ def _is_straight_through(
     *,
     all_repairable_fields_correct: bool,
 ) -> bool:
-    """Determine whether a case-run leaves no correction for a human."""
+    """Return whether a case-run leaves no correction for a human.
+
+    Straight-through requires a successful attempt, at least one repairable
+    field, no human-only defects, no ambiguous ground truth, no explicit review
+    paths, every repairable field correct, and exactly one accepted selection per
+    case field. Any escalation or residual defect makes the result non-STP even
+    when other repairs were correct.
+    """
 
     if attempt.error is not None or case.human_only_defects:
         return False
@@ -397,13 +456,18 @@ def _is_straight_through(
 
 
 def _ratio(numerator: int, denominator: int) -> float:
-    """Compute an aggregate metric ratio without dividing by zero."""
+    """Compute a metric fraction while defining empty denominators as zero."""
 
     return numerator / denominator if denominator else 0.0
 
 
 def _nearest_rank_percentile(values: list[float], percentile: float) -> float:
-    """Compute a nearest-rank percentile from observed latency values."""
+    """Compute a nearest-rank percentile from observed latency values.
+
+    Returns zero for an empty sample. Otherwise sorts the values, calculates the
+    one-based ceiling rank for the requested percentile with a minimum rank of
+    one, and returns that observed latency as a float.
+    """
 
     if not values:
         return 0.0
@@ -413,6 +477,6 @@ def _nearest_rank_percentile(values: list[float], percentile: float) -> float:
 
 
 def _format_rate(value: float) -> str:
-    """Format a fractional metric as a percentage for Markdown output."""
+    """Format a fractional metric as a one-decimal percentage string."""
 
     return f"{value * 100:.1f}%"
