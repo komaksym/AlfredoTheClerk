@@ -9,6 +9,10 @@ from src.agentic_repair.benchmark_corpus import (
     BenchmarkCorpusError,
     load_benchmark_corpus,
 )
+from src.input_processing.invoice_text_field_extraction import (
+    validate_nip_checksum,
+    validate_pl_iban_checksum,
+)
 
 
 HEADLINE_CORPUS_ID = "agentic-repair-hard-v1"
@@ -25,8 +29,8 @@ def load_headline_corpus(path: Path) -> BenchmarkCorpus:
 
     First applies the generic persisted-corpus schema validation, then enforces
     the stricter publication boundary for the held-out hard split. Returns the
-    validated corpus; any file, schema, corpus-identity, emptiness, or answer-
-    leakage violation propagates as BenchmarkCorpusError.
+    validated corpus; any file, schema, corpus-identity, emptiness, answer-
+    leakage, or production-domain violation propagates as BenchmarkCorpusError.
     """
 
     corpus = load_benchmark_corpus(path)
@@ -35,12 +39,12 @@ def load_headline_corpus(path: Path) -> BenchmarkCorpus:
 
 
 def validate_headline_corpus(corpus: BenchmarkCorpus) -> None:
-    """Enforce the non-leaking contract for headline benchmark data.
+    """Enforce the non-leaking and domain-valid headline-data contract.
 
-    Requires the dedicated held-out corpus ID, at least one case, and no
-    candidate rule or rejected_by metadata anywhere in the corpus. Those fields
-    can reveal the expected answer, so their presence makes the corpus
-    ineligible and raises BenchmarkCorpusError.
+    Requires the dedicated held-out corpus ID, at least one case, no candidate
+    rule or rejected_by metadata, and production-valid values for every NIP and
+    PL-IBAN candidate. Headline candidates cannot be marked rejected, so values
+    the production evidence pipeline would discard are ineligible here too.
     """
 
     if corpus.corpus_id != HEADLINE_CORPUS_ID:
@@ -52,8 +56,27 @@ def validate_headline_corpus(corpus: BenchmarkCorpus) -> None:
 
     for case in corpus.cases:
         for field in case.fields:
-            for candidate in field.candidates:
+            for candidate_index, candidate in enumerate(field.candidates):
                 if candidate.rule is not None or candidate.rejected_by is not None:
                     raise BenchmarkCorpusError(
                         "headline corpus contains answer-leaking metadata"
+                    )
+
+                value = candidate.value
+                location = (
+                    f"{case.case_id} {field.path} candidate {candidate_index}"
+                )
+                if field.path in {"seller.nip", "buyer.nip"} and (
+                    not isinstance(value, str)
+                    or not validate_nip_checksum(value)
+                ):
+                    raise BenchmarkCorpusError(
+                        f"{location} fails production NIP validation"
+                    )
+                if field.path == "seller.bank_account" and (
+                    not isinstance(value, str)
+                    or not validate_pl_iban_checksum(value)
+                ):
+                    raise BenchmarkCorpusError(
+                        f"{location} fails production PL IBAN validation"
                     )
