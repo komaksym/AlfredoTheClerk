@@ -1,0 +1,89 @@
+name: Agent Safe-Abstention Regression Run Once
+
+on:
+  push:
+    branches:
+      - eval/agent-safe-abstention-20260803
+    paths-ignore:
+      - reports/**
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-safe-abstention-regression-run-once
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out execution branch
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.0"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run three-repeat regression
+        id: benchmark
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        shell: bash
+        run: |
+          mkdir -p reports
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "status=missing_deepseek_api_key" > reports/agent-safe-abstention-regression-status.txt
+            exit 1
+          fi
+
+          set +e
+          uv run python -m src.agentic_repair.benchmark_runner \
+            --runs 3 \
+            --max-error-rate 0.05 \
+            --json-out reports/agent-safe-abstention-regression.json \
+            --markdown-out reports/agent-safe-abstention-regression.md
+          benchmark_status=$?
+          set -e
+
+          echo "status=benchmark_exit_${benchmark_status}" > reports/agent-safe-abstention-regression-status.txt
+          echo "benchmark_status=${benchmark_status}" >> "$GITHUB_OUTPUT"
+
+      - name: Persist regression reports
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore(eval): persist safe-abstention regression [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Enforce regression execution status
+        if: always()
+        shell: bash
+        run: |
+          status_file=reports/agent-safe-abstention-regression-status.txt
+          if [ ! -f "$status_file" ]; then
+            echo "Regression status file was not produced" >&2
+            exit 1
+          fi
+          status=$(cat "$status_file")
+          if [ "$status" != "status=benchmark_exit_0" ]; then
+            echo "$status" >&2
+            exit 1
+          fi
