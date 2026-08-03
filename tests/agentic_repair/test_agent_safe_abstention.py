@@ -211,7 +211,7 @@ def test_combined_tool_rejects_incomplete_batch_before_repair(
 
 
 def test_system_prompt_requires_explicit_per_field_decisions() -> None:
-    prompt = SYSTEM_PROMPT.lower()
+    prompt = " ".join(SYSTEM_PROMPT.lower().split())
 
     assert "one decision for every field" in prompt
     assert "uniquely supported" in prompt
