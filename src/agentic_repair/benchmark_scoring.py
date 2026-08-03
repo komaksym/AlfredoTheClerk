@@ -27,13 +27,7 @@ class BenchmarkSelection:
     candidate_index: int
 
     def __post_init__(self) -> None:
-        """Validate one recorded candidate selection immediately after
-        construction.
-
-        Requires a non-empty repair path and a non-negative candidate index.
-        Invalid values raise BenchmarkScoringError before the selection can
-        enter an attempt or affect aggregate metrics.
-        """
+        """Validate one recorded candidate selection immediately."""
 
         if not self.path:
             raise BenchmarkScoringError("selection path must be non-empty")
@@ -53,15 +47,10 @@ class BenchmarkAttempt:
     tool_called: bool
     latency_ms: float
     error: str | None
+    human_review_paths: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        """Validate the stable identity and basic measurements of one model
-        attempt.
-
-        Requires a non-empty case ID, non-negative run index and latency, and
-        at most one selection per repair path. Violations raise
-        BenchmarkScoringError before the attempt matrix is scored.
-        """
+        """Validate identity, measurements, and disjoint field actions."""
 
         if not self.case_id:
             raise BenchmarkScoringError("attempt case_id must be non-empty")
@@ -73,10 +62,23 @@ class BenchmarkAttempt:
             raise BenchmarkScoringError(
                 "attempt latency_ms must be non-negative"
             )
-        paths = [selection.path for selection in self.selections]
-        if len(paths) != len(set(paths)):
+
+        selection_paths = [selection.path for selection in self.selections]
+        if len(selection_paths) != len(set(selection_paths)):
             raise BenchmarkScoringError(
                 "attempt selections contain duplicate paths"
+            )
+        if any(not path for path in self.human_review_paths):
+            raise BenchmarkScoringError(
+                "attempt human_review_paths must be non-empty"
+            )
+        if len(self.human_review_paths) != len(set(self.human_review_paths)):
+            raise BenchmarkScoringError(
+                "attempt human_review_paths must be unique"
+            )
+        if set(selection_paths) & set(self.human_review_paths):
+            raise BenchmarkScoringError(
+                "attempt selections and human_review_paths must be disjoint"
             )
 
 
@@ -123,15 +125,7 @@ def score_benchmark(
     model_name: str,
     runs: int,
 ) -> BenchmarkReport:
-    """Compare every recorded attempt with persisted ground truth and aggregate
-    metrics.
-
-    Validates the configured run count, model name, and complete case-by-run
-    matrix; then counts correct, incorrect, missed, safely escalated, straight-
-    through, and errored outcomes. Failed attempts receive no repair or
-    escalation credit. The result also includes median and nearest-rank p95
-    latency plus a SHA-256 digest of the canonical corpus JSON.
-    """
+    """Compare explicit field decisions with persisted benchmark ground truth."""
 
     if runs <= 0:
         raise BenchmarkScoringError("runs must be positive")
@@ -157,6 +151,7 @@ def score_benchmark(
             selection.path: selection.candidate_index
             for selection in attempt.selections
         }
+        review_paths = set(attempt.human_review_paths)
         attempt_failed = attempt.error is not None
 
         total_defects += len(case.fields) + case.human_only_defects
@@ -170,7 +165,11 @@ def score_benchmark(
 
             if expected is None:
                 safe_opportunities += 1
-                if not attempt_failed and actual is None:
+                if (
+                    not attempt_failed
+                    and actual is None
+                    and field.path in review_paths
+                ):
                     correct_escalations += 1
                 elif not attempt_failed and actual is not None:
                     incorrect_selections += 1
@@ -183,7 +182,7 @@ def score_benchmark(
                 all_repairable_fields_correct = False
             elif actual == expected:
                 correct_repairs += 1
-            elif actual is None:
+            elif field.path in review_paths or actual is None:
                 missed_repairs += 1
                 all_repairable_fields_correct = False
             else:
@@ -215,10 +214,7 @@ def score_benchmark(
         human_corrections_remaining=human_remaining,
         straight_through_cases=straight_through,
         errored_attempts=errored_attempts,
-        manual_correction_reduction=_ratio(
-            correct_repairs,
-            total_defects,
-        ),
+        manual_correction_reduction=_ratio(correct_repairs, total_defects),
         candidate_selection_accuracy=_ratio(
             correct_repairs,
             agent_eligible_fields,
@@ -227,10 +223,7 @@ def score_benchmark(
             correct_escalations,
             safe_opportunities,
         ),
-        straight_through_rate=_ratio(
-            straight_through,
-            total_attempts,
-        ),
+        straight_through_rate=_ratio(straight_through, total_attempts),
         median_latency_ms=(
             float(statistics.median(latencies)) if latencies else 0.0
         ),
@@ -248,13 +241,7 @@ def score_benchmark(
 
 
 def report_to_json(report: BenchmarkReport) -> str:
-    """Render an auditable benchmark report as deterministic JSON.
-
-    Includes corpus and model identity, methodology, aggregate metrics, every
-    raw attempt, and explicit limitations. Object keys are sorted, Unicode is
-    preserved, indentation is stable, and one trailing newline is appended for
-    reproducible artifacts.
-    """
+    """Render an auditable benchmark report as deterministic JSON."""
 
     payload = {
         "corpus_id": report.corpus_id,
@@ -282,13 +269,7 @@ def report_to_json(report: BenchmarkReport) -> str:
 
 
 def report_to_markdown(report: BenchmarkReport) -> str:
-    """Render a concise human-readable benchmark report.
-
-    Builds a Markdown document containing corpus and model metadata, a table of
-    counts, rates, and latency, the exact human-correction baseline, the strict
-    credit rule, and limitations that prevent interpreting the synthetic result
-    as production time or cost savings.
-    """
+    """Render a concise human-readable benchmark report."""
 
     metrics = report.metrics
     rows = (
@@ -341,14 +322,7 @@ def _validate_attempts(
     *,
     runs: int,
 ) -> None:
-    """Validate that raw attempts form one complete and unambiguous evaluation
-    matrix.
-
-    Requires every attempt to reference a known case, an in-range run index, a
-    unique case-and-run identity, and only paths present in that case. It also
-    requires one record for every configured case in every run and raises
-    BenchmarkScoringError with examples of missing identities.
-    """
+    """Validate a complete matrix and each explicit per-field action set."""
 
     identities: set[tuple[str, int]] = set()
     for attempt in attempts:
@@ -368,10 +342,23 @@ def _validate_attempts(
         identities.add(identity)
 
         known_paths = {field.path for field in cases_by_id[attempt.case_id].fields}
-        for selection in attempt.selections:
-            if selection.path not in known_paths:
+        selected_paths = {selection.path for selection in attempt.selections}
+        for path in selected_paths:
+            if path not in known_paths:
                 raise BenchmarkScoringError(
-                    f"selection path is not in case: {selection.path}"
+                    f"selection path is not in case: {path}"
+                )
+        for path in attempt.human_review_paths:
+            if path not in known_paths:
+                raise BenchmarkScoringError(
+                    f"human-review path is not in case: {path}"
+                )
+
+        if attempt.tool_called and attempt.error is None:
+            covered_paths = selected_paths | set(attempt.human_review_paths)
+            if covered_paths != known_paths:
+                raise BenchmarkScoringError(
+                    "successful tool call requires complete field coverage"
                 )
 
     expected_identities = {
@@ -394,15 +381,11 @@ def _is_straight_through(
     *,
     all_repairable_fields_correct: bool,
 ) -> bool:
-    """Determine whether a case-run leaves no correction for a human.
-
-    Returns true only when the attempt has no error, the case has fields but no
-    human-only or ambiguous defects, every repairable field was selected
-    correctly, and the number of selections equals the number of fields. All
-    other outcomes return false.
-    """
+    """Determine whether a case-run leaves no correction for a human."""
 
     if attempt.error is not None or case.human_only_defects:
+        return False
+    if attempt.human_review_paths:
         return False
     if not case.fields:
         return False
@@ -414,22 +397,13 @@ def _is_straight_through(
 
 
 def _ratio(numerator: int, denominator: int) -> float:
-    """Compute an aggregate metric ratio without dividing by zero.
-
-    Returns numerator divided by denominator when observations exist, otherwise
-    returns 0.0 so empty benchmark slices have a defined metric value.
-    """
+    """Compute an aggregate metric ratio without dividing by zero."""
 
     return numerator / denominator if denominator else 0.0
 
 
 def _nearest_rank_percentile(values: list[float], percentile: float) -> float:
-    """Compute a nearest-rank percentile from observed latency values.
-
-    Returns 0.0 for an empty list; otherwise sorts the values, uses ceiling of
-    percentile times sample count with a minimum rank of one, and returns that
-    one-based observation as float.
-    """
+    """Compute a nearest-rank percentile from observed latency values."""
 
     if not values:
         return 0.0
@@ -439,10 +413,6 @@ def _nearest_rank_percentile(values: list[float], percentile: float) -> float:
 
 
 def _format_rate(value: float) -> str:
-    """Format a fractional metric as a percentage for Markdown output.
-
-    Multiplies the value by one hundred, rounds to one decimal place through
-    fixed-point formatting, and appends the percent sign.
-    """
+    """Format a fractional metric as a percentage for Markdown output."""
 
     return f"{value * 100:.1f}%"
