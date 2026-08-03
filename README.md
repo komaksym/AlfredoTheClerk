@@ -13,9 +13,10 @@ The current local product path is:
 single-page native-text PDF
 -> deterministic extraction + evidence
 -> exact-label deterministic repair when uniquely proven
--> optional evidence-constrained agent repair when ambiguity remains
-   -> safe selection -> shared correctness pipeline
-   -> abstain/fail   -> human review
+-> optional evidence-constrained agent decision when ambiguity remains
+   -> one explicit repair-or-human-review decision per payload field
+   -> clear fields are repaired; ambiguous fields remain for a human
+   -> shared correctness pipeline preserves accepted partial repairs
 -> READY_FOR_KSEF -> download FA(3) XML
 ```
 
@@ -75,10 +76,23 @@ Three deliberately broken smoke fixtures are available under
 
 The agent receives only fields with usable extracted candidates and may only
 promote one of those existing values. It cannot invent replacements or edit
-`summary.*` source totals. Tool use is optional: when the supplied evidence does
-not safely distinguish candidates, the model must abstain and the invoice moves
-to human review without promoting a value. Fields with no legal candidate go
-directly to human review.
+`summary.*` source totals. In its one tool call, the model must emit exactly one
+explicit decision for every payload field:
+
+- `repair` with an existing candidate index when exactly one candidate is
+  semantically supported for the requested field; or
+- `human_review` with no candidate index when the evidence remains ambiguous or
+  contradicts the requested field.
+
+A uniquely supported candidate is not merely the only candidate that exists. A
+single candidate may still be unsafe when its evidence identifies the wrong
+party, date meaning, or account purpose. Candidate confidence describes
+extraction reliability and cannot break a semantic tie.
+
+One document may contain both outcomes. Clear fields are repaired atomically as
+one repair subset, while ambiguous agent fields and pre-existing blocking fields
+remain for human review. A response that omits the combined tool is an agent
+failure, not a successful abstention.
 
 Accepted automated repairs record truthful provenance as either
 `Deterministic rule` or `Agent`; deterministic work is never counted as a model
@@ -115,28 +129,34 @@ Alfredo's baseline and are not converted into claimed time or cost savings.
 
 The benchmark separates two persisted datasets with different purposes:
 
-- `agentic_repair_hard_v1.json` contains 30 separately authored held-out cases
-  and is the only corpus accepted by the headline benchmark CLI;
+- `agentic_repair_hard_v1.json` contains 30 separately authored hard cases. It
+  was the original headline corpus, but after its cases and failures were
+  inspected to design safe abstention it is now a development regression corpus;
 - `agentic_repair_v1.json` contains 200 deterministically generated cases and is
   retained as reproducible tool-contract and scoring sanity coverage.
 
-The held-out hard split contains 12 single-field repair cases, six multi-field
-cases, six mixed agent-plus-human cases, three human-only cases, and three
-ambiguous cases whose expected action is abstention. Its candidate metadata does
-not expose rule names or rejection flags. Correct answers occur at every
-candidate position and at high, middle, and low confidence ranks.
+The 30-case hard regression contains 12 single-field repair cases, six
+multi-field cases, six mixed agent-plus-human cases, three human-only cases, and
+three ambiguous cases whose expected action is explicit human review. Its
+candidate metadata does not expose rule names or rejection flags. Correct
+answers occur at every candidate position and at high, middle, and low
+confidence ranks.
 
-The generated 200-case split is not eligible for headline metrics because its
+The generated 200-case split is not eligible for performance claims because its
 visible evidence and ground truth originate from the same generation rules. It
 remains useful for deterministic regression coverage and byte-for-byte corpus
 regeneration checks.
+
+A future post-change headline claim requires a separately authored, previously
+unseen corpus. Results from `agentic_repair_hard_v1.json` should be described as
+regression results, not untouched held-out performance.
 
 ### Baseline and metrics
 
 The agent-disabled baseline requires one human correction for every persisted
 known defect. Only an automated candidate selection that exactly matches ground
-truth counts as removed human work. Wrong, missing, or errored actions remain in
-the human-work total.
+truth counts as removed human work. Wrong, missing, escalated, or errored repair
+actions remain in the human-work total.
 
 The report publishes:
 
@@ -144,17 +164,22 @@ The report publishes:
   known defects;
 - **candidate-selection accuracy** — correct automated repairs divided by all
   agent-eligible fields;
-- **safe-escalation rate** — ambiguous fields correctly left unchanged divided
-  by all safe-escalation opportunities;
+- **safe-escalation rate** — ambiguous fields explicitly assigned
+  `human_review` divided by all safe-escalation opportunities;
 - **straight-through rate** — case-runs completed with no residual human
   correction; and
-- raw per-case actions, errors, median latency, and p95 latency.
+- raw per-case repair selections, explicit human-review paths, errors, median
+  latency, and p95 latency.
+
+A silent no-tool response receives no safe-escalation credit. Scoring also
+requires a successful tool call to cover every case field exactly once as either
+a repair selection or a human-review path.
 
 Scoring requires the exact Cartesian product of every selected case and every
 configured repeat. A missing case-run aborts report generation instead of
 silently publishing metrics from a partial subset.
 
-### Run the live benchmark
+### Run the live regression
 
 Provide the same DeepSeek key used by the repair agent, then run three complete
 repeats:
@@ -174,7 +199,7 @@ nonzero when all model-evaluated attempts fail or when the model-attempt error
 rate exceeds the configured threshold. Human-only cases are excluded from that
 error-rate denominator.
 
-The manual GitHub Actions workflow runs the complete 30-case held-out split and
+The manual GitHub Actions workflow runs the complete 30-case regression and
 uploads both files as the `agentic-repair-benchmark` artifact.
 
 This controlled synthetic result does not establish production generalization,
