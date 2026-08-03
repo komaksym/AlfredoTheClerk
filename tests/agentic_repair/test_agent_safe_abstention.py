@@ -147,7 +147,11 @@ def test_combined_tool_allows_every_field_to_require_human_review(
     def fail_if_repair_runs(*args: object, **kwargs: object) -> None:
         raise AssertionError("all-escalated decisions must not call repair kernel")
 
-    monkeypatch.setattr(session, "apply_repair_plan", fail_if_repair_runs)
+    monkeypatch.setattr(
+        type(session),
+        "apply_repair_plan",
+        fail_if_repair_runs,
+    )
     tools, _ = build_repair_tools(session, _payload())
 
     result = tools[0].invoke(
@@ -184,7 +188,11 @@ def test_combined_tool_rejects_incomplete_batch_before_repair(
     def fail_if_repair_runs(*args: object, **kwargs: object) -> None:
         raise AssertionError("invalid batches must be atomic")
 
-    monkeypatch.setattr(session, "apply_repair_plan", fail_if_repair_runs)
+    monkeypatch.setattr(
+        type(session),
+        "apply_repair_plan",
+        fail_if_repair_runs,
+    )
     tools, _ = build_repair_tools(session, _payload())
 
     with pytest.raises(ValueError, match="exactly cover payload"):
