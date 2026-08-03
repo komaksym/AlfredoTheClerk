@@ -70,7 +70,13 @@ MAX_TOOL_CALLS = 1
 
 @dataclass(frozen=True, kw_only=True)
 class AgentHumanReviewDecision:
-    """One field intentionally left for a human because evidence is unsafe."""
+    """One payload field deliberately left for human resolution.
+
+    Attributes:
+        path: Exact canonical field path from the agent payload.
+        reason: Evidence-based explanation for why no candidate is safe enough
+            to promote automatically.
+    """
 
     path: str
     reason: str
@@ -78,7 +84,14 @@ class AgentHumanReviewDecision:
 
 @dataclass(frozen=True, kw_only=True)
 class AgentDecisionResult:
-    """Validated combined outcome of one model decision batch."""
+    """Validated outcome of one complete model decision batch.
+
+    `repair_result` contains the atomic repair subset accepted by the existing
+    deterministic kernel. `human_review_decisions` contains every payload field
+    that the model explicitly escalated. Either collection may be empty, but a
+    successful tool invocation must make exactly one decision for every payload
+    field before this result can be constructed.
+    """
 
     repair_result: RepairResult | None
     human_review_decisions: tuple[AgentHumanReviewDecision, ...]
@@ -86,7 +99,17 @@ class AgentDecisionResult:
 
 @dataclass(frozen=True, kw_only=True)
 class AgentRepairResult:
-    """Agent run outcome plus repairs and explicit review decisions."""
+    """Complete graph outcome returned to orchestration and benchmarks.
+
+    Attributes:
+        repair_result: Accepted repair subset, or `None` when every field was
+            explicitly escalated or the model never completed the tool.
+        tool_called: Whether the graph executed the whitelisted combined tool.
+        final_messages: Immutable model and tool transcript for audit/debugging.
+        human_review_decisions: Explicit per-field escalations recorded by the
+            combined tool. An empty tuple does not by itself mean failure; use
+            `tool_called` and `repair_result` together to classify the run.
+    """
 
     repair_result: RepairResult | None
     tool_called: bool
@@ -94,35 +117,56 @@ class AgentRepairResult:
     human_review_decisions: tuple[AgentHumanReviewDecision, ...] = ()
 
 
-# --- FORMATTING HELPERS ---
+class AgentFieldDecisionInput(BaseModel):
+    """Model-facing repair-or-review choice for one payload field."""
+
+    path: str = Field(
+        min_length=1,
+        description="Exact field path from the repair payload.",
+    )
+    action: Literal["repair", "human_review"] = Field(
+        description="Repair a uniquely supported candidate or request review."
+    )
+    candidate_index: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Existing candidate index for repair; null for human_review."
+        ),
+    )
+    reason: str = Field(
+        min_length=1,
+        description="Brief evidence-based explanation for this field decision.",
+    )
+
+
+class MessagesState(TypedDict):
+    """LangGraph state carried between the model and deterministic tool node."""
+
+    messages: Annotated[list[AnyMessage], operator.add]
+    payload: AgentRepairPayload
+    llm_calls: int
 
 
 def format_agent_repair_payload(payload: AgentRepairPayload) -> str:
-    """Serialize the compact repair payload into model-facing JSON."""
+    """Serialize the immutable repair payload into model-facing JSON.
+
+    Dataclass values such as dates and decimals are converted through `str` so
+    the prompt preserves the production payload shape without teaching the
+    model a second benchmark-specific representation.
+    """
 
     return json.dumps(asdict(payload), default=str)
 
 
-def format_repair_result_for_tool(result: RepairResult) -> str:
-    """Serialize batch repair decisions and validation for a tool response."""
-
-    if not result.decisions:
-        raise ValueError("Cannot format repair tool result without decisions")
-
-    decisions = [asdict(decision) for decision in result.decisions]
-    validation_errors = [asdict(error) for error in result.validation.errors]
-    validation_data = {
-        "errors": validation_errors,
-        "is_valid": result.validation.is_valid,
-    }
-    return json.dumps(
-        {"decisions": decisions, "validation": validation_data},
-        default=str,
-    )
-
-
 def format_agent_decision_result_for_tool(result: AgentDecisionResult) -> str:
-    """Serialize accepted repair and human-review decisions for the model."""
+    """Serialize accepted repairs, escalations, and validation for tool feedback.
+
+    All-repair, mixed, and all-escalated batches use the same JSON envelope. A
+    missing repair subset produces an empty `repairs` list and null validation;
+    an accepted repair subset includes every deterministic decision and its
+    shared shell-validation result.
+    """
 
     repairs: list[dict[str, object]] = []
     validation: dict[str, object] | None = None
@@ -147,17 +191,21 @@ def format_agent_decision_result_for_tool(result: AgentDecisionResult) -> str:
     )
 
 
-# --- CUSTOM RUNNER & CUSTOM EXPECTED AGENT OUTPUT CONTRACT ---
-
-
 def runner(
     session: RepairSession,
     payload: AgentRepairPayload,
     model: Any,
 ) -> AgentRepairResult:
-    """Run the repair agent once and return repairs plus explicit escalations."""
+    """Run one bounded repair decision graph for a prepared payload.
 
-    tools, get_latest_result = _build_agent_decision_tools(session, payload)
+    The model is bound only to `submit_repair_decisions`, receives one system
+    prompt and one serialized payload, and may make at most one model call and
+    one tool call. The returned object projects the latest validated combined
+    decision into orchestration-friendly repair and escalation collections while
+    preserving the complete transcript.
+    """
+
+    tools, get_latest_result = build_repair_tools(session, payload)
     tools_by_name = {bound_tool.name: bound_tool for bound_tool in tools}
     model_with_tools = model.bind_tools(tools)
 
@@ -202,105 +250,23 @@ def runner(
     )
 
 
-# --- GENERAL LANGGRAPH WORKFLOW ---
-
-
-class RepairCommandInput(BaseModel):
-    """Legacy schema retained for direct repair-tool unit compatibility."""
-
-    path: str = Field(description="Exact field path from the repair payload.")
-    candidate_index: int = Field(
-        ge=0,
-        description="Zero-based index of an existing candidate for this path.",
-    )
-    reason: str = Field(
-        min_length=1,
-        description="Brief evidence-based explanation for the selected candidate.",
-    )
-
-
-class AgentFieldDecisionInput(BaseModel):
-    """One complete repair-or-review decision for an agent payload field."""
-
-    path: str = Field(
-        min_length=1,
-        description="Exact field path from the repair payload.",
-    )
-    action: Literal["repair", "human_review"] = Field(
-        description="Repair a uniquely supported candidate or request review."
-    )
-    candidate_index: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Existing candidate index for repair; null for human_review."
-        ),
-    )
-    reason: str = Field(
-        min_length=1,
-        description="Brief evidence-based explanation for this field decision.",
-    )
-
-
 def build_repair_tools(
-    session: RepairSession,
-    payload: AgentRepairPayload | None = None,
-) -> tuple[list[Any], Callable[[], AgentDecisionResult | RepairResult | None]]:
-    """Build production decision tools or the legacy direct-test repair tool."""
-
-    if payload is None:
-        return _build_legacy_repair_tools(session)
-    return _build_agent_decision_tools(session, payload)
-
-
-def _build_legacy_repair_tools(
-    session: RepairSession,
-) -> tuple[list[Any], Callable[[], RepairResult | None]]:
-    """Retain the direct repair-tool contract for focused compatibility tests."""
-
-    latest_result: RepairResult | None = None
-
-    @tool
-    def apply_repair_plan(
-        repair_commands: list[RepairCommandInput],
-    ) -> RepairResult:
-        """Apply selected field repairs in one batch.
-
-        Args:
-            repair_commands: JSON list of repair choices. Each item must include
-                path, candidate_index, and reason.
-
-        Call once with every selected repair. Use only exact payload paths and
-        existing candidate indexes. Do not invent values; the kernel promotes
-        only selected candidate values.
-        """
-        nonlocal latest_result
-        commands = tuple(
-            RepairCommand(
-                path=command.path,
-                candidate_index=command.candidate_index,
-                reason=command.reason,
-            )
-            for command in repair_commands
-        )
-        latest_result = session.apply_repair_plan(
-            RepairPlanCommand(repair_commands=commands)
-        )
-        return latest_result
-
-    def get_latest_result() -> RepairResult | None:
-        """Return the last legacy repair result produced by the tool call."""
-
-        return latest_result
-
-    return [apply_repair_plan], get_latest_result
-
-
-def _build_agent_decision_tools(
     session: RepairSession,
     payload: AgentRepairPayload,
 ) -> tuple[list[Any], Callable[[], AgentDecisionResult | None]]:
-    """Build the complete per-field decision tool for one immutable payload."""
+    """Build the single combined tool bound to one session and payload.
+
+    The tool validates the complete decision batch before mutating anything:
+    paths must be unique and exactly cover the payload; every reason must be
+    non-empty; repair actions need an in-range, non-null candidate; and review
+    actions require a null candidate index. Only after all fields pass validation
+    does the tool delegate the repair subset to the existing atomic repair
+    kernel. If every field is escalated, the kernel is not called.
+
+    Returns:
+        A one-element tool list suitable for `model.bind_tools`, plus an accessor
+        for the latest validated combined result produced during this graph run.
+    """
 
     latest_result: AgentDecisionResult | None = None
     fields_by_path = {field.path: field for field in payload.payload}
@@ -315,7 +281,8 @@ def _build_agent_decision_tools(
         Validate the complete batch before applying any repair. Use `repair`
         only with an existing candidate index. Use `human_review` with a null
         candidate index whenever evidence does not uniquely support a safe
-        candidate. Clear fields and ambiguous fields may be handled together.
+        candidate. Clear fields and ambiguous fields may be handled together in
+        this single call.
         """
         nonlocal latest_result
 
@@ -386,25 +353,22 @@ def _build_agent_decision_tools(
         return latest_result
 
     def get_latest_result() -> AgentDecisionResult | None:
-        """Return the last validated combined decision result."""
+        """Return the last complete decision result produced by this tool set."""
 
         return latest_result
 
     return [submit_repair_decisions], get_latest_result
 
 
-class MessagesState(TypedDict):
-    """LangGraph state carried between model and tool nodes."""
-
-    messages: Annotated[list[AnyMessage], operator.add]
-    payload: AgentRepairPayload
-    llm_calls: int
-
-
 def make_llm_call_node(
     model_with_tools: Any,
 ) -> Callable[[MessagesState], dict[str, object]]:
-    """Create the graph node that asks the model for the next action."""
+    """Create the graph node that asks the bound model for one complete batch.
+
+    The closure combines the stable system instructions, serialized payload, and
+    accumulated graph messages. It increments `llm_calls` so the conditional
+    edge can enforce the one-call model budget independently of model behavior.
+    """
 
     def llm_call(state: MessagesState) -> dict[str, object]:
         """Invoke the model with the repair prompt, payload, and history."""
@@ -415,9 +379,7 @@ def make_llm_call_node(
                     [
                         SystemMessage(content=SYSTEM_PROMPT),
                         HumanMessage(
-                            content=format_agent_repair_payload(
-                                state["payload"]
-                            )
+                            content=format_agent_repair_payload(state["payload"])
                         ),
                     ]
                     + state["messages"]
@@ -430,7 +392,12 @@ def make_llm_call_node(
 
 
 def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyright: ignore[reportInvalidTypeForm]
-    """Route one valid model tool request to the deterministic repair node."""
+    """Route one whitelisted tool request while enforcing both call budgets.
+
+    A model response with no tool call ends the graph and is later classified as
+    `agent_no_tool_call`. More than one model turn or any tool use beyond the
+    single allowed call also ends or fails rather than silently retrying.
+    """
 
     messages = state["messages"]
     last_message = messages[-1]
@@ -453,10 +420,16 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:  # pyrig
 def make_llm_tool_node(
     tools_by_name: dict[str, Any],
 ) -> Callable[[MessagesState], dict[str, list[ToolMessage]]]:
-    """Create the graph node that executes whitelisted tool calls."""
+    """Create the deterministic node that executes the one whitelisted tool.
+
+    The node rejects non-AI predecessors, excess tool calls, and unknown tool
+    names before invoking anything. A validated `AgentDecisionResult` is
+    serialized into a LangChain `ToolMessage` so the final graph transcript is
+    complete and auditable.
+    """
 
     def tool_node(state: MessagesState) -> dict[str, list[ToolMessage]]:
-        """Run requested tools and return their observations as messages."""
+        """Validate and execute requested tools, returning their observations."""
 
         last_message = state["messages"][-1]
         if not isinstance(last_message, AIMessage):
@@ -480,15 +453,11 @@ def make_llm_tool_node(
             observation = tools_by_name[tool_call["name"]].invoke(
                 tool_call["args"]
             )
-            if isinstance(observation, AgentDecisionResult):
-                content = format_agent_decision_result_for_tool(observation)
-            elif isinstance(observation, RepairResult):
-                content = format_repair_result_for_tool(observation)
-            else:
+            if not isinstance(observation, AgentDecisionResult):
                 raise ValueError("Unsupported repair tool result")
             result.append(
                 ToolMessage(
-                    content=content,
+                    content=format_agent_decision_result_for_tool(observation),
                     tool_call_id=tool_call["id"],
                 )
             )
