@@ -152,13 +152,14 @@ def test_run_benchmark_case_uses_real_graph_and_records_selection() -> None:
     assert [(item.path, item.candidate_index) for item in attempt.selections] == [
         ("invoice_number", 1)
     ]
+    assert attempt.human_review_paths == ()
     assert len(model.bound_tools) == 1
     assert model.bound_tools[0].name == "submit_repair_decisions"
     assert len(model.invocations) == 1
 
 
 def test_run_benchmark_case_records_explicit_human_review_decision() -> None:
-    """An ambiguous case should call the combined tool without selecting."""
+    """An ambiguous case should record the explicit field review path."""
 
     case = BenchmarkCase(
         case_id="ambiguous",
@@ -183,6 +184,7 @@ def test_run_benchmark_case_records_explicit_human_review_decision() -> None:
     assert attempt.error is None
     assert attempt.tool_called is True
     assert attempt.selections == ()
+    assert attempt.human_review_paths == ("invoice_number",)
     assert len(model.invocations) == 1
 
 
@@ -195,6 +197,7 @@ def test_run_benchmark_case_isolates_invalid_candidate_index() -> None:
 
     assert attempt.tool_called is False
     assert attempt.selections == ()
+    assert attempt.human_review_paths == ()
     assert attempt.error is not None
     assert "candidate_index_out_of_range" in attempt.error
 
@@ -214,6 +217,7 @@ def test_human_only_case_skips_model_boundary() -> None:
     assert attempt.error is None
     assert attempt.tool_called is False
     assert attempt.selections == ()
+    assert attempt.human_review_paths == ()
     assert attempt.latency_ms == 0.0
 
 
