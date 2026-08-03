@@ -1,0 +1,1259 @@
+{
+  "attempts": [
+    {
+      "case_id": "hard-single-001",
+      "error": null,
+      "latency_ms": 2136.053431999997,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-002",
+      "error": null,
+      "latency_ms": 2059.7805960000032,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-003",
+      "error": null,
+      "latency_ms": 1865.1545430000028,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-004",
+      "error": null,
+      "latency_ms": 1692.5650630000036,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-005",
+      "error": null,
+      "latency_ms": 1601.265613999999,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "sale_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-006",
+      "error": null,
+      "latency_ms": 1860.6318590000014,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-007",
+      "error": null,
+      "latency_ms": 3673.7515170000065,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-008",
+      "error": null,
+      "latency_ms": 1740.2098489999958,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-009",
+      "error": null,
+      "latency_ms": 1672.476152999991,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-010",
+      "error": null,
+      "latency_ms": 1724.7234989999924,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-011",
+      "error": null,
+      "latency_ms": 1667.6111179999964,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-012",
+      "error": null,
+      "latency_ms": 1935.4521319999947,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-001",
+      "error": null,
+      "latency_ms": 3952.132278999997,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.nip"
+        },
+        {
+          "candidate_index": 0,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-002",
+      "error": null,
+      "latency_ms": 3406.975133000003,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        },
+        {
+          "candidate_index": 2,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-003",
+      "error": null,
+      "latency_ms": 2131.530471000005,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "sale_date"
+        },
+        {
+          "candidate_index": 2,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-004",
+      "error": null,
+      "latency_ms": 4596.326407999996,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "seller.bank_account"
+        },
+        {
+          "candidate_index": 0,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-005",
+      "error": null,
+      "latency_ms": 3443.1135720000016,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "seller.nip"
+        },
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-006",
+      "error": null,
+      "latency_ms": 2239.371405,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "issue_date"
+        },
+        {
+          "candidate_index": 0,
+          "path": "sale_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-001",
+      "error": null,
+      "latency_ms": 1495.578659000003,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-002",
+      "error": null,
+      "latency_ms": 2083.601098000003,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-003",
+      "error": null,
+      "latency_ms": 4423.392176000008,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "sale_date"
+        },
+        {
+          "candidate_index": 2,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-004",
+      "error": null,
+      "latency_ms": 1507.3325710000063,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-005",
+      "error": null,
+      "latency_ms": 1891.3599799999902,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-006",
+      "error": null,
+      "latency_ms": 2364.155957000008,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        },
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-human-001",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 0,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-human-002",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 0,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-human-003",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 0,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-ambiguous-001",
+      "error": null,
+      "latency_ms": 1818.1815299999898,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-ambiguous-002",
+      "error": null,
+      "latency_ms": 1523.7580600000058,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-ambiguous-003",
+      "error": null,
+      "latency_ms": 1391.8578539999942,
+      "run_index": 0,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-001",
+      "error": null,
+      "latency_ms": 1686.2981219999965,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-002",
+      "error": null,
+      "latency_ms": 1900.436714999998,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-003",
+      "error": null,
+      "latency_ms": 1601.8784780000033,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-004",
+      "error": null,
+      "latency_ms": 1623.5513510000033,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-005",
+      "error": null,
+      "latency_ms": 1652.4926899999882,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "sale_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-006",
+      "error": null,
+      "latency_ms": 1726.935673,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-007",
+      "error": null,
+      "latency_ms": 3881.070754999982,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-008",
+      "error": null,
+      "latency_ms": 1765.368154000015,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-009",
+      "error": null,
+      "latency_ms": 1633.455859999998,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-010",
+      "error": null,
+      "latency_ms": 1705.5451770000047,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-011",
+      "error": null,
+      "latency_ms": 1831.4698719999853,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-012",
+      "error": null,
+      "latency_ms": 1760.7634909999774,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-001",
+      "error": null,
+      "latency_ms": 3407.7163389999896,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.nip"
+        },
+        {
+          "candidate_index": 0,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-002",
+      "error": null,
+      "latency_ms": 2551.925495000006,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        },
+        {
+          "candidate_index": 2,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-003",
+      "error": null,
+      "latency_ms": 3399.027428000011,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "sale_date"
+        },
+        {
+          "candidate_index": 2,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-004",
+      "error": null,
+      "latency_ms": 4132.752701000016,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "seller.bank_account"
+        },
+        {
+          "candidate_index": 0,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-005",
+      "error": null,
+      "latency_ms": 2477.656628000005,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "seller.nip"
+        },
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-006",
+      "error": null,
+      "latency_ms": 2332.459065999984,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "issue_date"
+        },
+        {
+          "candidate_index": 0,
+          "path": "sale_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-001",
+      "error": null,
+      "latency_ms": 1667.8449289999833,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-002",
+      "error": null,
+      "latency_ms": 1939.4831409999824,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-003",
+      "error": null,
+      "latency_ms": 3852.0029819999877,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "sale_date"
+        },
+        {
+          "candidate_index": 2,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-004",
+      "error": null,
+      "latency_ms": 1571.0786900000073,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-005",
+      "error": null,
+      "latency_ms": 1776.4237830000127,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-006",
+      "error": null,
+      "latency_ms": 4427.316838000024,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        },
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-human-001",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 1,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-human-002",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 1,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-human-003",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 1,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-ambiguous-001",
+      "error": null,
+      "latency_ms": 1495.5071340000075,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-ambiguous-002",
+      "error": null,
+      "latency_ms": 1386.1074620000124,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-ambiguous-003",
+      "error": null,
+      "latency_ms": 1570.0545770000076,
+      "run_index": 1,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-001",
+      "error": null,
+      "latency_ms": 1991.6510930000015,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-002",
+      "error": null,
+      "latency_ms": 1886.926705999997,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-003",
+      "error": null,
+      "latency_ms": 1794.8044340000138,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-004",
+      "error": null,
+      "latency_ms": 1605.3667539999878,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-005",
+      "error": null,
+      "latency_ms": 1913.9495439999905,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "sale_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-006",
+      "error": null,
+      "latency_ms": 1828.6807279999948,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-007",
+      "error": null,
+      "latency_ms": 3613.3340359999975,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-008",
+      "error": null,
+      "latency_ms": 1715.3351819999898,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-009",
+      "error": null,
+      "latency_ms": 1689.7481060000246,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-010",
+      "error": null,
+      "latency_ms": 1813.613373999999,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-011",
+      "error": null,
+      "latency_ms": 1689.9443430000076,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-single-012",
+      "error": null,
+      "latency_ms": 1951.1841869999955,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-001",
+      "error": null,
+      "latency_ms": 3870.5388139999855,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.nip"
+        },
+        {
+          "candidate_index": 0,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-002",
+      "error": null,
+      "latency_ms": 3226.0766739999835,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        },
+        {
+          "candidate_index": 2,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-003",
+      "error": null,
+      "latency_ms": 2901.544159999986,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "sale_date"
+        },
+        {
+          "candidate_index": 2,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-004",
+      "error": null,
+      "latency_ms": 4394.809743999986,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "seller.bank_account"
+        },
+        {
+          "candidate_index": 0,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-005",
+      "error": null,
+      "latency_ms": 3588.2147149999923,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "seller.nip"
+        },
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-multi-006",
+      "error": null,
+      "latency_ms": 1914.8475069999904,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "issue_date"
+        },
+        {
+          "candidate_index": 0,
+          "path": "sale_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-001",
+      "error": null,
+      "latency_ms": 1480.8107620000044,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-002",
+      "error": null,
+      "latency_ms": 1892.1138460000009,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-003",
+      "error": null,
+      "latency_ms": 3528.715973000004,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "sale_date"
+        },
+        {
+          "candidate_index": 2,
+          "path": "payment_due_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-004",
+      "error": null,
+      "latency_ms": 1390.8366569999941,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-005",
+      "error": null,
+      "latency_ms": 1975.3873159999955,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "buyer.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-mixed-006",
+      "error": null,
+      "latency_ms": 2656.632948999999,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        },
+        {
+          "candidate_index": 0,
+          "path": "issue_date"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-human-001",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 2,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-human-002",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 2,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-human-003",
+      "error": null,
+      "latency_ms": 0.0,
+      "run_index": 2,
+      "selections": [],
+      "tool_called": false
+    },
+    {
+      "case_id": "hard-ambiguous-001",
+      "error": null,
+      "latency_ms": 1673.8553259999946,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 0,
+          "path": "seller.nip"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-ambiguous-002",
+      "error": null,
+      "latency_ms": 1344.1961720000108,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 1,
+          "path": "invoice_number"
+        }
+      ],
+      "tool_called": true
+    },
+    {
+      "case_id": "hard-ambiguous-003",
+      "error": null,
+      "latency_ms": 1458.332280999997,
+      "run_index": 2,
+      "selections": [
+        {
+          "candidate_index": 2,
+          "path": "seller.bank_account"
+        }
+      ],
+      "tool_called": true
+    }
+  ],
+  "corpus_digest": "9b8510bdc8f34cc7a2d5b2d5fa6d11d749e5a12a5b7c0ca38b1ae0e7dd4b7d06",
+  "corpus_id": "agentic-repair-hard-v1",
+  "limitations": [
+    "The corpus is synthetic and controlled.",
+    "The result does not establish production generalization.",
+    "The benchmark does not measure accountant speed or AP cycle time."
+  ],
+  "methodology": {
+    "baseline": "one required human correction per persisted known defect",
+    "data": "synthetic",
+    "work_saved_rule": "only a ground-truth-matching candidate selection counts"
+  },
+  "metrics": {
+    "agent_eligible_fields": 96,
+    "candidate_selection_accuracy": 0.9270833333333334,
+    "correct_automated_repairs": 89,
+    "correct_safe_escalations": 0,
+    "errored_attempts": 0,
+    "human_corrections_remaining": 58,
+    "incorrect_candidate_selections": 16,
+    "manual_correction_reduction": 0.6054421768707483,
+    "median_latency_ms": 1815.8974519999945,
+    "missed_agent_repairs": 0,
+    "p95_latency_ms": 4132.752701000016,
+    "safe_escalation_opportunities": 9,
+    "safe_escalation_rate": 0.0,
+    "straight_through_cases": 47,
+    "straight_through_rate": 0.5222222222222223,
+    "total_attempts": 90,
+    "total_cases": 30,
+    "total_defects": 147
+  },
+  "model_name": "deepseek:deepseek-v4-flash",
+  "runs": 3
+}
