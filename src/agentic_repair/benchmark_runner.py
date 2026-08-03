@@ -52,13 +52,27 @@ class _BenchmarkRecordingSession:
     """Record production-shaped repair plans without mutating an invoice."""
 
     def __init__(self, case: BenchmarkCase) -> None:
-        """Prepare a non-mutating repair session for one benchmark case."""
+        """Prepare a non-mutating repair session for one benchmark case.
+
+        Stores the persisted case and indexes its fields by canonical production
+        path so the existing combined agent tool can delegate its repair subset
+        through the normal `apply_repair_plan` interface. Human-review actions
+        are recorded by the graph result and never reach this session.
+        """
 
         self._case = case
         self._fields = {field.path: field for field in case.fields}
 
     def apply_repair_plan(self, plan: RepairPlanCommand) -> RepairResult:
-        """Validate and record one production-shaped repair subset."""
+        """Validate and record one production-shaped repair subset.
+
+        Rejects empty plans, duplicate paths, fields absent from the persisted
+        case, and candidate indexes outside the corresponding candidate list.
+        Valid commands become `RepairDecision` audit records in command order
+        and are returned inside a synthetic successful `RepairResult`. No
+        canonical invoice state is mutated; mutation correctness is covered by
+        the production repair-kernel tests.
+        """
 
         if not plan.repair_commands:
             raise BenchmarkRunnerError("repair_plan_empty")
@@ -101,7 +115,16 @@ def run_benchmark_case(
     *,
     run_index: int,
 ) -> BenchmarkAttempt:
-    """Execute one case and record repairs plus explicit review paths."""
+    """Execute one persisted case through the production LangGraph boundary.
+
+    Human-only cases bypass the model and produce an immediate zero-latency
+    attempt. Model-evaluated cases use a recording repair session and the same
+    `AgentRepairPayload`, prompt, combined tool, and graph as production. The
+    returned attempt records accepted repair selections and explicit
+    human-review paths separately, together with wall-clock latency. Any model,
+    graph, schema, or tool exception is isolated to this case-run rather than
+    aborting the complete benchmark.
+    """
 
     if run_index < 0:
         raise BenchmarkRunnerError("run_index must be non-negative")
@@ -167,7 +190,13 @@ def run_benchmark(
     runs: int,
     limit: int | None = None,
 ) -> tuple[BenchmarkAttempt, ...]:
-    """Run a corpus repeatedly in deterministic run-major and case-major order."""
+    """Run every selected case in stable run-major and case-major order.
+
+    Optionally selects a prefix for credential smoke tests, requires a positive
+    repeat count, and invokes `run_benchmark_case` once for every case in every
+    repeat. The immutable returned tuple preserves deterministic ordering for
+    complete-matrix validation, JSON diffs, and repeat-stability analysis.
+    """
 
     selected = _select_corpus(corpus, limit=limit)
     if runs <= 0:
@@ -192,7 +221,14 @@ def validate_benchmark_publishability(
     *,
     max_error_rate: float,
 ) -> None:
-    """Reject a benchmark report that is too unreliable for publication."""
+    """Reject a benchmark execution that is too unreliable to report as valid.
+
+    Validates the configured error ceiling, isolates attempts for cases that
+    actually cross the model boundary, rejects corpora with no model attempts or
+    runs where every model attempt failed, and raises `BenchmarkRunnerError`
+    when the observed model-attempt error rate exceeds the configured threshold.
+    Human-only cases are deliberately excluded from that denominator.
+    """
 
     if not 0.0 <= max_error_rate <= 1.0:
         raise BenchmarkRunnerError(
@@ -225,7 +261,15 @@ def validate_benchmark_publishability(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Execute the regression benchmark and persist auditable diagnostics."""
+    """Execute the live hard regression and persist auditable diagnostics.
+
+    Parses CLI arguments, loads the checked-in hard corpus, optionally selects a
+    case prefix, constructs the configured repair model, executes every case and
+    repeat, scores the complete matrix, and writes both JSON and Markdown
+    reports before checking execution reliability. Reports are retained even
+    when the provider/error gate fails; unacceptable runs print a reason to
+    stderr and return one, while valid executions return zero.
+    """
 
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -266,7 +310,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Construct the command-line interface for benchmark execution."""
+    """Construct the command-line interface for live regression execution.
+
+    Defines the persisted corpus path, repeat count, optional prefix limit,
+    model identifier, temperature, maximum model-attempt error rate, and JSON
+    and Markdown destinations. Defaults select the hard regression corpus,
+    configured production model, three repeats, five-percent execution-error
+    ceiling, and standard report paths.
+    """
 
     parser = argparse.ArgumentParser(
         description=(
@@ -325,7 +376,13 @@ def _select_corpus(
     *,
     limit: int | None,
 ) -> BenchmarkCorpus:
-    """Return the full corpus or a metadata-preserving prefix."""
+    """Return the full corpus or a metadata-preserving positive prefix.
+
+    When `limit` is `None`, returns the original immutable corpus object. A
+    positive limit creates a new corpus with the same schema version and corpus
+    ID but only the requested leading cases. Zero or negative limits raise
+    `BenchmarkRunnerError` before any model calls occur.
+    """
 
     if limit is None:
         return corpus
