@@ -93,6 +93,95 @@ those totals.
 A successful local run ends at `READY_FOR_KSEF` with downloadable FA(3) XML.
 Remote KSeF submission remains an explicit separate capability.
 
+## Industry context, not a benchmark baseline
+
+Invoice exceptions are a material accounts-payable bottleneck, but published AP
+statistics cover much broader workflows than Alfredo's field-repair boundary.
+APQC reports a 12-hour median cycle time from invoice receipt until data entry
+across 2,461 organizations. Ardent Partners' 2025 State of ePayables benchmark
+reports an average invoice-processing cost of $9.84, an 8.2-day processing time,
+and an 18.4% exception rate.
+
+Sources:
+
+- [APQC: cycle time from invoice receipt to system entry](https://www.apqc.org/resources/benchmarking/open-standards-benchmarking/measures/cycle-time-hours-receipt-invoice-until)
+- [Ardent Partners: 2025 AP benchmarks](https://payablesplace.ardentpartners.com/2026/01/state-of-epayables-part-nine-ap-benchmarks-and-best-in-class-performance/)
+
+These figures explain the business context only. They include waiting, approvals,
+matching, supplier communication, and other AP work, so they are not used as
+Alfredo's baseline and are not converted into claimed time or cost savings.
+
+## Controlled synthetic benchmark
+
+The benchmark separates two persisted datasets with different purposes:
+
+- `agentic_repair_hard_v1.json` contains 30 separately authored held-out cases
+  and is the only corpus accepted by the headline benchmark CLI;
+- `agentic_repair_v1.json` contains 200 deterministically generated cases and is
+  retained as reproducible tool-contract and scoring sanity coverage.
+
+The held-out hard split contains 12 single-field repair cases, six multi-field
+cases, six mixed agent-plus-human cases, three human-only cases, and three
+ambiguous cases whose expected action is abstention. Its candidate metadata does
+not expose rule names or rejection flags. Correct answers occur at every
+candidate position and at high, middle, and low confidence ranks.
+
+The generated 200-case split is not eligible for headline metrics because its
+visible evidence and ground truth originate from the same generation rules. It
+remains useful for deterministic regression coverage and byte-for-byte corpus
+regeneration checks.
+
+### Baseline and metrics
+
+The agent-disabled baseline requires one human correction for every persisted
+known defect. Only an automated candidate selection that exactly matches ground
+truth counts as removed human work. Wrong, missing, or errored actions remain in
+the human-work total.
+
+The report publishes:
+
+- **manual-correction reduction** — correct automated repairs divided by all
+  known defects;
+- **candidate-selection accuracy** — correct automated repairs divided by all
+  agent-eligible fields;
+- **safe-escalation rate** — ambiguous fields correctly left unchanged divided
+  by all safe-escalation opportunities;
+- **straight-through rate** — case-runs completed with no residual human
+  correction; and
+- raw per-case actions, errors, median latency, and p95 latency.
+
+Scoring requires the exact Cartesian product of every selected case and every
+configured repeat. A missing case-run aborts report generation instead of
+silently publishing metrics from a partial subset.
+
+### Run the live benchmark
+
+Provide the same DeepSeek key used by the repair agent, then run three complete
+repeats:
+
+```bash
+export DEEPSEEK_API_KEY="..."
+uv run python -m src.agentic_repair.benchmark_runner \
+  --runs 3 \
+  --max-error-rate 0.05 \
+  --json-out reports/agentic-repair-benchmark.json \
+  --markdown-out reports/agentic-repair-benchmark.md
+```
+
+Use `--limit 5` for a small credential and integration smoke run. The CLI writes
+both diagnostic reports before checking publication eligibility. It exits
+nonzero when all model-evaluated attempts fail or when the model-attempt error
+rate exceeds the configured threshold. Human-only cases are excluded from that
+error-rate denominator.
+
+The manual GitHub Actions workflow runs the complete 30-case held-out split and
+uploads both files as the `agentic-repair-benchmark` artifact.
+
+This controlled synthetic result does not establish production generalization,
+accountant speed, cost savings, or end-to-end accounts-payable cycle-time
+improvement. Those claims require an untouched real-invoice evaluation set or a
+human timing study.
+
 ## Validation
 
 Repository gates:

@@ -1,0 +1,292 @@
+"""Tests for the persisted agentic-repair benchmark corpus."""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from pathlib import Path
+
+import pytest
+
+from src.agentic_repair.benchmark_corpus import (
+    BenchmarkCorpusError,
+    build_agent_payload,
+    build_benchmark_corpus,
+    corpus_to_json,
+    load_benchmark_corpus,
+)
+from src.agentic_repair.benchmark_publication import (
+    HEADLINE_CORPUS_ID,
+    HEADLINE_CORPUS_PATH,
+    SANITY_CORPUS_PATH,
+    load_headline_corpus,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CHECKED_IN_HEADLINE_CORPUS_PATH = REPO_ROOT / HEADLINE_CORPUS_PATH
+CHECKED_IN_SANITY_CORPUS_PATH = REPO_ROOT / SANITY_CORPUS_PATH
+
+
+def test_checked_in_headline_corpus_has_curated_distribution() -> None:
+    """Verify that headline metrics use the separately authored 30-case hard
+    split.
+
+    Loads the checked-in headline artifact and asserts its dedicated corpus ID
+    plus the exact single, multi, mixed, human-only, and ambiguous category
+    counts.
+    """
+
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
+    counts = Counter(case.category for case in corpus.cases)
+
+    assert corpus.corpus_id == HEADLINE_CORPUS_ID
+    assert len(corpus.cases) == 30
+    assert counts == {
+        "single_repair": 12,
+        "multi_repair": 6,
+        "mixed": 6,
+        "human_only": 3,
+        "ambiguous": 3,
+    }
+
+
+def test_generated_sanity_corpus_has_declared_distribution() -> None:
+    """Verify that the generated sanity artifact retains its declared 200-case
+    mix.
+
+    Loads the checked-in sanity corpus and asserts the exact category counts
+    used to exercise the repair tool contract independently of headline claims.
+    """
+
+    corpus = load_benchmark_corpus(CHECKED_IN_SANITY_CORPUS_PATH)
+    counts = Counter(case.category for case in corpus.cases)
+
+    assert len(corpus.cases) == 200
+    assert counts == {
+        "single_repair": 80,
+        "multi_repair": 40,
+        "mixed": 40,
+        "human_only": 20,
+        "ambiguous": 20,
+    }
+
+
+def test_checked_in_sanity_corpus_matches_deterministic_builder() -> None:
+    """Prove that intentional sanity-corpus regeneration is byte-for-byte
+    reproducible.
+
+    Reads the checked-in JSON text and compares it with canonical serialization
+    of a fresh deterministic build, catching seed, ordering, or formatting
+    drift.
+    """
+
+    checked_in = CHECKED_IN_SANITY_CORPUS_PATH.read_text(encoding="utf-8")
+
+    assert checked_in == corpus_to_json(build_benchmark_corpus())
+
+
+def test_headline_corpus_hides_answer_metadata() -> None:
+    """Ensure the held-out headline corpus does not expose candidate answer
+    labels.
+
+    Flattens every candidate, first proving the corpus contains candidates,
+    then asserts that both rule and rejected_by are absent everywhere.
+    """
+
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
+    candidates = [
+        candidate
+        for case in corpus.cases
+        for field in case.fields
+        for candidate in field.candidates
+    ]
+
+    assert candidates
+    assert all(candidate.rule is None for candidate in candidates)
+    assert all(candidate.rejected_by is None for candidate in candidates)
+
+
+def test_headline_ground_truth_is_not_candidate_position_or_confidence() -> None:
+    """Ensure simple position or confidence heuristics cannot solve the hard
+    split.
+
+    Checks that correct candidates appear at all three indexes and at first,
+    second, and third confidence ranks, forcing evaluation to use contextual
+    evidence rather than a fixed index or maximum score.
+    """
+
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
+    fields = [
+        field
+        for case in corpus.cases
+        for field in case.fields
+        if field.expected_candidate_index is not None
+    ]
+    expected_indexes = {field.expected_candidate_index for field in fields}
+    correct_confidence_ranks = []
+    for field in fields:
+        expected_index = field.expected_candidate_index
+        assert expected_index is not None
+        ordered = sorted(
+            range(len(field.candidates)),
+            key=lambda index: field.candidates[index].confidence,
+            reverse=True,
+        )
+        correct_confidence_ranks.append(ordered.index(expected_index) + 1)
+
+    assert expected_indexes == {0, 1, 2}
+    assert set(correct_confidence_ranks) == {1, 2, 3}
+
+
+def test_build_agent_payload_preserves_complete_candidate_evidence() -> None:
+    """Verify that benchmark cases reach the production agent without evidence
+    loss.
+
+    Converts a non-empty headline case and compares field count, paths, current
+    values, candidate values, and same-line evidence against the persisted
+    source in the same order.
+    """
+
+    corpus = load_headline_corpus(CHECKED_IN_HEADLINE_CORPUS_PATH)
+    case = next(case for case in corpus.cases if case.fields)
+
+    payload = build_agent_payload(case)
+
+    assert len(payload.payload) == len(case.fields)
+    for payload_field, benchmark_field in zip(
+        payload.payload,
+        case.fields,
+        strict=True,
+    ):
+        assert payload_field.path == benchmark_field.path
+        assert payload_field.current_value == benchmark_field.current_value
+        assert [candidate.value for candidate in payload_field.candidates] == [
+            candidate.value for candidate in benchmark_field.candidates
+        ]
+        assert [candidate.same_line_text for candidate in payload_field.candidates] == [
+            candidate.same_line_text for candidate in benchmark_field.candidates
+        ]
+
+
+def test_loader_rejects_answer_leaking_headline_metadata(
+    tmp_path: Path,
+) -> None:
+    """Verify that a headline corpus containing semantic answer metadata is
+    rejected.
+
+    Writes a minimal otherwise-valid hard-split case whose candidate rule
+    reveals the seller-NIP role, then expects BenchmarkCorpusError before the
+    data can be used for publication.
+    """
+
+    payload = {
+        "schema_version": 1,
+        "corpus_id": HEADLINE_CORPUS_ID,
+        "cases": [
+            {
+                "case_id": "case-001",
+                "category": "single_repair",
+                "human_only_defects": 0,
+                "fields": [
+                    {
+                        "path": "seller.nip",
+                        "current_value": "bad",
+                        "expected_candidate_index": 0,
+                        "candidates": [
+                            {
+                                "value": "8637940261",
+                                "confidence": 0.9,
+                                "raw_text": "8637940261",
+                                "same_line_text": "Wystawca 8637940261",
+                                "rule": "seller_nip_label",
+                                "rejected_by": None,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "headline.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(BenchmarkCorpusError, match="answer-leaking metadata"):
+        load_headline_corpus(path)
+
+
+def test_loader_rejects_expected_index_outside_candidates(
+    tmp_path: Path,
+) -> None:
+    """Verify that impossible persisted ground-truth indexes fail during loading.
+
+    Writes a field with one candidate but expected index two and asserts that
+    the loader raises BenchmarkCorpusError instead of deferring the malformed
+    contract to benchmark execution.
+    """
+
+    payload = {
+        "schema_version": 1,
+        "corpus_id": "broken",
+        "cases": [
+            {
+                "case_id": "case-001",
+                "category": "single_repair",
+                "human_only_defects": 0,
+                "fields": [
+                    {
+                        "path": "seller.nip",
+                        "current_value": "bad",
+                        "expected_candidate_index": 2,
+                        "candidates": [
+                            {
+                                "value": "8637940261",
+                                "confidence": 0.9,
+                                "raw_text": "8637940261",
+                                "same_line_text": "Sprzedawca NIP 8637940261",
+                                "rule": "seller_label",
+                                "rejected_by": None,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        BenchmarkCorpusError,
+        match="expected_candidate_index",
+    ):
+        load_benchmark_corpus(path)
+
+
+def test_loader_rejects_duplicate_case_ids(tmp_path: Path) -> None:
+    """Verify that persisted case IDs remain unique report and matrix keys.
+
+    Writes two identical human-only cases with the same ID and expects
+    BenchmarkCorpusError, preventing later attempts from becoming ambiguous.
+    """
+
+    case = {
+        "case_id": "duplicate",
+        "category": "human_only",
+        "human_only_defects": 1,
+        "fields": [],
+    }
+    path = tmp_path / "corpus.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "corpus_id": "broken",
+                "cases": [case, case],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(BenchmarkCorpusError, match="duplicate case_id"):
+        load_benchmark_corpus(path)

@@ -1,7 +1,7 @@
 [project]
 name = "alfredotheclerk"
 version = "0.1.0"
-description = "Add your description here"
+description = "Evidence-constrained agentic repair for KSeF-ready FA(3) invoices"
 readme = "README.md"
 requires-python = ">=3.13.0"
 dependencies = [
