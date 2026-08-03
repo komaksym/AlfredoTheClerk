@@ -78,13 +78,11 @@ eligibility, then exits nonzero when there are no model-evaluated attempts, ever
 model attempt fails, or the model-attempt error rate exceeds the configured
 threshold.
 
-The live DeepSeek workflow runs automatically on pushes and on same-repository
-pull requests with three repeats. Manual dispatch remains available for a custom
-repeat count. Duplicate push/PR executions for the same branch are cancelled,
-fork pull requests are skipped because repository secrets are unavailable, and
-reports are uploaded after benchmark failures when execution reached the runner.
-Synthetic results do not establish production generalization, accountant speed,
-AP cost savings, or end-to-end cycle-time improvement.
+The live DeepSeek run remains a separate manual-only workflow. It accepts a
+custom repeat count, requires `DEEPSEEK_API_KEY`, and uploads JSON and Markdown
+reports. Ordinary push and pull-request CI does not call DeepSeek or spend model
+credits. Synthetic results do not establish production generalization,
+accountant speed, AP cost savings, or end-to-end cycle-time improvement.
 
 ### KSeF TEST submission proof
 
