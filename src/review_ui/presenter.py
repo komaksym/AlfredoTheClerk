@@ -329,11 +329,9 @@ def _is_resolved_automated_field(
     case: HumanReviewCase,
     change_paths: set[str],
 ) -> bool:
-    """Hide automatically fixed fields when validation proves them resolved."""
+    """Hide an automated change when no validation error remains for its path."""
 
     if path not in change_paths or case.correctness is None:
-        return False
-    if case.correctness.status is not CorrectnessStatus.INVALID_SHELL:
         return False
     unresolved_paths = {error.path for error in case.correctness.validation.errors}
     return path not in unresolved_paths
