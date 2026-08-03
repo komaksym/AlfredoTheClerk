@@ -50,15 +50,21 @@ changes before applying a batch.
 
 ### Controlled agentic-repair benchmark
 
-The repository contains a persisted 200-case synthetic benchmark at
-`data/benchmark_cases/agentic_repair_v1.json`. It evaluates the existing
-LangGraph repair graph at its evidence-candidate decision boundary without
-requiring confidential invoices or a human timing baseline.
+The repository contains two persisted synthetic benchmark corpora with separate
+purposes:
 
-The corpus contains single-field, multi-field, mixed agent-plus-human,
-human-only, and ambiguous no-action cases. Complete candidate evidence, expected
-candidate indexes, and human-only defect counts are materialized on disk;
-evaluation never regenerates case values from seeds.
+- `data/benchmark_cases/agentic_repair_hard_v1.json` contains 30 separately
+  authored held-out cases and is the only corpus accepted for headline metrics;
+- `data/benchmark_cases/agentic_repair_v1.json` contains 200 deterministically
+  generated cases retained for schema, graph/tool-contract, scoring, and
+  byte-for-byte regeneration coverage.
+
+The held-out corpus includes single-field, multi-field, mixed agent-plus-human,
+human-only, and ambiguous no-action cases. Candidate metadata does not expose
+rule names or rejection flags, and correct choices vary across candidate indexes
+and confidence ranks. The generated corpus is not eligible for headline claims
+because its visible evidence and expected outcomes originate from the same
+rules.
 
 The benchmark reports correct automated repairs, incorrect selections, missed
 repairs, safe escalation, residual human corrections, straight-through cases,
@@ -66,11 +72,19 @@ model errors, and latency. The agent-disabled baseline requires one human
 correction per known defect. Only a ground-truth-matching candidate promotion
 counts as removed human work.
 
-Ordinary CI validates corpus reproducibility, schema checks, scoring, reports,
-and graph integration through scripted models without external calls. The live
-DeepSeek run remains a separate manual-only workflow that uploads JSON and
-Markdown reports. Synthetic results do not establish production generalization,
-accountant speed, AP cost savings, or end-to-end cycle-time improvement.
+Scoring requires the complete Cartesian product of selected cases and configured
+repeats. The CLI writes diagnostic JSON and Markdown before enforcing publication
+eligibility, then exits nonzero when there are no model-evaluated attempts, every
+model attempt fails, or the model-attempt error rate exceeds the configured
+threshold.
+
+The live DeepSeek workflow runs automatically on pushes and on same-repository
+pull requests with three repeats. Manual dispatch remains available for a custom
+repeat count. Duplicate push/PR executions for the same branch are cancelled,
+fork pull requests are skipped because repository secrets are unavailable, and
+reports are uploaded after benchmark failures when execution reached the runner.
+Synthetic results do not establish production generalization, accountant speed,
+AP cost savings, or end-to-end cycle-time improvement.
 
 ### KSeF TEST submission proof
 
