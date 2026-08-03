@@ -174,8 +174,13 @@ nonzero when all model-evaluated attempts fail or when the model-attempt error
 rate exceeds the configured threshold. Human-only cases are excluded from that
 error-rate denominator.
 
-The manual GitHub Actions workflow runs the complete 30-case held-out split and
-uploads both files as the `agentic-repair-benchmark` artifact.
+The `Agentic repair benchmark` GitHub Actions workflow runs the complete 30-case
+held-out split automatically on every push and on pull requests whose branch is
+inside this repository. Automatic runs use three repeats; manual dispatch remains
+available for a custom repeat count. Concurrent push and pull-request events for
+the same branch are deduplicated, fork pull requests are skipped because GitHub
+does not expose repository secrets to them, and diagnostic JSON/Markdown reports
+are uploaded even when the benchmark itself fails after starting.
 
 This controlled synthetic result does not establish production generalization,
 accountant speed, cost savings, or end-to-end accounts-payable cycle-time
