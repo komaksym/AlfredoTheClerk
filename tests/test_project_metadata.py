@@ -55,19 +55,24 @@ def test_readme_documents_reproducible_synthetic_benchmark() -> None:
     assert "--markdown-out reports/agentic-repair-benchmark.md" in readme
 
 
-def test_live_benchmark_workflow_is_manual_only() -> None:
-    """Verify that the credit-spending benchmark workflow cannot run during
-    ordinary CI.
+def test_live_benchmark_workflow_runs_automatically_and_manually() -> None:
+    """Verify the live benchmark's automatic and manual CI contract.
 
-    Requires workflow_dispatch and the DeepSeek secret, runner module, and
-    artifact upload while explicitly forbidding pull_request and push triggers.
+    Requires push, same-repository pull-request, and manual triggers; three
+    repeats for automatic events; fork-secret protection; duplicate-run
+    cancellation; the production runner; and post-failure report upload.
     """
 
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
+    assert "push:" in workflow
+    assert "pull_request:" in workflow
     assert "workflow_dispatch:" in workflow
-    assert "pull_request:" not in workflow
-    assert "push:" not in workflow
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in workflow
+    assert "cancel-in-progress: true" in workflow
+    assert "github.event_name == 'workflow_dispatch' && inputs.runs || '3'" in workflow
     assert "DEEPSEEK_API_KEY" in workflow
     assert "src.agentic_repair.benchmark_runner" in workflow
+    assert "id: benchmark" in workflow
+    assert "always() && steps.benchmark.outcome != 'skipped'" in workflow
     assert "actions/upload-artifact" in workflow
