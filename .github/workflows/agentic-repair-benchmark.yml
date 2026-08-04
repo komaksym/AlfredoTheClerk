@@ -28,6 +28,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Publish run metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p reports
+          printf 'run_id=%s\ncommit=%s\nruns=%s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_SHA" "$BENCHMARK_RUNS" \
+            > reports/agentic-repair-run.txt
+          git add reports/agentic-repair-run.txt
+          git commit -m "chore(eval): record benchmark run"
+          git push origin HEAD:eval/post-abstention-20260804
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -65,8 +77,6 @@ jobs:
 
       - name: Publish reports to temporary branch
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add reports/agentic-repair-benchmark.json reports/agentic-repair-benchmark.md
           git commit -m "chore(eval): publish merged abstention benchmark"
           git push origin HEAD:eval/post-abstention-20260804
