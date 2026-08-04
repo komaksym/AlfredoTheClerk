@@ -9,7 +9,10 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from src.agentic_repair.agent_extraction_repair import AgentRepairResult
+from src.agentic_repair.agent_extraction_repair import (
+    AgentHumanReviewDecision,
+    AgentRepairResult,
+)
 from src.agentic_repair.human_review import HumanReviewInputKind
 from src.agentic_repair.repair_kernel import RepairDecision, RepairResult
 from src.agentic_repair.repair_orchestration import (
@@ -19,6 +22,11 @@ from src.agentic_repair.repair_orchestration import (
     RepairWorkflowStatus,
 )
 from src.agentic_repair.repair_routing import route_repair_context
+from src.input_processing.extraction_diagnostics import (
+    ExtractionDiagnostics,
+    FieldDiagnostic,
+    FieldStatus,
+)
 from src.invoice_gen.domestic_vat_seed import build_domestic_vat_seed
 from src.invoice_gen.domestic_vat_seed_mapping import map_domestic_vat_seed_to_shell
 from src.invoice_gen.domestic_vat_shell_summary import summarize_domestic_vat_shell
@@ -71,6 +79,17 @@ def _upload(client: TestClient) -> None:
         follow_redirects=False,
     )
     assert response.status_code == 303
+
+
+def _missing_diagnostic(path: str) -> FieldDiagnostic:
+    """Build a diagnostic-only blocker with no shell validation error."""
+
+    return FieldDiagnostic(
+        path=path,
+        status=FieldStatus.MISSING,
+        raw_text=None,
+        message="no extraction candidate found",
+    )
 
 
 def test_real_fixture_runs_extraction_and_correctness_without_agent() -> None:
@@ -221,6 +240,201 @@ def test_mixed_agent_and_blocking_fields_show_only_residual_human_control() -> N
     assert "Automated changes" in page.text
     assert 'name="mode::buyer.nip"' in page.text
     assert 'name="mode::invoice_number"' not in page.text
+
+
+def test_ready_candidate_with_blocking_field_requires_review_before_result() -> None:
+    """A locally ready repair must not bypass an unresolved blocking field."""
+
+    valid_shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
+    original_shell = copy.deepcopy(valid_shell)
+    original_shell.invoice_number = "BAD"
+    context = make_repair_context(
+        shell=original_shell,
+        extracted_summary=summarize_domestic_vat_shell(valid_shell),
+        evidence={
+            "invoice_number": make_evidence_with_candidates(
+                "BAD",
+                valid_shell.invoice_number,
+            )
+        },
+        validation_errors=[make_validation_error("invoice_number")],
+        diagnostics=ExtractionDiagnostics(
+            fields={
+                "payment_due_date": _missing_diagnostic("payment_due_date"),
+            }
+        ),
+    )
+    repaired_shell = copy.deepcopy(original_shell)
+    repaired_shell.invoice_number = valid_shell.invoice_number
+    repair_result = RepairResult(
+        shell=repaired_shell,
+        decisions=(
+            RepairDecision(
+                path="invoice_number",
+                old_value="BAD",
+                new_value=valid_shell.invoice_number,
+                candidate_index=1,
+                reason="selected evidence candidate",
+            ),
+        ),
+        validation=ShellValidationResult(errors=[]),
+    )
+    agent_result = AgentRepairResult(
+        repair_result=repair_result,
+        tool_called=True,
+        final_messages=(),
+    )
+    workflow = RepairWorkflowResult(
+        status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+        shell=original_shell,
+        route=route_repair_context(context),
+        context=context,
+        automated_repair=AcceptedAutomatedRepair(
+            repair_result=repair_result,
+            origin=AutomatedRepairOrigin.AGENT,
+            agent_result=agent_result,
+        ),
+        agent_result=agent_result,
+        correctness=CorrectnessResult(
+            status=CorrectnessStatus.READY_FOR_KSEF,
+            shell=repaired_shell,
+            validation=ShellValidationResult(errors=[]),
+            xml="<Faktura />",
+        ),
+        reason="blocking_fields",
+    )
+    client, session = _client_for_result(workflow)
+
+    upload = client.post(
+        "/invoice",
+        files={"invoice": ("invoice.pdf", SAMPLE_PDF.read_bytes(), "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert upload.status_code == 303
+    assert upload.headers["location"] == "/review"
+    assert session.is_ready is False
+    assert session.case is not None
+    review = client.get("/review")
+    assert review.status_code == 200
+    assert 'name="mode::payment_due_date"' in review.text
+
+    submitted = client.post(
+        "/review",
+        data={
+            "reviewer_id": "Max",
+            "mode::payment_due_date": "manual",
+            "manual::payment_due_date": str(valid_shell.issue_date),
+        },
+        follow_redirects=False,
+    )
+
+    assert submitted.status_code == 303
+    assert submitted.headers["location"] == "/result"
+    assert session.is_ready is True
+    assert client.get("/result").status_code == 200
+
+
+def test_ready_mixed_agent_escalation_requires_review_before_result() -> None:
+    """A locally ready partial repair must preserve explicit human escalation."""
+
+    valid_shell = map_domestic_vat_seed_to_shell(build_domestic_vat_seed(42))
+    original_shell = copy.deepcopy(valid_shell)
+    original_shell.invoice_number = "BAD"
+    original_shell.buyer.name = "Ambiguous buyer"
+    invoice_error = make_validation_error("invoice_number")
+    buyer_error = make_validation_error("buyer.name")
+    context = make_repair_context(
+        shell=original_shell,
+        extracted_summary=summarize_domestic_vat_shell(valid_shell),
+        evidence={
+            "invoice_number": make_evidence_with_candidates(
+                "BAD",
+                valid_shell.invoice_number,
+            ),
+            "buyer.name": make_evidence_with_candidates(
+                "Ambiguous buyer",
+                valid_shell.buyer.name,
+            ),
+        },
+        validation_errors=[invoice_error, buyer_error],
+    )
+    repaired_shell = copy.deepcopy(original_shell)
+    repaired_shell.invoice_number = valid_shell.invoice_number
+    repair_result = RepairResult(
+        shell=repaired_shell,
+        decisions=(
+            RepairDecision(
+                path="invoice_number",
+                old_value="BAD",
+                new_value=valid_shell.invoice_number,
+                candidate_index=1,
+                reason="selected evidence candidate",
+            ),
+        ),
+        validation=ShellValidationResult(errors=[]),
+    )
+    agent_result = AgentRepairResult(
+        repair_result=repair_result,
+        human_review_decisions=(
+            AgentHumanReviewDecision(
+                path="buyer.name",
+                reason="Buyer identity remains ambiguous.",
+            ),
+        ),
+        tool_called=True,
+        final_messages=(),
+    )
+    workflow = RepairWorkflowResult(
+        status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+        shell=original_shell,
+        route=route_repair_context(context),
+        context=context,
+        automated_repair=AcceptedAutomatedRepair(
+            repair_result=repair_result,
+            origin=AutomatedRepairOrigin.AGENT,
+            agent_result=agent_result,
+        ),
+        agent_result=agent_result,
+        correctness=CorrectnessResult(
+            status=CorrectnessStatus.READY_FOR_KSEF,
+            shell=repaired_shell,
+            validation=ShellValidationResult(errors=[]),
+            xml="<Faktura />",
+        ),
+        reason="agent_partial_abstention",
+    )
+    client, session = _client_for_result(workflow)
+
+    upload = client.post(
+        "/invoice",
+        files={"invoice": ("invoice.pdf", SAMPLE_PDF.read_bytes(), "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert upload.status_code == 303
+    assert upload.headers["location"] == "/review"
+    assert session.is_ready is False
+    assert session.case is not None
+    review = client.get("/review")
+    assert review.status_code == 200
+    assert 'name="mode::buyer.name"' in review.text
+    assert 'name="mode::invoice_number"' not in review.text
+
+    submitted = client.post(
+        "/review",
+        data={
+            "reviewer_id": "Max",
+            "mode::buyer.name": "candidate",
+            "candidate::buyer.name": "1",
+        },
+        follow_redirects=False,
+    )
+
+    assert submitted.status_code == 303
+    assert submitted.headers["location"] == "/result"
+    assert session.is_ready is True
+    assert client.get("/result").status_code == 200
 
 
 def test_agent_failure_warning_allows_human_candidate_to_finish_invoice() -> None:

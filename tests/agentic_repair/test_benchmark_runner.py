@@ -27,34 +27,20 @@ class ScriptedModel:
     """Minimal tool-capable chat model used by the real LangGraph runner."""
 
     def __init__(self, *responses: AIMessage) -> None:
-        """Create a deterministic fake chat model from queued AI responses.
+        """Create a deterministic fake chat model from queued AI responses."""
 
-        Copies the responses into a mutable queue and initializes logs for
-        every model invocation and every production tool bound by the LangGraph
-        runner.
-        """
         self.responses = list(responses)
         self.invocations: list[object] = []
         self.bound_tools: list[Any] = []
 
     def bind_tools(self, tools: list[Any]) -> "ScriptedModel":
-        """Record the tools supplied by the production graph and keep the fake
-        model usable.
-
-        Stores the exact tool objects for later assertions and returns self,
-        matching the binding interface expected by the LangChain runner.
-        """
+        """Record tools supplied by the production graph and keep fake usable."""
 
         self.bound_tools = tools
         return self
 
     def invoke(self, messages: object) -> AIMessage:
-        """Record one prompt and return the next scripted AI response.
-
-        Appends the received messages to the invocation log, removes the first
-        queued response, and returns it so tests can drive multi-step graph
-        behavior without a network model.
-        """
+        """Record one prompt and return the next scripted AI response."""
 
         self.invocations.append(messages)
         return self.responses.pop(0)
@@ -64,22 +50,13 @@ class FailingIfInvokedModel:
     """Model proving human-only cases never cross the LLM boundary."""
 
     def bind_tools(self, tools: list[object]) -> "FailingIfInvokedModel":
-        """Fail immediately if a human-only case crosses the model boundary.
-
-        Raises AssertionError instead of binding tools, making any accidental
-        LLM use in the deterministic human-only path visible to the test.
-        """
+        """Fail immediately if a human-only case crosses the model boundary."""
 
         raise AssertionError("human-only case reached the model")
 
 
 def _candidate(value: str) -> BenchmarkCandidate:
-    """Build a compact agent-visible invoice-number candidate for runner tests.
-
-    Uses fixed confidence, raw text, and same-line invoice evidence while
-    leaving rule and rejection metadata empty, so only the supplied value
-    varies.
-    """
+    """Build a compact agent-visible invoice-number candidate."""
 
     return BenchmarkCandidate(
         value=value,
@@ -92,12 +69,7 @@ def _candidate(value: str) -> BenchmarkCandidate:
 
 
 def _repair_case(case_id: str = "repair") -> BenchmarkCase:
-    """Build a single-field repair case with one known correct invoice number.
-
-    Creates a corrupt invoice_number value and three candidates whose middle
-    entry is ground truth, allowing tests to exercise successful and out-of-
-    range production tool calls.
-    """
+    """Build a one-field repair case whose middle candidate is correct."""
 
     return BenchmarkCase(
         case_id=case_id,
@@ -118,24 +90,19 @@ def _repair_case(case_id: str = "repair") -> BenchmarkCase:
     )
 
 
-def _tool_call(candidate_index: int) -> AIMessage:
-    """Build a production-shaped apply_repair_plan message for one candidate
-    index.
-
-    Returns an AIMessage containing a single tool command for invoice_number
-    with the requested index, an evidence-based reason, stable call ID, and
-    LangChain tool-call type.
-    """
+def _repair_tool_call(candidate_index: int) -> AIMessage:
+    """Build a production-shaped combined repair decision for one field."""
 
     return AIMessage(
         content="",
         tool_calls=[
             {
-                "name": "apply_repair_plan",
+                "name": "submit_repair_decisions",
                 "args": {
-                    "repair_commands": [
+                    "decisions": [
                         {
                             "path": "invoice_number",
+                            "action": "repair",
                             "candidate_index": candidate_index,
                             "reason": "candidate is next to invoice label",
                         }
@@ -148,16 +115,35 @@ def _tool_call(candidate_index: int) -> AIMessage:
     )
 
 
+def _human_review_tool_call() -> AIMessage:
+    """Build an explicit safe-escalation decision for one ambiguous field."""
+
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "submit_repair_decisions",
+                "args": {
+                    "decisions": [
+                        {
+                            "path": "invoice_number",
+                            "action": "human_review",
+                            "candidate_index": None,
+                            "reason": "No invoice number is uniquely supported.",
+                        }
+                    ]
+                },
+                "id": "call-review",
+                "type": "tool_call",
+            }
+        ],
+    )
+
+
 def test_run_benchmark_case_uses_real_graph_and_records_selection() -> None:
-    """Verify that the real graph converts a valid model tool call into one
-    benchmark selection.
+    """The real graph should record one valid combined repair decision."""
 
-    Scripts one repair command and asserts the chosen path and index,
-    successful attempt, production tool binding, and the current one-model-call
-    completion contract.
-    """
-
-    model = ScriptedModel(_tool_call(1))
+    model = ScriptedModel(_repair_tool_call(1))
 
     attempt = run_benchmark_case(_repair_case(), model, run_index=0)
 
@@ -166,18 +152,14 @@ def test_run_benchmark_case_uses_real_graph_and_records_selection() -> None:
     assert [(item.path, item.candidate_index) for item in attempt.selections] == [
         ("invoice_number", 1)
     ]
+    assert attempt.human_review_paths == ()
     assert len(model.bound_tools) == 1
-    assert model.bound_tools[0].name == "apply_repair_plan"
+    assert model.bound_tools[0].name == "submit_repair_decisions"
     assert len(model.invocations) == 1
 
 
-def test_run_benchmark_case_records_safe_no_tool_decision() -> None:
-    """Verify that an ambiguous case can safely finish without a repair tool call.
-
-    Provides two candidates with no expected answer and a model abstention,
-    then asserts a successful attempt with no tool flag or selections and
-    exactly one model invocation.
-    """
+def test_run_benchmark_case_records_explicit_human_review_decision() -> None:
+    """An ambiguous case should record the explicit field review path."""
 
     case = BenchmarkCase(
         case_id="ambiguous",
@@ -195,41 +177,33 @@ def test_run_benchmark_case_records_safe_no_tool_decision() -> None:
             ),
         ),
     )
-    model = ScriptedModel(AIMessage(content="No safe evidence-backed repair."))
+    model = ScriptedModel(_human_review_tool_call())
 
     attempt = run_benchmark_case(case, model, run_index=0)
 
     assert attempt.error is None
-    assert attempt.tool_called is False
+    assert attempt.tool_called is True
     assert attempt.selections == ()
+    assert attempt.human_review_paths == ("invoice_number",)
     assert len(model.invocations) == 1
 
 
 def test_run_benchmark_case_isolates_invalid_candidate_index() -> None:
-    """Verify that an out-of-range model choice becomes an errored attempt, not a
-    crash.
+    """An out-of-range combined repair choice should become an error attempt."""
 
-    Scripts candidate index 99 and asserts that the runner suppresses
-    selections, marks no accepted tool action, and records the specific
-    candidate-boundary error.
-    """
-
-    model = ScriptedModel(_tool_call(99))
+    model = ScriptedModel(_repair_tool_call(99))
 
     attempt = run_benchmark_case(_repair_case(), model, run_index=0)
 
     assert attempt.tool_called is False
     assert attempt.selections == ()
+    assert attempt.human_review_paths == ()
     assert attempt.error is not None
     assert "candidate_index_out_of_range" in attempt.error
 
 
 def test_human_only_case_skips_model_boundary() -> None:
-    """Verify that known human-only defects never bind or invoke an LLM.
-
-    Runs a fieldless case against a model that fails on tool binding and
-    asserts a successful zero-latency attempt with no tool call or selections.
-    """
+    """Known human-only defects should never bind or invoke an LLM."""
 
     case = BenchmarkCase(
         case_id="human",
@@ -243,15 +217,12 @@ def test_human_only_case_skips_model_boundary() -> None:
     assert attempt.error is None
     assert attempt.tool_called is False
     assert attempt.selections == ()
+    assert attempt.human_review_paths == ()
     assert attempt.latency_ms == 0.0
 
 
 def test_run_benchmark_preserves_case_and_repeat_order() -> None:
-    """Verify that repeated execution emits attempts in stable run-major order.
-
-    Runs two human-only cases twice and asserts the exact sequence of run index
-    and case ID, making raw reports reproducible and easy to compare.
-    """
+    """Repeated execution should emit attempts in stable run-major order."""
 
     corpus = BenchmarkCorpus(
         schema_version=1,
@@ -290,13 +261,7 @@ def test_main_writes_diagnostics_but_fails_systemic_model_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify that a completely failed model run still writes diagnostics and
-    exits unsuccessfully.
-
-    Replaces loading, model construction, and execution with one errored
-    attempt, runs the CLI with an explicit error threshold, and asserts exit
-    code one plus JSON and Markdown artifacts containing the model failure.
-    """
+    """A completely failed model run should still persist diagnostics."""
 
     corpus = BenchmarkCorpus(
         schema_version=1,

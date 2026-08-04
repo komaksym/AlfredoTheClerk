@@ -187,7 +187,7 @@ def _agent_result_to_workflow_result(
     agent_result: AgentRepairResult,
     generated_at: datetime | None,
 ) -> RepairWorkflowResult:
-    """Classify an agent run as repaired or unresolved."""
+    """Classify repairs, explicit escalations, and incomplete agent runs."""
 
     if not agent_result.tool_called:
         return _agent_failed(
@@ -198,7 +198,20 @@ def _agent_result_to_workflow_result(
         )
 
     repair_result = agent_result.repair_result
+    human_review_decisions = agent_result.human_review_decisions
+
     if repair_result is None:
+        if human_review_decisions:
+            return RepairWorkflowResult(
+                status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+                shell=context.shell,
+                route=route,
+                context=context,
+                automated_repair=None,
+                agent_result=agent_result,
+                reason="agent_abstained",
+                correctness=None,
+            )
         return _agent_failed(
             context=context,
             route=route,
@@ -211,6 +224,16 @@ def _agent_result_to_workflow_result(
         origin=AutomatedRepairOrigin.AGENT,
         agent_result=agent_result,
     )
+    if human_review_decisions:
+        return _finish_partial_agent_review(
+            context=context,
+            route=route,
+            repair_result=repair_result,
+            accepted=accepted,
+            agent_result=agent_result,
+            generated_at=generated_at,
+        )
+
     return _finish_correctness(
         context=context,
         route=route,
@@ -219,6 +242,34 @@ def _agent_result_to_workflow_result(
         automated_repair=accepted,
         agent_result=agent_result,
         generated_at=generated_at,
+    )
+
+
+def _finish_partial_agent_review(
+    *,
+    context: RepairContext,
+    route: RepairRoute,
+    repair_result: RepairResult,
+    accepted: AcceptedAutomatedRepair,
+    agent_result: AgentRepairResult,
+    generated_at: datetime | None,
+) -> RepairWorkflowResult:
+    """Validate accepted repairs but retain explicit escalations for a human."""
+
+    correctness = check_invoice_correctness(
+        repair_result.shell,
+        context.extracted_summary,
+        generated_at=generated_at,
+    )
+    return RepairWorkflowResult(
+        status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+        shell=context.shell,
+        route=route,
+        context=context,
+        automated_repair=accepted,
+        agent_result=agent_result,
+        reason="agent_partial_abstention",
+        correctness=correctness,
     )
 
 
@@ -284,6 +335,17 @@ def _finish_correctness(
         generated_at=generated_at,
     )
     if correctness.status is CorrectnessStatus.READY_FOR_KSEF:
+        if route.blocking_fields:
+            return RepairWorkflowResult(
+                status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+                shell=context.shell,
+                route=route,
+                context=context,
+                automated_repair=automated_repair,
+                agent_result=agent_result,
+                reason="blocking_fields",
+                correctness=correctness,
+            )
         return RepairWorkflowResult(
             status=success_status,
             shell=candidate_shell,

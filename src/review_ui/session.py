@@ -10,6 +10,7 @@ from typing import Any, Callable
 from src.agentic_repair.human_review import (
     HumanReviewCase,
     HumanReviewOutcome,
+    HumanReviewStatus,
     build_human_review_case,
 )
 from src.agentic_repair.repair_orchestration import (
@@ -41,6 +42,7 @@ class ReviewSession:
     workflow: RepairWorkflowResult | None = None
     case: HumanReviewCase | None = None
     correctness: CorrectnessResult | None = None
+    review_pending: bool = False
     agent_warning: str | None = None
     reviewer_id: str = ""
     form_values: dict[str, str] = field(default_factory=dict)
@@ -50,10 +52,11 @@ class ReviewSession:
 
     @property
     def is_ready(self) -> bool:
-        """Return whether the active invoice passed the shared correctness gate."""
+        """Return whether correctness passed and no human review remains."""
 
         return (
-            self.correctness is not None
+            not self.review_pending
+            and self.correctness is not None
             and self.correctness.status is CorrectnessStatus.READY_FOR_KSEF
         )
 
@@ -66,6 +69,7 @@ class ReviewSession:
         self.workflow = None
         self.case = None
         self.correctness = None
+        self.review_pending = False
         self.agent_warning = None
         self.form_values.clear()
         self.form_modes.clear()
@@ -88,6 +92,10 @@ class ReviewSession:
         self.page = prepared.page
         self.workflow = result
         self.correctness = result.correctness
+        self.review_pending = result.status in {
+            RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+            RepairWorkflowStatus.AGENT_FAILED,
+        }
 
         if self.is_ready:
             return
@@ -127,3 +135,4 @@ class ReviewSession:
         self.reviewer_id = reviewer_id
         self.case = outcome.case
         self.correctness = outcome.correctness
+        self.review_pending = outcome.status is HumanReviewStatus.MANUAL_REVIEW_REQUIRED
