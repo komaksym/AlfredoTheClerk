@@ -1,188 +1,68 @@
 # AlfredoTheClerk
 
-AlfredoTheClerk turns supported legacy-system invoice PDFs into reviewable,
-locally validated KSeF FA(3) XML. It keeps invoice data in a canonical domestic
-VAT shell, limits automated repair to extracted evidence candidates, and falls
-back to human review when automation cannot finish safely.
+[![CI](https://github.com/komaksym/AlfredoTheClerk/actions/workflows/ci.yml/badge.svg)](https://github.com/komaksym/AlfredoTheClerk/actions/workflows/ci.yml)
 
-## Local human-review app
+Evidence-constrained invoice repair for KSeF FA(3).
 
-The current local product path is:
+Alfredo extracts a supported legacy invoice PDF into a canonical domestic VAT
+shell, repairs only fields supported by source evidence, sends ambiguous fields
+to a human, validates the result, and exports FA(3) XML.
 
 ```text
-single-page native-text PDF
--> deterministic extraction + evidence
--> exact-label deterministic repair when uniquely proven
--> optional evidence-constrained agent decision when ambiguity remains
-   -> one explicit repair-or-human-review decision per payload field
-   -> clear fields are repaired; ambiguous fields remain for a human
-   -> shared correctness pipeline preserves accepted partial repairs
--> READY_FOR_KSEF -> download FA(3) XML
+PDF invoice
+  -> deterministic extraction
+  -> evidence-constrained repair
+  -> human review when needed
+  -> local correctness checks
+  -> FA(3) XML
 ```
 
-The app is intentionally single-user, in-memory, and bound to `127.0.0.1`.
-It does not submit invoices to KSeF. Agent repair still calls the configured
-DeepSeek API, so model-bound invoice fields and source snippets leave the local
-machine when an agent repair is attempted.
+## Application
 
-### Run
+### Upload an invoice
 
-Install/sync dependencies, provide the repair-agent key, and start the local
-server:
+![Upload invoice screen](docs/screenshots/upload-invoice.png)
 
-```bash
-uv sync --locked
-export DEEPSEEK_API_KEY="..."
-uv run python -m src.review_ui
-```
+### Review unresolved fields
 
-The same key can be stored as `DEEPSEEK_API_KEY=...` in a repository-root
-`.env`; it is loaded automatically. When the key is missing, startup prompts for
-it in the terminal. Do not commit keys or put them in invoice/review data.
+![Human invoice review screen](docs/screenshots/human-review.png)
 
-LangSmith tracing is not enabled or required by default. To opt in explicitly,
-set your own LangSmith environment variables before startup, for example:
-
-```bash
-export LANGSMITH_TRACING="true"
-export LANGSMITH_API_KEY="..."
-```
-
-When tracing is enabled, startup forces LangSmith input, output, and metadata
-hiding so invoice payloads are not recorded in traces. Tracing still creates an
-outbound observability connection and trace metadata, so enable it only under an
-approved data-handling policy.
-
-Open `http://127.0.0.1:8000`.
-
-### Supported input
-
-The review UI currently accepts one ordinary Polish domestic VAT invoice as a
-single-page, native/text-based PDF. Scans, OCR, photos, multi-page PDFs,
-correction invoices, advance invoices, non-domestic invoices, and arbitrary PDF
-layouts are outside this slice.
-
-Three deliberately broken smoke fixtures are available under
-`data/synthetic_data`:
-
-- `BROKEN_agent_ambiguous_seller_nip.pdf` contains competing seller-NIP
-  candidates; the unique literal `NIP:` evidence is resolved deterministically.
-- `BROKEN_human_missing_buyer_nip.pdf` has no buyer-NIP candidate and requires a
-  manual correction; its intended buyer NIP is `5423511615`.
-- `BROKEN_mixed_agent_and_human_nips.pdf` automatically repairs seller NIP
-  `8637940261`, then asks the reviewer to enter buyer NIP `5423511615`.
-
-### Repair boundary
-
-The agent receives only fields with usable extracted candidates and may only
-promote one of those existing values. It cannot invent replacements or edit
-`summary.*` source totals. In its one tool call, the model must emit exactly one
-explicit decision for every payload field:
-
-- `repair` with an existing candidate index when exactly one candidate is
-  semantically supported for the requested field; or
-- `human_review` with no candidate index when the evidence remains ambiguous or
-  contradicts the requested field.
-
-A uniquely supported candidate is not merely the only candidate that exists. A
-single candidate may still be unsafe when its evidence identifies the wrong
-party, date meaning, or account purpose. Candidate confidence describes
-extraction reliability and cannot break a semantic tie.
-
-One document may contain both outcomes. Clear fields are repaired atomically as
-one repair subset, while ambiguous agent fields and pre-existing blocking fields
-remain for human review. A response that omits the combined tool is an agent
-failure, not a successful abstention.
-
-Accepted automated repairs record truthful provenance as either
-`Deterministic rule` or `Agent`; deterministic work is never counted as a model
-tool call. The human-review screen shows the original invoice beside unresolved
-fields, keeps successful automated changes as a read-only diff, and allows the
-reviewer to select an extracted candidate or enter an explicit canonical
-correction. Human changes are applied as one attributed batch and rerun through
-the same correctness pipeline. Source-total mismatches keep their extracted
-totals immutable while exposing the canonical line-item inputs that determine
-those totals.
-
-A successful local run ends at `READY_FOR_KSEF` with downloadable FA(3) XML.
-Remote KSeF submission remains an explicit separate capability.
-
-## Industry context, not a benchmark baseline
-
-Invoice exceptions are a material accounts-payable bottleneck, but published AP
-statistics cover much broader workflows than Alfredo's field-repair boundary.
-APQC reports a 12-hour median cycle time from invoice receipt until data entry
-across 2,461 organizations. Ardent Partners' 2025 State of ePayables benchmark
-reports an average invoice-processing cost of $9.84, an 8.2-day processing time,
-and an 18.4% exception rate.
-
-Sources:
-
-- [APQC: cycle time from invoice receipt to system entry](https://www.apqc.org/resources/benchmarking/open-standards-benchmarking/measures/cycle-time-hours-receipt-invoice-until)
-- [Ardent Partners: 2025 AP benchmarks](https://payablesplace.ardentpartners.com/2026/01/state-of-epayables-part-nine-ap-benchmarks-and-best-in-class-performance/)
-
-These figures explain the business context only. They include waiting, approvals,
-matching, supplier communication, and other AP work, so they are not used as
-Alfredo's baseline and are not converted into claimed time or cost savings.
+The review workspace keeps the original PDF visible, shows accepted automated
+changes as a read-only audit trail, and exposes only unresolved fields for human
+correction.
 
 ## Controlled synthetic benchmark
 
-The benchmark separates two persisted datasets with different purposes:
+Latest merged-code regression:
 
-- `agentic_repair_hard_v1.json` contains 30 separately authored hard cases. It
-  was the original headline corpus, but after its cases and failures were
-  inspected to design safe abstention it is now a development regression corpus;
-- `agentic_repair_v1.json` contains 200 deterministically generated cases and is
-  retained as reproducible tool-contract and scoring sanity coverage.
+- commit: `3227d2c`
+- model: `deepseek:deepseek-v4-flash`
+- corpus: `agentic-repair-hard-v1`
+- runs: 30 cases × 3 repeats
 
-The 30-case hard regression contains 12 single-field repair cases, six
-multi-field cases, six mixed agent-plus-human cases, three human-only cases, and
-three ambiguous cases whose expected action is explicit human review. Its
-candidate metadata does not expose rule names or rejection flags. Correct
-answers occur at every candidate position and at high, middle, and low
-confidence ranks.
-
-The generated 200-case split is not eligible for performance claims because its
-visible evidence and ground truth originate from the same generation rules. It
-remains useful for deterministic regression coverage and byte-for-byte corpus
-regeneration checks.
-
-A future post-change headline claim requires a separately authored, previously
-unseen corpus. Results from `agentic_repair_hard_v1.json` should be described as
-regression results, not untouched held-out performance.
-
-### Baseline and metrics
+| Metric | Result | Definition |
+| --- | ---: | --- |
+| Repair precision | **96.6%** · 85/88 | Correct repairs among attempted repairs |
+| Repair coverage | **91.7%** · 88/96 | Repairable fields the agent attempted |
+| Safe-escalation rate | **100.0%** · 9/9 | Ambiguous fields correctly sent to a human |
+| Field-decision accuracy | **89.5%** · 94/105 | Correct repairs and correct escalations across all agent fields |
+| Manual-correction reduction | **57.8%** · 85/147 | Known defects removed from the human queue |
+| Straight-through rate | **50.0%** · 45/90 | Case-runs completed without human correction |
 
 The agent-disabled baseline requires one human correction for every persisted
-known defect. Only an automated candidate selection that exactly matches ground
-truth counts as removed human work. Wrong, missing, escalated, or errored repair
-actions remain in the human-work total.
+known defect. Only a ground-truth-matching repair removes work from that baseline.
 
-The report publishes:
+The benchmark also emits the legacy **candidate-selection accuracy** metric:
+correct repairs divided by all repairable fields. It was **88.5%** on this run.
+Repair precision and repair coverage are shown separately above because they make
+the abstention trade-off explicit.
 
-- **manual-correction reduction** — correct automated repairs divided by all
-  known defects;
-- **candidate-selection accuracy** — correct automated repairs divided by all
-  agent-eligible fields;
-- **safe-escalation rate** — ambiguous fields explicitly assigned
-  `human_review` divided by all safe-escalation opportunities;
-- **straight-through rate** — case-runs completed with no residual human
-  correction; and
-- raw per-case repair selections, explicit human-review paths, errors, median
-  latency, and p95 latency.
+The hard corpus is a development regression set, not an untouched held-out
+benchmark: its cases were inspected while designing safe abstention. This
+controlled result does not establish production generalization or accountant
+time savings.
 
-A silent no-tool response receives no safe-escalation credit. Scoring also
-requires a successful tool call to cover every case field exactly once as either
-a repair selection or a human-review path.
-
-Scoring requires the exact Cartesian product of every selected case and every
-configured repeat. A missing case-run aborts report generation instead of
-silently publishing metrics from a partial subset.
-
-### Run the live regression
-
-Provide the same DeepSeek key used by the repair agent, then run three complete
-repeats:
+Run the complete three-repeat regression with:
 
 ```bash
 export DEEPSEEK_API_KEY="..."
@@ -193,23 +73,39 @@ uv run python -m src.agentic_repair.benchmark_runner \
   --markdown-out reports/agentic-repair-benchmark.md
 ```
 
-Use `--limit 5` for a small credential and integration smoke run. The CLI writes
-both diagnostic reports before checking publication eligibility. It exits
-nonzero when all model-evaluated attempts fail or when the model-attempt error
-rate exceeds the configured threshold. Human-only cases are excluded from that
-error-rate denominator.
+## Run locally
 
-The manual GitHub Actions workflow runs the complete 30-case regression and
-uploads both files as the `agentic-repair-benchmark` artifact.
+Requirements: Python 3.13, `uv`, and a DeepSeek API key.
 
-This controlled synthetic result does not establish production generalization,
-accountant speed, cost savings, or end-to-end accounts-payable cycle-time
-improvement. Those claims require an untouched real-invoice evaluation set or a
-human timing study.
+```bash
+uv sync --locked
+export DEEPSEEK_API_KEY="..."
+uv run python -m src.review_ui
+```
 
-## Validation
+Open `http://127.0.0.1:8000`.
 
-Repository gates:
+The local app does not automatically submit invoices to KSeF. Model-bound field
+evidence is sent to the configured DeepSeek API when agent repair is required.
+
+## Supported input
+
+The current UI accepts one single-page, native-text Polish domestic VAT invoice
+PDF. Scans, photos, OCR, multi-page documents, correction invoices, advance
+invoices, and arbitrary layouts are outside this implementation slice.
+
+## Safety boundary
+
+- The model may select only existing extracted candidates; it cannot invent a
+  replacement value.
+- Every agent field receives exactly one explicit `repair` or `human_review`
+  decision in a single tool call.
+- Repairs are applied atomically. Unresolved fields remain in human review, and
+  automated and human changes pass through the same correctness pipeline.
+- A successful local result must pass shell validation, totals reconciliation,
+  FA(3) mapping, and XSD validation before XML download is enabled.
+
+## Validate
 
 ```bash
 uv run ruff check .
@@ -217,32 +113,8 @@ uv run pyright src tests
 uv run pytest -q -m "not browser_e2e and not ksef_live"
 uv run playwright install chromium
 uv run pytest -q -m browser_e2e
-uv run python -m compileall src tests
 uv build --wheel
-uv run python tests/smoke_installed_xsd_validation.py \
-  dist/alfredotheclerk-*.whl
 ```
 
-Pyright checks the full `src` and `tests` trees in basic mode. The configuration
-contains a narrow explicit ignore list for known pre-existing type debt; all new
-and modified files remain inside the gate.
-
-CI runs the gates in lint → typecheck → tests → browser E2E → screenshot → build
-order. The Playwright test uploads a PDF, focuses and fills the manual correction,
-verifies JavaScript selected the correct hidden mode, uses the PDF download and
-fullscreen controls, submits through the visible button, reaches
-`READY_FOR_KSEF`, and downloads the generated XML.
-
-CI also captures normal and forced-dark Chrome screenshots and uploads them as
-the `human-review-browser-smoke` artifact, builds the wheel, and smoke-tests the
-installed FA(3) schema and packaged UI resources.
-
-### Strict KSeF TEST gate
-
-Every push, pull request, and manual workflow run executes a real synthetic
-invoice submission to KSeF TEST after the local `main` job succeeds. The
-`ksef-live` job requires `KSEF_TEST_TOKEN` and `KSEF_TEST_CONTEXT_NIP`; missing
-credentials, transport failures, rejection, or timeout fail CI rather than
-skipping the proof. Each invoice number is unique to avoid duplicate collisions.
-Fork pull requests cannot pass unless GitHub makes the required repository
-secrets available, which is intentional for this strict gate.
+A separate strict CI job submits a synthetic invoice to KSeF TEST using repository
+secrets. Missing credentials or a rejected submission fail the gate.
