@@ -15,7 +15,7 @@ on:
       - ".github/workflows/agentic-repair-benchmark.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   benchmark:
@@ -62,6 +62,14 @@ jobs:
             --max-error-rate 0.05 \
             --json-out reports/agentic-repair-benchmark.json \
             --markdown-out reports/agentic-repair-benchmark.md
+
+      - name: Publish reports to temporary branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/agentic-repair-benchmark.json reports/agentic-repair-benchmark.md
+          git commit -m "chore(eval): publish merged abstention benchmark"
+          git push origin HEAD:eval/post-abstention-20260804
 
       - name: Upload reports
         uses: actions/upload-artifact@v4
