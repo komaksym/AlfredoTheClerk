@@ -31,7 +31,7 @@ The review workspace keeps the original PDF visible, shows accepted automated
 changes as a read-only audit trail, and exposes only unresolved fields for human
 correction.
 
-## Evaluation
+## Controlled synthetic benchmark
 
 Latest merged-code regression:
 
@@ -49,10 +49,29 @@ Latest merged-code regression:
 | Manual-correction reduction | **57.8%** · 85/147 | Known defects removed from the human queue |
 | Straight-through rate | **50.0%** · 45/90 | Case-runs completed without human correction |
 
-The hard corpus is a **development regression set**, not an untouched held-out
-benchmark: its cases were inspected while designing safe abstention. These
-numbers demonstrate controlled behavior on synthetic data, not production
-generalization or accountant time savings.
+The agent-disabled baseline requires one human correction for every persisted
+known defect. Only a ground-truth-matching repair removes work from that baseline.
+
+The benchmark also emits the legacy **candidate-selection accuracy** metric:
+correct repairs divided by all repairable fields. It was **88.5%** on this run.
+Repair precision and repair coverage are shown separately above because they make
+the abstention trade-off explicit.
+
+The hard corpus is a development regression set, not an untouched held-out
+benchmark: its cases were inspected while designing safe abstention. This
+controlled result does not establish production generalization or accountant
+time savings.
+
+Run the complete three-repeat regression with:
+
+```bash
+export DEEPSEEK_API_KEY="..."
+uv run python -m src.agentic_repair.benchmark_runner \
+  --runs 3 \
+  --max-error-rate 0.05 \
+  --json-out reports/agentic-repair-benchmark.json \
+  --markdown-out reports/agentic-repair-benchmark.md
+```
 
 ## Run locally
 
