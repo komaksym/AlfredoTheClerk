@@ -144,6 +144,7 @@ def test_accepted_agent_repair_keeps_preexisting_blocking_field_in_review(
     assert workflow.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
     assert workflow.reason == "blocking_fields"
     assert workflow.correctness is correctness
+    assert workflow.correctness is not None
     assert workflow.correctness.shell is repaired_shell
     assert workflow.automated_repair is not None
     assert workflow.automated_repair.repair_result is repair_result
