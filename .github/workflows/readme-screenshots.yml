@@ -1,0 +1,86 @@
+name: Capture README screenshots
+
+on:
+  push:
+    branches:
+      - docs/minimal-readme
+    paths:
+      - .github/workflows/readme-screenshots.yml
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/minimal-readme
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.13.0
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Start application states
+        run: |
+          uv run uvicorn src.review_ui.app:create_app \
+            --factory \
+            --host 127.0.0.1 \
+            --port 8002 \
+            --log-level warning &
+          echo $! > /tmp/upload-server.pid
+
+          PYTHONPATH=. uv run python tests/review_ui/browser_smoke_server.py &
+          echo $! > /tmp/review-server.pid
+
+          for url in http://127.0.0.1:8002/ http://127.0.0.1:8001/review; do
+            ready=0
+            for _ in $(seq 1 60); do
+              if curl --fail --silent --show-error "$url" >/dev/null; then
+                ready=1
+                break
+              fi
+              sleep 1
+            done
+            test "$ready" -eq 1
+          done
+
+      - name: Capture screenshots
+        run: |
+          mkdir -p docs/screenshots
+          uv run python - <<'PY'
+          from playwright.sync_api import sync_playwright
+
+          with sync_playwright() as playwright:
+              browser = playwright.chromium.launch()
+              page = browser.new_page(viewport={"width": 1536, "height": 960}, device_scale_factor=1)
+
+              page.goto("http://127.0.0.1:8002/", wait_until="networkidle")
+              page.screenshot(path="docs/screenshots/upload-invoice.png")
+
+              page.goto("http://127.0.0.1:8001/review", wait_until="networkidle")
+              page.locator("img[alt='Rendered invoice page']").wait_for(state="visible")
+              page.screenshot(path="docs/screenshots/human-review.png")
+
+              browser.close()
+          PY
+
+      - name: Commit screenshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/upload-invoice.png docs/screenshots/human-review.png
+          git commit -m "docs: capture application screenshots"
+          git push origin HEAD:docs/minimal-readme
