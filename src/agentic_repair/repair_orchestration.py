@@ -335,6 +335,17 @@ def _finish_correctness(
         generated_at=generated_at,
     )
     if correctness.status is CorrectnessStatus.READY_FOR_KSEF:
+        if route.blocking_fields:
+            return RepairWorkflowResult(
+                status=RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED,
+                shell=context.shell,
+                route=route,
+                context=context,
+                automated_repair=automated_repair,
+                agent_result=agent_result,
+                reason="blocking_fields",
+                correctness=correctness,
+            )
         return RepairWorkflowResult(
             status=success_status,
             shell=candidate_shell,
