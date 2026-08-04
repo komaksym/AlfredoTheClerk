@@ -8,9 +8,9 @@ on:
         required: true
         default: "3"
         type: string
-  pull_request:
+  push:
     branches:
-      - main
+      - eval/post-abstention-20260804
     paths:
       - ".github/workflows/agentic-repair-benchmark.yml"
 
