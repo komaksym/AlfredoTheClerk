@@ -236,22 +236,31 @@ def _totals_mismatch_fields(
 ) -> tuple[HumanReviewField, ...]:
     """Expose canonical line inputs that can resolve immutable total mismatches."""
 
-    correctness = case.correctness
-    if (
-        correctness is None
-        or correctness.status is not CorrectnessStatus.TOTALS_MISMATCH
-    ):
+    paths = _totals_mismatch_input_paths(case)
+    if not paths:
         return ()
-
-    paths: set[str] = set()
-    for mismatch in correctness.mismatches:
-        paths.update(_mismatch_input_paths(case, mismatch.path))
 
     existing_paths = {field.path for field in case.fields}
     return tuple(
         _totals_mismatch_field(case, path)
         for path in sorted(paths - existing_paths)
     )
+
+
+def _totals_mismatch_input_paths(case: HumanReviewCase) -> set[str]:
+    """Return line-item inputs that participate in current total mismatches."""
+
+    correctness = case.correctness
+    if (
+        correctness is None
+        or correctness.status is not CorrectnessStatus.TOTALS_MISMATCH
+    ):
+        return set()
+
+    paths: set[str] = set()
+    for mismatch in correctness.mismatches:
+        paths.update(_mismatch_input_paths(case, mismatch.path))
+    return paths
 
 
 def _mismatch_input_paths(case: HumanReviewCase, path: str) -> set[str]:
@@ -329,9 +338,11 @@ def _is_resolved_automated_field(
     case: HumanReviewCase,
     change_paths: set[str],
 ) -> bool:
-    """Hide an automated change when no validation error remains for its path."""
+    """Hide an automated change only when no review dependency remains."""
 
     if path not in change_paths or case.correctness is None:
+        return False
+    if path in _totals_mismatch_input_paths(case):
         return False
     unresolved_paths = {error.path for error in case.correctness.validation.errors}
     return path not in unresolved_paths
