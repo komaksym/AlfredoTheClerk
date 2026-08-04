@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from src.agentic_repair.agent_extraction_repair import (
     AgentHumanReviewDecision,
     AgentRepairResult,
 )
+from src.agentic_repair.human_review import build_human_review_case
 from src.agentic_repair.repair_kernel import (
     RepairDecision,
     RepairResult,
@@ -20,6 +22,11 @@ from src.agentic_repair.repair_orchestration import (
     run_shell_repair,
 )
 from src.input_processing.extraction_comparison import RepairContext
+from src.input_processing.extraction_diagnostics import (
+    ExtractionDiagnostics,
+    FieldDiagnostic,
+    FieldStatus,
+)
 from src.input_processing.parse_pdf import ParsedDocument
 from src.invoice_gen.domain_shell import build_domestic_vat_shell
 from src.invoice_gen.domestic_vat_shell_validation import ShellValidationResult
@@ -52,6 +59,17 @@ def _patch_extraction(
     monkeypatch.setattr(
         "src.agentic_repair.repair_orchestration.run_full_extraction",
         fake_run_full_extraction,
+    )
+
+
+def _missing_diagnostic(path: str) -> FieldDiagnostic:
+    """Build a diagnostic-only blocker with no shell validation error."""
+
+    return FieldDiagnostic(
+        path=path,
+        status=FieldStatus.MISSING,
+        raw_text=None,
+        message="no extraction candidate found",
     )
 
 
@@ -194,3 +212,77 @@ def test_all_escalated_agent_result_routes_original_shell_to_review(
     assert workflow.correctness is None
     assert workflow.automated_repair is None
     assert workflow.agent_result is agent_result
+
+
+def test_accepted_repair_does_not_bypass_preexisting_blocking_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid repair must preserve an unrelated diagnostic-only blocker."""
+
+    original_shell = build_domestic_vat_shell()
+    original_shell.seller.nip = "1111111111"
+    repaired_shell = copy.deepcopy(original_shell)
+    repaired_shell.seller.nip = "8637940261"
+    context = make_repair_context(
+        shell=original_shell,
+        evidence={
+            "seller.nip": make_evidence_with_candidates(
+                "1111111111", "8637940261"
+            ),
+        },
+        validation_errors=[make_validation_error("seller.nip")],
+        diagnostics=ExtractionDiagnostics(
+            fields={
+                "payment_due_date": _missing_diagnostic("payment_due_date"),
+            }
+        ),
+    )
+    _patch_extraction(monkeypatch, context)
+    repair_result = RepairResult(
+        shell=repaired_shell,
+        decisions=(
+            RepairDecision(
+                path="seller.nip",
+                old_value="1111111111",
+                new_value="8637940261",
+                candidate_index=1,
+                reason="The evidence identifies the invoice issuer.",
+            ),
+        ),
+        validation=ShellValidationResult(errors=[]),
+    )
+    agent_result = AgentRepairResult(
+        repair_result=repair_result,
+        human_review_decisions=(),
+        tool_called=True,
+        final_messages=(),
+    )
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_orchestration.runner",
+        lambda session, payload, model: agent_result,
+    )
+    correctness = CorrectnessResult(
+        status=CorrectnessStatus.READY_FOR_KSEF,
+        shell=repaired_shell,
+        validation=ShellValidationResult(errors=[]),
+    )
+    monkeypatch.setattr(
+        "src.agentic_repair.repair_orchestration.check_invoice_correctness",
+        lambda shell, extracted_summary, generated_at=None: correctness,
+    )
+
+    workflow = run_shell_repair(_parsed_document(), model=object())
+
+    assert workflow.status is RepairWorkflowStatus.MANUAL_REVIEW_REQUIRED
+    assert workflow.reason == "blocking_fields"
+    assert workflow.correctness is correctness
+    assert workflow.correctness is not None
+    assert workflow.correctness.shell is repaired_shell
+    assert workflow.automated_repair is not None
+    assert workflow.automated_repair.repair_result is repair_result
+
+    built = build_human_review_case(workflow)
+    assert built.issues == ()
+    assert built.case is not None
+    assert built.case.shell.seller.nip == "8637940261"
+    assert "payment_due_date" in {field.path for field in built.case.fields}
