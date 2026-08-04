@@ -4,11 +4,11 @@
       "case_id": "hard-single-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2428.3917970000034,
+      "latency_ms": 2175.655746000004,
       "run_index": 0,
       "selections": [
         {
-          "candidate_index": 0,
+          "candidate_index": 1,
           "path": "seller.nip"
         }
       ],
@@ -18,7 +18,7 @@
       "case_id": "hard-single-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2091.607051999986,
+      "latency_ms": 2299.614101000003,
       "run_index": 0,
       "selections": [
         {
@@ -32,7 +32,7 @@
       "case_id": "hard-single-003",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 1861.1108929999887,
+      "latency_ms": 2783.4594649999926,
       "run_index": 0,
       "selections": [
         {
@@ -46,7 +46,7 @@
       "case_id": "hard-single-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 5162.853671999983,
+      "latency_ms": 2011.0784900000026,
       "run_index": 0,
       "selections": [
         {
@@ -62,7 +62,7 @@
       "human_review_paths": [
         "sale_date"
       ],
-      "latency_ms": 4588.661971999983,
+      "latency_ms": 2561.8931660000044,
       "run_index": 0,
       "selections": [],
       "tool_called": true
@@ -71,7 +71,7 @@
       "case_id": "hard-single-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 1822.2073089999924,
+      "latency_ms": 2134.065070999995,
       "run_index": 0,
       "selections": [
         {
@@ -87,7 +87,7 @@
       "human_review_paths": [
         "seller.bank_account"
       ],
-      "latency_ms": 3726.4636349999873,
+      "latency_ms": 2670.3891629999816,
       "run_index": 0,
       "selections": [],
       "tool_called": true
@@ -96,7 +96,7 @@
       "case_id": "hard-single-008",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3304.96382299998,
+      "latency_ms": 2303.378075000012,
       "run_index": 0,
       "selections": [
         {
@@ -110,7 +110,7 @@
       "case_id": "hard-single-009",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2160.8407859999943,
+      "latency_ms": 2413.8288739999894,
       "run_index": 0,
       "selections": [
         {
@@ -124,7 +124,7 @@
       "case_id": "hard-single-010",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3123.035092000009,
+      "latency_ms": 3284.4067579999887,
       "run_index": 0,
       "selections": [
         {
@@ -138,7 +138,7 @@
       "case_id": "hard-single-011",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 5177.489893000001,
+      "latency_ms": 2524.150198000001,
       "run_index": 0,
       "selections": [
         {
@@ -152,7 +152,7 @@
       "case_id": "hard-single-012",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2220.6376320000063,
+      "latency_ms": 2206.1338899999896,
       "run_index": 0,
       "selections": [
         {
@@ -166,7 +166,7 @@
       "case_id": "hard-multi-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3602.2038150000244,
+      "latency_ms": 3637.8565009999875,
       "run_index": 0,
       "selections": [
         {
@@ -184,7 +184,7 @@
       "case_id": "hard-multi-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 6391.429418999991,
+      "latency_ms": 3652.489244999998,
       "run_index": 0,
       "selections": [
         {
@@ -202,7 +202,7 @@
       "case_id": "hard-multi-003",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 4183.299957999992,
+      "latency_ms": 3575.326187999991,
       "run_index": 0,
       "selections": [
         {
@@ -220,7 +220,7 @@
       "case_id": "hard-multi-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2174.092521000006,
+      "latency_ms": 2924.4973019999916,
       "run_index": 0,
       "selections": [
         {
@@ -238,7 +238,7 @@
       "case_id": "hard-multi-005",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 4799.725668000008,
+      "latency_ms": 3723.5218649999806,
       "run_index": 0,
       "selections": [
         {
@@ -256,7 +256,7 @@
       "case_id": "hard-multi-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2932.0072920000084,
+      "latency_ms": 3509.4779279999957,
       "run_index": 0,
       "selections": [
         {
@@ -274,7 +274,7 @@
       "case_id": "hard-mixed-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3901.056969999985,
+      "latency_ms": 2842.8341409999975,
       "run_index": 0,
       "selections": [
         {
@@ -288,7 +288,7 @@
       "case_id": "hard-mixed-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3553.73596299998,
+      "latency_ms": 2782.0566419999864,
       "run_index": 0,
       "selections": [
         {
@@ -304,7 +304,7 @@
       "human_review_paths": [
         "sale_date"
       ],
-      "latency_ms": 4859.161067000003,
+      "latency_ms": 3824.188410000005,
       "run_index": 0,
       "selections": [
         {
@@ -318,7 +318,7 @@
       "case_id": "hard-mixed-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2413.889587999989,
+      "latency_ms": 2261.979171000007,
       "run_index": 0,
       "selections": [
         {
@@ -332,7 +332,7 @@
       "case_id": "hard-mixed-005",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3105.323214000009,
+      "latency_ms": 3676.146994999982,
       "run_index": 0,
       "selections": [
         {
@@ -346,7 +346,7 @@
       "case_id": "hard-mixed-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 5319.770312999992,
+      "latency_ms": 4797.214212,
       "run_index": 0,
       "selections": [
         {
@@ -393,7 +393,7 @@
       "human_review_paths": [
         "seller.nip"
       ],
-      "latency_ms": 2460.267464999987,
+      "latency_ms": 2023.2000480000067,
       "run_index": 0,
       "selections": [],
       "tool_called": true
@@ -404,7 +404,7 @@
       "human_review_paths": [
         "invoice_number"
       ],
-      "latency_ms": 2291.0582570000033,
+      "latency_ms": 2496.6358120000223,
       "run_index": 0,
       "selections": [],
       "tool_called": true
@@ -415,7 +415,7 @@
       "human_review_paths": [
         "seller.bank_account"
       ],
-      "latency_ms": 3053.6342649999997,
+      "latency_ms": 3383.059103999983,
       "run_index": 0,
       "selections": [],
       "tool_called": true
@@ -424,7 +424,7 @@
       "case_id": "hard-single-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 4926.215395999975,
+      "latency_ms": 3886.7936270000027,
       "run_index": 1,
       "selections": [
         {
@@ -438,7 +438,7 @@
       "case_id": "hard-single-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2763.6965339999906,
+      "latency_ms": 3041.107060999991,
       "run_index": 1,
       "selections": [
         {
@@ -452,7 +452,7 @@
       "case_id": "hard-single-003",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2169.3145830000162,
+      "latency_ms": 2244.094984999975,
       "run_index": 1,
       "selections": [
         {
@@ -466,7 +466,7 @@
       "case_id": "hard-single-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3427.099869000017,
+      "latency_ms": 2835.593133000003,
       "run_index": 1,
       "selections": [
         {
@@ -482,7 +482,7 @@
       "human_review_paths": [
         "sale_date"
       ],
-      "latency_ms": 3625.478917999999,
+      "latency_ms": 2546.5580599999953,
       "run_index": 1,
       "selections": [],
       "tool_called": true
@@ -491,7 +491,7 @@
       "case_id": "hard-single-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2321.2923170000013,
+      "latency_ms": 2383.0889729999853,
       "run_index": 1,
       "selections": [
         {
@@ -507,7 +507,7 @@
       "human_review_paths": [
         "seller.bank_account"
       ],
-      "latency_ms": 2591.6391899999953,
+      "latency_ms": 2585.901254000021,
       "run_index": 1,
       "selections": [],
       "tool_called": true
@@ -516,7 +516,7 @@
       "case_id": "hard-single-008",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2491.7184460000217,
+      "latency_ms": 2199.046317000011,
       "run_index": 1,
       "selections": [
         {
@@ -530,7 +530,7 @@
       "case_id": "hard-single-009",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2358.536709999981,
+      "latency_ms": 2337.377908999997,
       "run_index": 1,
       "selections": [
         {
@@ -544,7 +544,7 @@
       "case_id": "hard-single-010",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2775.999197999994,
+      "latency_ms": 3189.671142000009,
       "run_index": 1,
       "selections": [
         {
@@ -558,7 +558,7 @@
       "case_id": "hard-single-011",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3693.5686769999734,
+      "latency_ms": 2970.0683150000204,
       "run_index": 1,
       "selections": [
         {
@@ -572,7 +572,7 @@
       "case_id": "hard-single-012",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2376.2666689999887,
+      "latency_ms": 2613.0676749999966,
       "run_index": 1,
       "selections": [
         {
@@ -586,7 +586,7 @@
       "case_id": "hard-multi-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3199.8182579999934,
+      "latency_ms": 3709.557074000003,
       "run_index": 1,
       "selections": [
         {
@@ -604,7 +604,7 @@
       "case_id": "hard-multi-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 6761.453308,
+      "latency_ms": 3929.8195910000118,
       "run_index": 1,
       "selections": [
         {
@@ -622,7 +622,7 @@
       "case_id": "hard-multi-003",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3058.080566000001,
+      "latency_ms": 3260.6037520000086,
       "run_index": 1,
       "selections": [
         {
@@ -640,7 +640,7 @@
       "case_id": "hard-multi-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 5263.508369000021,
+      "latency_ms": 2719.442865000019,
       "run_index": 1,
       "selections": [
         {
@@ -658,7 +658,7 @@
       "case_id": "hard-multi-005",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 4428.165750000006,
+      "latency_ms": 3422.162479000008,
       "run_index": 1,
       "selections": [
         {
@@ -676,7 +676,7 @@
       "case_id": "hard-multi-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3362.0742819999805,
+      "latency_ms": 3577.6638520000006,
       "run_index": 1,
       "selections": [
         {
@@ -694,7 +694,7 @@
       "case_id": "hard-mixed-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 1574.5269979999534,
+      "latency_ms": 2184.382375000013,
       "run_index": 1,
       "selections": [
         {
@@ -708,7 +708,7 @@
       "case_id": "hard-mixed-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2209.5381810000276,
+      "latency_ms": 2141.3539050000168,
       "run_index": 1,
       "selections": [
         {
@@ -724,7 +724,7 @@
       "human_review_paths": [
         "sale_date"
       ],
-      "latency_ms": 3503.111184999966,
+      "latency_ms": 3659.572952000019,
       "run_index": 1,
       "selections": [
         {
@@ -738,7 +738,7 @@
       "case_id": "hard-mixed-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 1699.5653149999725,
+      "latency_ms": 2752.919946999981,
       "run_index": 1,
       "selections": [
         {
@@ -752,7 +752,7 @@
       "case_id": "hard-mixed-005",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2822.521735999999,
+      "latency_ms": 3014.496118000011,
       "run_index": 1,
       "selections": [
         {
@@ -766,7 +766,7 @@
       "case_id": "hard-mixed-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 4768.095051999979,
+      "latency_ms": 4002.346148000015,
       "run_index": 1,
       "selections": [
         {
@@ -813,7 +813,7 @@
       "human_review_paths": [
         "seller.nip"
       ],
-      "latency_ms": 2401.298121000025,
+      "latency_ms": 2275.7827909999833,
       "run_index": 1,
       "selections": [],
       "tool_called": true
@@ -824,7 +824,7 @@
       "human_review_paths": [
         "invoice_number"
       ],
-      "latency_ms": 2627.595650000046,
+      "latency_ms": 2281.5750389999607,
       "run_index": 1,
       "selections": [],
       "tool_called": true
@@ -835,7 +835,7 @@
       "human_review_paths": [
         "seller.bank_account"
       ],
-      "latency_ms": 2218.4534460000123,
+      "latency_ms": 2038.8846189999867,
       "run_index": 1,
       "selections": [],
       "tool_called": true
@@ -844,7 +844,7 @@
       "case_id": "hard-single-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 1793.844818000025,
+      "latency_ms": 1952.40592600004,
       "run_index": 2,
       "selections": [
         {
@@ -858,7 +858,7 @@
       "case_id": "hard-single-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2214.033014999984,
+      "latency_ms": 2054.247274999966,
       "run_index": 2,
       "selections": [
         {
@@ -872,7 +872,7 @@
       "case_id": "hard-single-003",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 1621.4301969999951,
+      "latency_ms": 2594.1871059999926,
       "run_index": 2,
       "selections": [
         {
@@ -886,7 +886,7 @@
       "case_id": "hard-single-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3139.391078000017,
+      "latency_ms": 2538.647989000026,
       "run_index": 2,
       "selections": [
         {
@@ -902,7 +902,7 @@
       "human_review_paths": [
         "sale_date"
       ],
-      "latency_ms": 2698.4759489999988,
+      "latency_ms": 2378.7075729999856,
       "run_index": 2,
       "selections": [],
       "tool_called": true
@@ -911,7 +911,7 @@
       "case_id": "hard-single-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2565.6755280000425,
+      "latency_ms": 1944.5986020000419,
       "run_index": 2,
       "selections": [
         {
@@ -927,7 +927,7 @@
       "human_review_paths": [
         "seller.bank_account"
       ],
-      "latency_ms": 3048.2874709999805,
+      "latency_ms": 2970.2342260000023,
       "run_index": 2,
       "selections": [],
       "tool_called": true
@@ -936,7 +936,7 @@
       "case_id": "hard-single-008",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2365.1648940000314,
+      "latency_ms": 2919.6935499999768,
       "run_index": 2,
       "selections": [
         {
@@ -950,7 +950,7 @@
       "case_id": "hard-single-009",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2395.2866409999842,
+      "latency_ms": 2690.1471670000205,
       "run_index": 2,
       "selections": [
         {
@@ -964,7 +964,7 @@
       "case_id": "hard-single-010",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3580.682861000014,
+      "latency_ms": 3163.601118000031,
       "run_index": 2,
       "selections": [
         {
@@ -978,7 +978,7 @@
       "case_id": "hard-single-011",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2236.8946189999974,
+      "latency_ms": 2948.5447600000043,
       "run_index": 2,
       "selections": [
         {
@@ -992,7 +992,7 @@
       "case_id": "hard-single-012",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2151.042115999985,
+      "latency_ms": 2504.870495999967,
       "run_index": 2,
       "selections": [
         {
@@ -1006,7 +1006,7 @@
       "case_id": "hard-multi-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3513.1752799999845,
+      "latency_ms": 3681.551786,
       "run_index": 2,
       "selections": [
         {
@@ -1024,7 +1024,7 @@
       "case_id": "hard-multi-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 4418.916258000025,
+      "latency_ms": 4289.396809999971,
       "run_index": 2,
       "selections": [
         {
@@ -1042,7 +1042,7 @@
       "case_id": "hard-multi-003",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3487.212674000034,
+      "latency_ms": 3886.9331790000388,
       "run_index": 2,
       "selections": [
         {
@@ -1060,7 +1060,7 @@
       "case_id": "hard-multi-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3255.032877000019,
+      "latency_ms": 3032.9497940000465,
       "run_index": 2,
       "selections": [
         {
@@ -1078,7 +1078,7 @@
       "case_id": "hard-multi-005",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3912.802283000019,
+      "latency_ms": 3729.147859999955,
       "run_index": 2,
       "selections": [
         {
@@ -1096,7 +1096,7 @@
       "case_id": "hard-multi-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3971.573811999974,
+      "latency_ms": 3425.649389,
       "run_index": 2,
       "selections": [
         {
@@ -1114,7 +1114,7 @@
       "case_id": "hard-mixed-001",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2411.348032000035,
+      "latency_ms": 2442.521467000006,
       "run_index": 2,
       "selections": [
         {
@@ -1128,7 +1128,7 @@
       "case_id": "hard-mixed-002",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2501.78371100003,
+      "latency_ms": 2749.8496179999847,
       "run_index": 2,
       "selections": [
         {
@@ -1142,7 +1142,7 @@
       "case_id": "hard-mixed-003",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 4183.140233000017,
+      "latency_ms": 3986.8247530000076,
       "run_index": 2,
       "selections": [
         {
@@ -1160,7 +1160,7 @@
       "case_id": "hard-mixed-004",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 2331.9546280000054,
+      "latency_ms": 2648.0816010000012,
       "run_index": 2,
       "selections": [
         {
@@ -1174,7 +1174,7 @@
       "case_id": "hard-mixed-005",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 3613.8881770000353,
+      "latency_ms": 3391.666221000037,
       "run_index": 2,
       "selections": [
         {
@@ -1188,7 +1188,7 @@
       "case_id": "hard-mixed-006",
       "error": null,
       "human_review_paths": [],
-      "latency_ms": 5213.308340999958,
+      "latency_ms": 3772.063961000015,
       "run_index": 2,
       "selections": [
         {
@@ -1235,7 +1235,7 @@
       "human_review_paths": [
         "seller.nip"
       ],
-      "latency_ms": 2342.9525120000108,
+      "latency_ms": 2311.7626169999994,
       "run_index": 2,
       "selections": [],
       "tool_called": true
@@ -1246,7 +1246,7 @@
       "human_review_paths": [
         "invoice_number"
       ],
-      "latency_ms": 2605.8587670000293,
+      "latency_ms": 2595.388888000002,
       "run_index": 2,
       "selections": [],
       "tool_called": true
@@ -1257,7 +1257,7 @@
       "human_review_paths": [
         "seller.bank_account"
       ],
-      "latency_ms": 2812.3068460000127,
+      "latency_ms": 2502.2869329999935,
       "run_index": 2,
       "selections": [],
       "tool_called": true
@@ -1277,20 +1277,20 @@
   },
   "metrics": {
     "agent_eligible_fields": 96,
-    "candidate_selection_accuracy": 0.875,
-    "correct_automated_repairs": 84,
+    "candidate_selection_accuracy": 0.8854166666666666,
+    "correct_automated_repairs": 85,
     "correct_safe_escalations": 9,
     "errored_attempts": 0,
-    "human_corrections_remaining": 63,
-    "incorrect_candidate_selections": 4,
-    "manual_correction_reduction": 0.5714285714285714,
-    "median_latency_ms": 2731.0862414999947,
+    "human_corrections_remaining": 62,
+    "incorrect_candidate_selections": 3,
+    "manual_correction_reduction": 0.5782312925170068,
+    "median_latency_ms": 2659.2353819999917,
     "missed_agent_repairs": 8,
-    "p95_latency_ms": 5213.308340999958,
+    "p95_latency_ms": 3929.8195910000118,
     "safe_escalation_opportunities": 9,
     "safe_escalation_rate": 1.0,
-    "straight_through_cases": 44,
-    "straight_through_rate": 0.4888888888888889,
+    "straight_through_cases": 45,
+    "straight_through_rate": 0.5,
     "total_attempts": 90,
     "total_cases": 30,
     "total_defects": 147

@@ -13,15 +13,15 @@
 | Case-runs | 90 |
 | Known defects | 147 |
 | Agent-eligible fields | 96 |
-| Correct automated repairs | 84 |
-| Human corrections remaining | 63 |
-| Manual-correction reduction | 57.1% |
-| Candidate-selection accuracy | 87.5% |
+| Correct automated repairs | 85 |
+| Human corrections remaining | 62 |
+| Manual-correction reduction | 57.8% |
+| Candidate-selection accuracy | 88.5% |
 | Safe-escalation rate | 100.0% |
-| Straight-through rate | 48.9% |
+| Straight-through rate | 50.0% |
 | Errored attempts | 0 |
-| Median latency | 2731.1 ms |
-| P95 latency | 5213.3 ms |
+| Median latency | 2659.2 ms |
+| P95 latency | 3929.8 ms |
 
 ## Methodology
 
